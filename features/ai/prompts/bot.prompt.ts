@@ -426,13 +426,26 @@ export function buildThreadOpening(input: {
 /**
  * A bot's first message in a thread it is brought into: who brought it in and the job as they
  * handed it over (room.query joinRoom), in place of the thread's first request, which is stale
- * once the user has asked for more. Like the opening, it outlives every compaction.
+ * once the user has asked for more. Like the opening, it outlives every compaction. A bot the user
+ * wrote to before any bot handed it work is told so, and reads the thread's first request as that.
  */
 export function buildJoinOpening(input: {
   bot: string;
   coordinator: string;
-  job: { from: string; text: string };
+  job: { from: string; text: string } | null;
+  request: string;
 }): OpeningContent {
+  if (!input.job)
+    return [
+      {
+        type: "text",
+        text: `You are ${input.bot}. The user writes to you in this thread, which ${input.coordinator} coordinates.`,
+      },
+      {
+        type: "text",
+        text: `## The thread's first request\n\n${input.request.trim()}`,
+      },
+    ];
   const { from } = input.job;
   return [
     {

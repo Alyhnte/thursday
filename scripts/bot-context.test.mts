@@ -205,6 +205,14 @@ const waitFor = async (id: string, status: string) => {
   }
   assert.fail(`Thread did not become ${status}`);
 };
+/** A turn that waits for the test to open it, so the order of answers is the test's. */
+const gate = () => {
+  let open = () => {};
+  const shut = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  return { shut, open: () => open() };
+};
 const rowsOf = (id: string) =>
   database
     .select()
@@ -467,20 +475,26 @@ test("a bot brought in holds no send_message, and its last words reach the calle
 });
 
 test("the coordinator starts each turn knowing what it handed out is still out", async () => {
+  const beta = gate();
+  const gamma = gate();
   plans.set("Alpha", [
     () => [
       ...ask("Beta", "Price the red chair"),
       ...ask("Gamma", "Price the blue chair"),
     ],
-    () => text("Both asked."),
+    () => {
+      beta.open();
+      return text("Both asked.");
+    },
     (prompt) => {
       // Woken by Beta's answer: Gamma is still out, and the list says so
       assert.ok(prompt.includes("Red chair: $40"));
       assert.ok(prompt.includes("What you handed out that is not back yet"));
       assert.match(
         prompt,
-        /- Gamma, about to start \(\d+ min\): \\"Price the blue chair\\"|- Gamma, working \(\d+ min\): \\"Price the blue chair\\"/,
+        /- Gamma, (working|about to start) \(\d+ min\): \\"Price the blue chair\\"/,
       );
+      gamma.open();
       return text("Waiting for Gamma.");
     },
     (prompt) => {
@@ -488,10 +502,15 @@ test("the coordinator starts each turn knowing what it handed out is still out",
       return text("Both chairs priced.");
     },
   ]);
-  plans.set("Beta", [() => text("Red chair: $40")]);
+  plans.set("Beta", [
+    async () => {
+      await beta.shut;
+      return text("Red chair: $40");
+    },
+  ]);
   plans.set("Gamma", [
     async () => {
-      await new Promise((resolve) => setTimeout(resolve, 300));
+      await gamma.shut;
       return text("Blue chair: $55");
     },
   ]);
@@ -511,7 +530,41 @@ test("the coordinator starts each turn knowing what it handed out is still out",
   );
 });
 
-test("work handed out after another bot waits for its answer, then goes out with it", async () => {
+test("a turn tried again after a break reads the list once", async () => {
+  const beta = gate();
+  plans.set("Alpha", [
+    () => ask("Beta", "Price the red chair"),
+    () => {
+      beta.open();
+      return text("Asked.");
+    },
+    () => [{ type: "error", error: "The stream broke in this test" }],
+    (prompt) => {
+      assert.equal(
+        prompt.split("Everything you handed out is back.").length - 1,
+        1,
+      );
+      return text("Red chair: $40.");
+    },
+  ]);
+  plans.set("Beta", [
+    async () => {
+      await beta.shut;
+      return text("Red chair: $40.");
+    },
+  ]);
+  const id = await startThread({
+    bot: "Alpha",
+    request: "Price the chair",
+    label: "Board retry",
+    from: "user",
+  });
+  assert.equal((await waitFor(id, "done")).outcome, "Red chair: $40.");
+});
+
+test("work handed out after another bot goes out with its answer once the coordinator has read it", async () => {
+  const beta = gate();
+  let gammaCalls = 0;
   plans.set("Alpha", [
     () => [
       ...ask("Beta", "Price the red chair"),
@@ -525,10 +578,22 @@ test("work handed out after another bot waits for its answer, then goes out with
     (prompt) => {
       // A fresh hand-off says what comes next; a held one says when it goes
       assert.ok(prompt.includes('after: [\\"Beta\\"]'));
-      assert.ok(prompt.includes("Held: it goes to Gamma once Beta is back"));
+      assert.ok(
+        prompt.includes("Held: it goes to Gamma with Beta's answer attached"),
+      );
+      beta.open();
       return text("Both handed out.");
     },
-    () => text("Waiting for Gamma."),
+    (prompt) => {
+      // Beta is back, and the card waits for this turn to end: Alpha could still send Beta more
+      assert.ok(prompt.includes("Red chair: $40."));
+      assert.match(
+        prompt,
+        /- Gamma, goes out with Beta's answer when you end this turn/,
+      );
+      assert.equal((inputs.get("Gamma")?.length ?? 0) - gammaCalls, 0);
+      return text("Waiting for Gamma.");
+    },
     (prompt) => {
       assert.ok(prompt.includes("Card says $40"));
       return text("Card made.");
@@ -536,7 +601,7 @@ test("work handed out after another bot waits for its answer, then goes out with
   ]);
   plans.set("Beta", [
     async () => {
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      await beta.shut;
       return text("Red chair: $40.");
     },
   ]);
@@ -548,7 +613,7 @@ test("work handed out after another bot waits for its answer, then goes out with
       return text("Card says $40");
     },
   ]);
-  const gammaCalls = inputs.get("Gamma")?.length ?? 0;
+  gammaCalls = inputs.get("Gamma")?.length ?? 0;
   const id = await startThread({
     bot: "Alpha",
     request: "Price the chair and make a card",
@@ -564,14 +629,145 @@ test("work handed out after another bot waits for its answer, then goes out with
   }
   assert.equal(held?.state, "waiting");
   assert.deepEqual(held?.waitsFor, ["Beta"]);
-  assert.equal((inputs.get("Gamma")?.length ?? 0) - gammaCalls, 0);
   await waitFor(id, "done");
   assert.equal((await findThread(id))?.outcome, "Card made.");
   const gamma = (await listRoomWork(id)).find((row) => row.bot === "Gamma");
   assert.deepEqual(gamma?.waitsFor, []);
 });
 
-test("words from the user to a bot held for another's answer start it at once and drop the hold", async () => {
+test("an answer that is a question back keeps the work held while the coordinator settles it", async () => {
+  const first = gate();
+  const second = gate();
+  let gammaCalls = 0;
+  plans.set("Alpha", [
+    () => [
+      ...ask("Beta", "Find the check-in date"),
+      ...call(T.send_message, {
+        to: "Gamma",
+        text: "Build the itinerary from the check-in date.",
+        why: "the test's reason",
+        after: ["Beta"],
+      }),
+    ],
+    () => {
+      first.open();
+      return text("Both handed out.");
+    },
+    (prompt) => {
+      assert.ok(prompt.includes("Which hotel did you book?"));
+      return ask("Beta", "The hotel is Casa Azul.");
+    },
+    () => {
+      second.open();
+      return text("Asked Beta again.");
+    },
+    (prompt) => {
+      // Beta was sent more in the turn that read its question, so the itinerary waited
+      assert.ok(prompt.includes("Check-in: May 3"));
+      assert.equal((inputs.get("Gamma")?.length ?? 0) - gammaCalls, 0);
+      return text("Waiting for Gamma.");
+    },
+    (prompt) => {
+      assert.ok(prompt.includes("Itinerary built"));
+      return text("Done.");
+    },
+  ]);
+  plans.set("Beta", [
+    async () => {
+      await first.shut;
+      return text("Which hotel did you book?");
+    },
+    async () => {
+      await second.shut;
+      return text("Check-in: May 3");
+    },
+  ]);
+  plans.set("Gamma", [
+    (prompt) => {
+      assert.ok(prompt.includes("Build the itinerary from the check-in date."));
+      assert.ok(prompt.includes("Check-in: May 3"));
+      assert.ok(!prompt.includes("Which hotel did you book?"));
+      return text("Itinerary built");
+    },
+  ]);
+  gammaCalls = inputs.get("Gamma")?.length ?? 0;
+  const id = await startThread({
+    bot: "Alpha",
+    request: "Plan the stay",
+    label: "After a question back",
+    from: "user",
+  });
+  assert.equal((await waitFor(id, "done")).outcome, "Done.");
+});
+
+test("work sent after another to a bot already busy for you waits as a second hand-off", async () => {
+  const draft = gate();
+  const beta = gate();
+  plans.set("Alpha", [
+    () => [
+      ...ask("Beta", "Price the red chair"),
+      ...ask("Gamma", "Draft the card"),
+    ],
+    () =>
+      call(T.send_message, {
+        to: "Gamma",
+        text: "Add the red chair's price to the card.",
+        why: "the test's reason",
+        after: ["Beta"],
+      }),
+    (prompt) => {
+      // Gamma is on the draft; the price waits beside it rather than reaching it early
+      assert.ok(
+        prompt.includes("Held: it goes to Gamma with Beta's answer attached"),
+      );
+      draft.open();
+      return text("Handed out.");
+    },
+    (prompt) => {
+      assert.ok(prompt.includes("Card drafted"));
+      beta.open();
+      return text("Waiting for Beta.");
+    },
+    (prompt) => {
+      assert.ok(prompt.includes("Red chair: $40."));
+      return text("Waiting for the card.");
+    },
+    (prompt) => {
+      assert.ok(prompt.includes("Card with $40"));
+      return text("Done.");
+    },
+  ]);
+  plans.set("Beta", [
+    async () => {
+      await beta.shut;
+      return text("Red chair: $40.");
+    },
+  ]);
+  plans.set("Gamma", [
+    async (prompt) => {
+      await draft.shut;
+      assert.ok(!prompt.includes("Add the red chair's price"));
+      return text("Card drafted");
+    },
+    (prompt) => {
+      assert.ok(prompt.includes("Add the red chair's price to the card."));
+      assert.ok(prompt.includes("## Beta's answer"));
+      return text("Card with $40");
+    },
+  ]);
+  const id = await startThread({
+    bot: "Alpha",
+    request: "Draft a card with the price",
+    label: "After, busy",
+    from: "user",
+  });
+  assert.equal((await waitFor(id, "done")).outcome, "Done.");
+  const gamma = (await listRoomWork(id)).filter((row) => row.bot === "Gamma");
+  assert.equal(gamma.length, 2);
+});
+
+test("words from the user to a bot held for another's answer start it at once, and the answer follows", async () => {
+  const beta = gate();
   plans.set("Alpha", [
     () => [
       ...ask("Beta", "Price the red chair"),
@@ -583,12 +779,25 @@ test("words from the user to a bot held for another's answer start it at once an
       }),
     ],
     () => text("Both handed out."),
-    () => text("Waiting for the rest."),
-    () => text("Done."),
+    (prompt) => {
+      // Woken by the card the user started; Gamma is still owed Beta's answer
+      assert.ok(prompt.includes("Card started in blue"));
+      assert.match(
+        prompt,
+        /- Gamma, done for now; Beta's answer follows once Beta is back/,
+      );
+      beta.open();
+      return text("Waiting for Beta.");
+    },
+    () => text("Waiting for the card."),
+    (prompt) => {
+      assert.ok(prompt.includes("Card in blue at $40"));
+      return text("Done.");
+    },
   ]);
   plans.set("Beta", [
     async () => {
-      await new Promise((resolve) => setTimeout(resolve, 400));
+      await beta.shut;
       return text("Red chair: $40.");
     },
   ]);
@@ -599,6 +808,11 @@ test("words from the user to a bot held for another's answer start it at once an
       assert.ok(!prompt.includes("## Beta's answer"));
       return text("Card started in blue");
     },
+    (prompt) => {
+      assert.ok(prompt.includes("## Beta's answer"));
+      assert.ok(prompt.includes("Red chair: $40."));
+      return text("Card in blue at $40");
+    },
   ]);
   const id = await startThread({
     bot: "Alpha",
@@ -606,23 +820,31 @@ test("words from the user to a bot held for another's answer start it at once an
     label: "Held step-in",
     from: "user",
   });
+  // Once Alpha's first turn is over and Gamma is held
   const until = Date.now() + 5_000;
-  while (
-    Date.now() < until &&
-    !(await listRoomWork(id)).some((row) => row.bot === "Gamma")
-  )
+  for (;;) {
+    const rows = await listRoomWork(id);
+    const alpha = rows.find((row) => row.bot === "Alpha" && !row.parentId);
+    const gamma = rows.find((row) => row.bot === "Gamma");
+    if (alpha?.state === "waiting" && gamma?.state === "waiting") break;
+    assert.ok(Date.now() < until, "Gamma was never held");
     await new Promise((resolve) => setTimeout(resolve, 10));
+  }
   await answerThread(id, "Use a blue background.", "user", "Gamma");
-  await waitFor(id, "done");
+  assert.equal((await waitFor(id, "done")).outcome, "Done.");
   const gamma = (await listRoomWork(id)).find((row) => row.bot === "Gamma");
   assert.deepEqual(gamma?.waitsFor, []);
   assert.equal(gamma?.state, "done");
 });
 
-test("after naming a bot that is already back sends at once with its answer; one with no work is refused", async () => {
+test("after naming a bot already back and read sends at once with its answer; one with no work is refused", async () => {
+  const beta = gate();
   plans.set("Alpha", [
     () => ask("Beta", "Price the red chair"),
-    () => text("Waiting."),
+    () => {
+      beta.open();
+      return text("Waiting.");
+    },
     () =>
       call(T.send_message, {
         to: "Gamma",
@@ -639,10 +861,18 @@ test("after naming a bot that is already back sends at once with its answer; one
         after: ["beta"],
       });
     },
-    () => text("Waiting for Gamma."),
+    (prompt) => {
+      assert.ok(prompt.includes("Gamma has it now"));
+      return text("Waiting for Gamma.");
+    },
     () => text("Done."),
   ]);
-  plans.set("Beta", [() => text("Red chair: $40.")]);
+  plans.set("Beta", [
+    async () => {
+      await beta.shut;
+      return text("Red chair: $40.");
+    },
+  ]);
   plans.set("Gamma", [
     (prompt) => {
       assert.ok(prompt.includes("## Beta's answer"));
@@ -658,6 +888,74 @@ test("after naming a bot that is already back sends at once with its answer; one
   await waitFor(id, "done");
   const gamma = (await listRoomWork(id)).find((row) => row.bot === "Gamma");
   assert.deepEqual(gamma?.waitsFor, []);
+});
+
+test("work the user gives a bot directly shows on the coordinator's list as the user's", async () => {
+  const red = gate();
+  const blue = gate();
+  plans.set("Alpha", [
+    () => ask("Beta", "Price the red chair"),
+    () => {
+      red.open();
+      return text("Asked.");
+    },
+    () => text("Red chair priced."),
+    (prompt) => {
+      assert.ok(prompt.includes("Everything you handed out is back."));
+      assert.ok(prompt.includes("The user wrote to these bots directly"));
+      assert.match(
+        prompt,
+        /- Beta, (working|about to start) \(\d+ min\): \\"Also price the blue chair\\"/,
+      );
+      blue.open();
+      return text("Beta is on it.");
+    },
+    (prompt) => {
+      assert.ok(prompt.includes("Blue chair: $55"));
+      return text("Both priced.");
+    },
+  ]);
+  plans.set("Beta", [
+    async () => {
+      await red.shut;
+      return text("Red chair: $40");
+    },
+    async () => {
+      await blue.shut;
+      return text("Blue chair: $55");
+    },
+  ]);
+  const id = await startThread({
+    bot: "Alpha",
+    request: "Price the chairs",
+    label: "Board, direct",
+    from: "user",
+  });
+  await waitFor(id, "done");
+  await answerThread(id, "Also price the blue chair", "user", "Beta");
+  await answerThread(id, "How is it going?", "user", "Alpha");
+  assert.equal((await waitFor(id, "done")).outcome, "Both priced.");
+});
+
+test("a bot the user writes to before any bot handed it work is told so", async () => {
+  const { buildJoinOpening } = await import(
+    "../features/ai/prompts/bot.prompt.ts"
+  );
+  const opening = JSON.stringify(
+    buildJoinOpening({
+      bot: "Beta",
+      coordinator: "Alpha",
+      job: null,
+      request: "Price the chairs",
+    }),
+  );
+  assert.ok(
+    opening.includes(
+      "The user writes to you in this thread, which Alpha coordinates",
+    ),
+  );
+  assert.ok(opening.includes("## The thread's first request"));
+  assert.ok(!opening.includes("the job"));
 });
 
 test("silent turns remain resumable without a forced answer or retry loop", async () => {
@@ -1274,14 +1572,8 @@ test("simultaneous questions keep their own reply routes", async () => {
   await waitFor(id, "waiting");
   const questions = (await findThreadView(id))!.room!.questions;
   assert.equal(questions.length, 2);
-  // Two open and no question named: words to the thread are refused with both, nothing delivered
   const { loadTools } = await import("../features/ai/load-tools.ts");
   const tools = await loadTools({ target: "thursday" });
-  const unclear = await tools[T.thread_tell].execute!(
-    { thread: id, words: "Unclear" },
-    { toolCallId: "unclear", messages: [], context: {} },
-  );
-  assert.match(String(unclear), /Several questions are waiting/);
   // An answer names who asked; a bot that asked nothing is answered with who did
   const wrong = await tools[T.thread_answer].execute!(
     { thread: id, bot: "Beta", answer: "Unclear" },
@@ -1309,6 +1601,39 @@ test("simultaneous questions keep their own reply routes", async () => {
   );
   await waitFor(id, "done");
   assert.equal((await findThread(id))?.outcome, "Both decisions applied");
+});
+
+test("one answer from a call covers every question the bot has open", async () => {
+  plans.set("Alpha", [
+    () => [
+      ...ask("Thursday", "Which destination?"),
+      ...ask("Thursday", "Which format?"),
+    ],
+    (prompt) => {
+      assert.ok(prompt.includes("answers your questions to the user"));
+      assert.ok(prompt.includes("Which destination?"));
+      assert.ok(prompt.includes("Which format?"));
+      assert.ok(prompt.includes("Lisbon, as a PDF"));
+      return text("Both settled");
+    },
+  ]);
+  const id = await startThread({
+    bot: "Alpha",
+    request: "Ask two things",
+    label: "Questions, one answer",
+    from: "user",
+  });
+  await waitFor(id, "waiting");
+  assert.equal((await findThreadView(id))!.room!.questions.length, 2);
+  // A call or a phone names only the bot: its answer settles both, and the bot reads which
+  const { loadTools } = await import("../features/ai/load-tools.ts");
+  const tools = await loadTools({ target: "thursday" });
+  const told = (await tools[T.thread_answer].execute!(
+    { thread: id, bot: "Alpha", answer: "Lisbon, as a PDF" },
+    { toolCallId: "both", messages: [], context: {} },
+  )) as { answered?: { bot: string } };
+  assert.equal(told.answered?.bot, "Alpha");
+  assert.equal((await waitFor(id, "done")).outcome, "Both settled");
 });
 
 test("a bot waiting on the user holds other messages until the answer", async () => {
@@ -2248,6 +2573,13 @@ test("a committed message recovers its real receipt after the tool result is los
     text: "Already committed",
     why: "the test's reason",
   });
+  await sendRoomMessage(run, {
+    id: "lost-held",
+    to: "Gamma",
+    text: "Held too",
+    why: "the test's reason",
+    after: ["Beta"],
+  });
   const history: import("ai").ModelMessage[] = [
     {
       role: "assistant",
@@ -2258,16 +2590,29 @@ test("a committed message recovers its real receipt after the tool result is los
           toolName: T.send_message,
           input: { to: "Beta", text: "Already committed" },
         },
+        {
+          type: "tool-call",
+          toolCallId: "lost-held",
+          toolName: T.send_message,
+          input: { to: "Gamma", text: "Held too", after: ["Beta"] },
+        },
       ],
     },
   ];
-  const restored = resumeTranscript(
-    history,
-    await listRoomReceipts(thread.id, "Alpha", history),
+  const restored = JSON.stringify(
+    resumeTranscript(
+      history,
+      await listRoomReceipts(thread.id, "Alpha", history),
+    ),
   );
-  assert.ok(JSON.stringify(restored).includes(receipt.messageId));
-  assert.ok(!JSON.stringify(restored).includes("No result:"));
-  assert.equal((await listRoomWork(thread.id)).length, 2);
+  assert.ok(restored.includes(receipt.messageId));
+  assert.ok(!restored.includes("No result:"));
+  // Each recovered receipt says what the send did: handed over, or held
+  assert.ok(restored.includes("Beta has it now"));
+  assert.ok(
+    restored.includes("Held: it goes to Gamma with Beta's answer attached"),
+  );
+  assert.equal((await listRoomWork(thread.id)).length, 3);
   await deleteThread(thread.id);
 });
 

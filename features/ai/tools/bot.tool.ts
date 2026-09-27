@@ -116,7 +116,7 @@ export const sendMessageSpec = {
         "What you need from them, in a few words, written for the user to read: they see who was brought in and what for.",
       ),
     after: RoomMessageSchema.shape.after.describe(
-      "Bots already working for you whose answers this work needs. It goes out once they are all back, with their answers attached, so hand it out now rather than holding it yourself.",
+      "Bots already working for you whose answers this work needs. It goes out with their answers attached once they are all back and you end the turn in which you read them, so hand it out now rather than holding it yourself. If an answer shows the work cannot go yet, send that bot more or ask the user in that turn, and it keeps waiting.",
     ),
   }),
 };

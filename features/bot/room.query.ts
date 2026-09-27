@@ -70,25 +70,20 @@ export async function listRoomReceipts(
       : [],
   );
   const keys = calls.map((id) => messageKey(threadId, bot, id));
-  const receipts = new Map<string, { messageId: string; to: string }>();
+  const receipts = new Map<string, Receipt>();
   if (!keys.length) return receipts;
-  const [requests, replies] = await Promise.all([
+  const [rows, sent] = await Promise.all([
+    database.select().from(work).where(eq(work.threadId, threadId)),
     database
-      .select({ key: work.id, to: work.bot })
-      .from(work)
-      .where(and(eq(work.threadId, threadId), inArray(work.id, keys))),
-    database
-      .select({ key: delivery.key, to: work.bot })
+      .select({ key: delivery.key, workId: delivery.workId })
       .from(delivery)
-      .innerJoin(work, eq(work.id, delivery.workId))
       .where(and(eq(delivery.threadId, threadId), inArray(delivery.key, keys))),
   ]);
-  const byKey = new Map(
-    [...requests, ...replies].map((row) => [row.key, row.to]),
-  );
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  const into = new Map(sent.map((row) => [row.key, row.workId]));
   for (const [index, id] of calls.entries()) {
-    const to = byKey.get(keys[index]);
-    if (to) receipts.set(id, { messageId: keys[index], to });
+    const row = byId.get(into.get(keys[index]) ?? keys[index]);
+    if (row) receipts.set(id, receiptFor(row, keys[index]));
   }
   return receipts;
 }
@@ -224,6 +219,25 @@ const isOut = (all: RoomWork[], caller: string, bot: string) =>
     (row) => row.caller === caller && row.bot === bot && !terminal(row.state),
   );
 
+/** A hand-off that has not started because it waits on other bots' answers (`after`). */
+const isHeld = (row: RoomWork) =>
+  row.state === "waiting" && row.waitsFor.length > 0;
+
+/** The bots whose words wait unread in this turn's inbox. */
+async function unreadFrom(tx: Tx, run: RoomWork) {
+  const rows = await tx
+    .select({ speaker: delivery.speaker })
+    .from(delivery)
+    .where(and(eq(delivery.workId, run.id), eq(delivery.consumed, false)));
+  return new Set(rows.map((row) => row.speaker));
+}
+
+/** "Beta's answer", or "the answers of Beta and Delta". */
+const answersNamed = (bots: string[]) =>
+  bots.length > 1
+    ? `the answers of ${bots.join(" and ")}`
+    : `${bots[0]}'s answer`;
+
 /** Each awaited bot's latest answer to this caller, as a hand-off carries it. */
 function answersOf(all: RoomWork[], caller: string, bots: string[]) {
   return bots.map((bot) => {
@@ -237,9 +251,47 @@ function answersOf(all: RoomWork[], caller: string, bots: string[]) {
   });
 }
 
+/** Words that go out now, with the answers of the bots they named in `after`. */
+const withAnswers = (
+  all: RoomWork[],
+  caller: string,
+  text: string,
+  after: string[],
+) => [text, ...answersOf(all, caller, after)].join("\n\n");
+
+type Receipt = { messageId: string; to: string; note?: string };
+
 /**
- * Hand-offs that waited on a bot now back (`after`): once none of the bots they wait on is out,
- * their answers are delivered, which queues the hand-off. Held in the row, so a restart keeps it.
+ * What the coordinator reads right after a send, where it changes what comes next: left
+ * unsaid, it went on researching what it had handed out, sent work that needed an answer before
+ * the answer existed, and put off what only the user knew. A send replayed after its receipt
+ * was lost reads the same (listRoomReceipts).
+ */
+function receiptFor(row: RoomWork, key: string): Receipt {
+  const receipt = { messageId: key, to: row.bot };
+  if (row.bot === ROOM_THURSDAY) return receipt;
+  if (isHeld(row))
+    return {
+      ...receipt,
+      note: `Held: it goes to ${row.bot} with ${answersNamed(row.waitsFor)} attached, when you end the turn in which you have read ${row.waitsFor.length > 1 ? "them" : "it"}. There is nothing to do for it until then.`,
+    };
+  if (row.id !== key)
+    return {
+      ...receipt,
+      note: `${row.bot} is already working for you and reads this before its next step. Its one answer covers both.`,
+    };
+  return {
+    ...receipt,
+    note: `${row.bot} has it now, and their answer starts your next turn: until then, do not research, build, guess or report their part yourself, or watch their folder. Work that needs their answer goes out now with \`after: ["${row.bot}"]\`, and the app hands it on with that answer attached. A fact only the user has is asked for now, not after. Otherwise end your turn; the thread stays open.`,
+  };
+}
+
+/**
+ * Hand-offs held for other bots (`after`) go out with those bots' answers when the bot that
+ * handed them out ends a turn with every one of those answers read, and is not waiting on the
+ * user: an answer can be a question back, and the turn that reads it decides whether the work
+ * can go (sending that bot more, or asking the user, keeps it held). Held in the row, so a
+ * restart keeps it. A bot the user started early is still owed the answers it waited for.
  */
 async function releaseWaiting(tx: Tx, run: RoomWork) {
   const all = await tx
@@ -247,25 +299,53 @@ async function releaseWaiting(tx: Tx, run: RoomWork) {
     .from(work)
     .where(eq(work.threadId, run.threadId))
     .orderBy(sql`${work}.rowid`);
-  for (const row of all) {
-    if (
-      row.caller !== run.caller ||
-      !row.waitsFor.includes(run.bot) ||
-      terminal(row.state)
-    )
+  const owed = all.filter(
+    (row) =>
+      row.caller === run.bot &&
+      row.waitsFor.length > 0 &&
+      row.state !== "cancelled",
+  );
+  if (!owed.length || (await isAsking(tx, run.threadId, run.bot))) return;
+  const unread = await unreadFrom(tx, run);
+  for (const row of owed) {
+    if (row.waitsFor.some((bot) => isOut(all, run.bot, bot) || unread.has(bot)))
       continue;
-    if (row.waitsFor.some((bot) => isOut(all, run.caller, bot))) continue;
     await deliver(tx, {
       key: `after:${row.id}`,
       threadId: run.threadId,
       workId: row.id,
-      speaker: run.caller,
-      text: answersOf(all, run.caller, row.waitsFor).join("\n\n"),
+      speaker: run.bot,
+      text: answersOf(all, run.bot, row.waitsFor).join("\n\n"),
     });
     await tx.update(work).set({ waitsFor: [] }).where(eq(work.id, row.id));
   }
 }
 
+/** A new exchange must fit the room: its bots and its open messages are capped. */
+function admit(all: RoomWork[], to: string) {
+  const bots = new Set(
+    all.map((row) => row.bot).filter((bot) => bot !== ROOM_THURSDAY),
+  );
+  if (
+    to !== ROOM_THURSDAY &&
+    !bots.has(to) &&
+    bots.size >= BOT_RUN.participants
+  )
+    publicError("This thread has reached its participant limit.");
+  if (
+    all.filter((row) => !terminal(row.state)).length >= BOT_RUN.queuedMessages
+  )
+    publicError("This thread has reached its pending message limit.");
+}
+
+async function touch(tx: Tx, threadId: string) {
+  await tx
+    .update(thread)
+    .set({ wrapped: false, updatedAt: new Date() })
+    .where(eq(thread.id, threadId));
+}
+
+/** The coordinator's one way out (bot.run): work to a bot, or a question to the user. */
 export async function sendRoomMessage(
   run: RoomWork,
   raw: z.input<typeof RoomMessageSchema> & { id: string },
@@ -285,165 +365,118 @@ export async function sendRoomMessage(
     );
   if (input.to === ROOM_THURSDAY && input.after?.length)
     publicError("`after` is for work handed to a bot, not for a question.");
-  const result = await database.transaction(async (tx) => {
+  if (input.to === run.bot)
+    publicError("Continue your own work directly; choose another recipient.");
+  const result = await database.transaction(async (tx): Promise<Receipt> => {
     await current(tx, run);
     const key = messageKey(run.threadId, run.bot, input.id);
-    const [existing] = await tx.select().from(work).where(eq(work.id, key));
-    if (existing) return { messageId: key, to: existing.bot };
-    const [reply] = await tx
-      .select({ to: work.bot })
-      .from(delivery)
-      .innerJoin(work, eq(work.id, delivery.workId))
-      .where(eq(delivery.key, key));
-    if (reply) return { messageId: key, to: reply.to };
-    if (input.to === run.bot)
-      publicError("Continue your own work directly; choose another recipient.");
-    // The one being answered is reached by the turn's last words (finishRoomWork), never by a
-    // message: sent upward it would open an exchange the other way, and each side's ending
-    // would then wake the other in turn.
-    if (input.to !== ROOM_THURSDAY && input.to === run.caller)
-      publicError(
-        `${input.to} is who you are answering. End your turn and your final text goes to ${input.to}: the answer, or the question you need settled first.`,
-      );
     const all = await tx
       .select()
       .from(work)
       .where(eq(work.threadId, run.threadId));
-    // Words to a bot already on a call from this one join that call, as the user's own do
-    // (tellRoom): read before its next step, and answered once, by the one ending.
-    const calls = all.filter(
-      (row) =>
-        row.bot === input.to &&
-        row.caller === run.bot &&
-        input.to !== ROOM_THURSDAY &&
-        !terminal(row.state),
-    );
-    const joined = calls.find((row) => row.state === "running") ?? calls[0];
-    // More words for a call still waiting on other answers wait with it, unread
-    if (joined?.waitsFor.length) {
-      await tx.insert(delivery).values({
-        key,
-        threadId: run.threadId,
-        workId: joined.id,
-        speaker: run.bot,
-        text: input.text,
-      });
-      return {
-        messageId: key,
-        to: input.to,
-        note: `${input.to} gets this with the rest once ${joined.waitsFor.join(" and ")} ${joined.waitsFor.length > 1 ? "are" : "is"} back.`,
-      };
-    }
-    if (joined) {
-      const held = await isAsking(tx, run.threadId, input.to);
-      await deliver(tx, {
-        key,
-        threadId: run.threadId,
-        workId: joined.id,
-        speaker: run.bot,
-        text: input.text,
-      });
-      await tx
-        .update(thread)
-        .set({ wrapped: false, updatedAt: new Date() })
-        .where(eq(thread.id, run.threadId));
-      return {
-        messageId: key,
-        to: input.to,
-        note: held
-          ? `${input.to} is waiting for the user's answer and reads this after it.`
-          : `${input.to} is already working for you and reads this before its next step. Its one answer covers both.`,
-      };
-    }
-    const bots = new Set(
-      all.map((row) => row.bot).filter((bot) => bot !== ROOM_THURSDAY),
-    );
-    if (
-      input.to !== ROOM_THURSDAY &&
-      !bots.has(input.to) &&
-      bots.size >= BOT_RUN.participants
-    )
-      publicError("This thread has reached its participant limit.");
-    if (
-      all.filter((row) => !terminal(row.state)).length >= BOT_RUN.queuedMessages
-    )
-      publicError("This thread has reached its pending message limit.");
-    const held =
-      input.to !== ROOM_THURSDAY &&
-      (await isAsking(tx, run.threadId, input.to));
-    const after = awaited(all, run.bot, input.to, input.after ?? []);
-    const out = after.filter((bot) => isOut(all, run.bot, bot));
-    // Answers already back travel with the words now; any still out hold them until they are
-    const text = out.length
-      ? input.text
-      : [input.text, ...answersOf(all, run.bot, after)].join("\n\n");
-    await tx.insert(work).values({
-      id: key,
-      threadId: run.threadId,
-      bot: input.to,
-      caller: run.bot,
-      parentId: run.id,
-      state:
-        input.to === ROOM_THURSDAY
-          ? input.kind === "question"
-            ? "external"
-            : "done"
-          : held || out.length
-            ? "waiting"
-            : "queued",
-      result: input.to === ROOM_THURSDAY ? input.text : null,
-      options: [...new Set(input.options ?? [])],
-      waitsFor: out.length ? after : [],
-    });
-    if (out.length) {
-      await tx.insert(delivery).values({
-        key,
-        threadId: run.threadId,
-        workId: key,
-        speaker: run.bot,
-        text,
-      });
-      await tx
-        .update(thread)
-        .set({ wrapped: false, updatedAt: new Date() })
-        .where(eq(thread.id, run.threadId));
-      return {
-        messageId: key,
-        to: input.to,
-        note: `Held: it goes to ${input.to} once ${out.join(" and ")} ${out.length > 1 ? "are" : "is"} back, with ${after.length > 1 ? "their answers" : "the answer"} attached. There is nothing to do for it until then.`,
-      };
-    }
+    const [sent] = await tx
+      .select({ workId: delivery.workId })
+      .from(delivery)
+      .where(eq(delivery.key, key));
+    const replayed = all.find((row) => row.id === (sent?.workId ?? key));
+    if (replayed) return receiptFor(replayed, key);
     if (input.to === ROOM_THURSDAY) {
+      admit(all, input.to);
+      await tx.insert(work).values({
+        id: key,
+        threadId: run.threadId,
+        bot: ROOM_THURSDAY,
+        caller: run.bot,
+        parentId: run.id,
+        state: "external",
+        result: input.text,
+        options: [...new Set(input.options ?? [])],
+      });
       await tx.insert(relay).values({
         key,
         threadId: run.threadId,
         bot: run.bot,
         text: input.text,
-        kind: input.kind,
-        messageId: input.kind === "question" ? key : null,
+        kind: "question",
+        messageId: key,
       });
-    } else {
+      await touch(tx, run.threadId);
+      return { messageId: key, to: ROOM_THURSDAY };
+    }
+    const after = awaited(all, run.bot, input.to, input.after ?? []);
+    const unread = await unreadFrom(tx, run);
+    // An answer still out, or back but unread, holds the work: it may be a question back
+    const pending = after.filter(
+      (bot) => isOut(all, run.bot, bot) || unread.has(bot),
+    );
+    const calls = all.filter(
+      (row) =>
+        row.bot === input.to && row.caller === run.bot && !terminal(row.state),
+    );
+    const held = calls.find(isHeld);
+    const started =
+      calls.find((row) => row.state === "running") ??
+      calls.find((row) => !isHeld(row));
+    // More words for a hand-off still held wait with it, and what they wait on joins its list
+    if (held && (pending.length || !started)) {
+      await tx.insert(delivery).values({
+        key,
+        threadId: run.threadId,
+        workId: held.id,
+        speaker: run.bot,
+        text: input.text,
+      });
+      const waitsFor = [...new Set([...held.waitsFor, ...after])];
+      await tx.update(work).set({ waitsFor }).where(eq(work.id, held.id));
+      await touch(tx, run.threadId);
+      return receiptFor({ ...held, waitsFor }, key);
+    }
+    // Words to a bot already on a call from this one join that call, as the user's own do
+    // (tellRoom): read before its next step, and answered once, by the one ending.
+    if (started && !pending.length) {
+      await deliver(tx, {
+        key,
+        threadId: run.threadId,
+        workId: started.id,
+        speaker: run.bot,
+        text: withAnswers(all, run.bot, input.text, after),
+      });
+      await touch(tx, run.threadId);
+      return receiptFor(started, key);
+    }
+    // A new exchange; one that waits on answers still out is held, even beside a call in progress
+    admit(all, input.to);
+    const [opened] = await tx
+      .insert(work)
+      .values({
+        id: key,
+        threadId: run.threadId,
+        bot: input.to,
+        caller: run.bot,
+        parentId: run.id,
+        state: pending.length ? "waiting" : "queued",
+        waitsFor: pending.length ? after : [],
+      })
+      .returning();
+    // Held words wait unread, and the answers go with them when it is released (releaseWaiting)
+    if (pending.length)
+      await tx.insert(delivery).values({
+        key,
+        threadId: run.threadId,
+        workId: key,
+        speaker: run.bot,
+        text: input.text,
+      });
+    else
       await deliver(tx, {
         key,
         threadId: run.threadId,
         workId: key,
         speaker: run.bot,
-        text,
+        text: withAnswers(all, run.bot, input.text, after),
       });
-    }
-    await tx
-      .update(thread)
-      .set({ wrapped: false, updatedAt: new Date() })
-      .where(eq(thread.id, run.threadId));
-    return {
-      messageId: key,
-      to: input.to,
-      ...(held
-        ? {
-            note: `${input.to} is waiting for the user's answer and reads this after it.`,
-          }
-        : {}),
-    };
+    await touch(tx, run.threadId);
+    return receiptFor(opened, key);
   });
   changed();
   return result;
@@ -605,32 +638,64 @@ export async function joinRoom(
 }
 
 /** How one handed-out exchange stands, in the coordinator's words. */
-function standing(row: RoomWork) {
-  if (row.waitsFor.length) return `waits for ${row.waitsFor.join(" and ")}`;
-  if (row.state === "running") return "working";
-  if (row.state === "queued") return "about to start";
-  if (row.state === "paused") return "paused";
-  return "waiting";
+function standing(all: RoomWork[], row: RoomWork, released: boolean) {
+  const out = row.waitsFor.filter((bot) => isOut(all, row.caller, bot));
+  const when = out.length
+    ? `once ${out.join(" and ")} ${out.length > 1 ? "are" : "is"} back`
+    : "when you end this turn";
+  if (isHeld(row))
+    return out.length
+      ? `waits for ${out.join(" and ")}`
+      : `goes out with ${answersNamed(row.waitsFor)} ${when}`;
+  const now =
+    row.state === "running"
+      ? "working"
+      : row.state === "queued"
+        ? "about to start"
+        : row.state === "paused"
+          ? "paused"
+          : row.state === "done"
+            ? "done for now"
+            : "waiting";
+  // Said, or the coordinator hands on again what the app already attached
+  const had = released ? ", with the answers it waited for" : "";
+  const owed = row.waitsFor.length
+    ? `; ${answersNamed(row.waitsFor)} follows ${when}`
+    : "";
+  return `${now}${had}${owed}`;
 }
 
 /**
  * What the coordinator handed out that is not back yet, read at the start of each of its turns:
- * without it, a coordinator woken by one answer asked again for work already on its way. Null
- * when it has handed nothing out.
+ * without it, a coordinator woken by one answer asked again for work already on its way. Work the
+ * user gave a bot directly answers to the coordinator too, but is listed as the user's. Null when
+ * nothing has gone out.
  */
 export async function roomBoard(run: RoomWork) {
-  const mine = await database
+  const all = await database
     .select()
     .from(work)
-    .where(and(eq(work.threadId, run.threadId), eq(work.parentId, run.id)))
+    .where(eq(work.threadId, run.threadId))
     .orderBy(work.createdAt);
-  const shown = mine.filter((row) => row.bot !== ROOM_THURSDAY);
+  const shown = all.filter(
+    (row) => row.parentId === run.id && row.bot !== ROOM_THURSDAY,
+  );
   if (!shown.length) return null;
-  const open = shown.filter((row) => !terminal(row.state));
+  // A bot the user started early is still owed the answers it waited for
+  const open = shown.filter(
+    (row) =>
+      !terminal(row.state) || (row.state === "done" && row.waitsFor.length > 0),
+  );
   if (!open.length) return "Everything you handed out is back.";
-  const asked = new Map<string, string>();
+  const first = new Map<string, { text: string; visible: boolean }>();
+  const released = new Set<string>();
   for (const row of await database
-    .select({ workId: delivery.workId, text: delivery.text })
+    .select({
+      workId: delivery.workId,
+      key: delivery.key,
+      text: delivery.text,
+      visible: delivery.visible,
+    })
     .from(delivery)
     .where(
       inArray(
@@ -638,18 +703,31 @@ export async function roomBoard(run: RoomWork) {
         open.map((row) => row.id),
       ),
     )
-    .orderBy(delivery.id))
-    if (!asked.has(row.workId)) asked.set(row.workId, row.text);
+    .orderBy(delivery.id)) {
+    if (!first.has(row.workId)) first.set(row.workId, row);
+    if (row.key === `after:${row.workId}`) released.add(row.workId);
+  }
   const now = Date.now();
-  const lines = open.map((row) => {
+  const line = (row: RoomWork) => {
     const minutes = Math.max(
       0,
       Math.round((now - row.createdAt.getTime()) / 60_000),
     );
-    const first = (asked.get(row.id) ?? "").split("\n")[0].trim();
-    return `- ${row.bot}, ${standing(row)} (${minutes} min): "${clip(first, PROMPT_LINE.boardAsk)}"`;
-  });
-  return `What you handed out that is not back yet:\n${lines.join("\n")}`;
+    const asked = (first.get(row.id)?.text ?? "").split("\n")[0].trim();
+    return `- ${row.bot}, ${standing(all, row, released.has(row.id))} (${minutes} min): "${clip(asked, PROMPT_LINE.boardAsk)}"`;
+  };
+  const handed = open.filter((row) => !first.get(row.id)?.visible);
+  const direct = open.filter((row) => first.get(row.id)?.visible);
+  return [
+    handed.length
+      ? `What you handed out that is not back yet:\n${handed.map(line).join("\n")}`
+      : "Everything you handed out is back.",
+    ...(direct.length
+      ? [
+          `The user wrote to these bots directly; their answers come to you:\n${direct.map(line).join("\n")}`,
+        ]
+      : []),
+  ].join("\n\n");
 }
 
 function deliveryText(row: typeof delivery.$inferSelect) {
@@ -662,6 +740,8 @@ function deliveryText(row: typeof delivery.$inferSelect) {
 export async function finishRoomWork(run: RoomWork, text: string) {
   await database.transaction(async (tx) => {
     await current(tx, run);
+    // Before this turn's own state: what it releases is work it is still waiting on
+    await releaseWaiting(tx, run);
     const children = await tx
       .select()
       .from(work)
@@ -713,7 +793,6 @@ export async function finishRoomWork(run: RoomWork, text: string) {
           text: text || "This turn ended without a message.",
         });
       }
-      await releaseWaiting(tx, run);
     }
     const [room] = await tx
       .select()
@@ -885,22 +964,23 @@ export async function resumeRoom(threadId: string) {
 }
 
 /**
- * The question words from the user side answer: the one the named bot is waiting
- * on, or with no bot named the only one open. Several and none named is the
- * sender's to settle, so it is refused with the list.
+ * The questions words from the user side answer: those the named bot is waiting on, or with no
+ * bot named those open. One bot's questions are answered together, since a call or a phone can
+ * name only the bot (thread_answer) and the user's reply often covers both; questions from
+ * several bots with none named are the sender's to settle, so they are refused with the list.
  */
-function questionFor(open: RoomWork[], recipient?: string) {
+function questionsFor(open: RoomWork[], recipient?: string) {
   const asked = recipient
     ? open.filter((row) => row.caller === recipient)
     : open;
-  if (asked.length <= 1) return asked[0];
+  if (new Set(asked.map((row) => row.caller)).size <= 1) return asked;
   publicError(
-    `Several questions are waiting for an answer: ${asked
+    `Several bots are waiting for an answer: ${asked
       .map(
         (row) =>
           `${row.caller} (replyTo ${row.id}): “${(row.result ?? "").slice(0, 160)}”`,
       )
-      .join("; ")}. Answer one of them by its replyTo.`,
+      .join("; ")}. Answer one of them by naming its bot or by its replyTo.`,
   );
 }
 
@@ -945,12 +1025,15 @@ export async function tellRoom(
       .where(eq(work.threadId, threadId))
       .orderBy(work.createdAt);
     const open = all.filter((row) => row.state === "external");
-    const question = replyTo
-      ? (open.find((row) => row.id === replyTo) ??
-        publicError("That question is no longer waiting for an answer."))
+    const questions = replyTo
+      ? [
+          open.find((row) => row.id === replyTo) ??
+            publicError("That question is no longer waiting for an answer."),
+        ]
       : answering
-        ? questionFor(open, recipient)
-        : undefined;
+        ? questionsFor(open, recipient)
+        : [];
+    const question = questions[0];
     const bot = question?.caller ?? recipient ?? room.bot;
     let target = question
       ? all.find((row) => row.id === question.parentId)
@@ -959,19 +1042,17 @@ export async function tellRoom(
           (row) =>
             row.bot === bot && !terminal(row.state) && row.state !== "external",
         ));
-    // Words to a bot held for other answers (`after`) start it now: the user's word outranks the
-    // hold, and a hold left behind would outlive a turn that has already ended
-    if (target?.waitsFor.length)
-      await tx.update(work).set({ waitsFor: [] }).where(eq(work.id, target.id));
-    if (question) {
+    // Words to a bot held for other answers (`after`) start it now, as words to anyone do
+    // (deliver): the user's word outranks the hold, and the answers still follow (releaseWaiting)
+    for (const one of questions) {
       await tx
         .update(work)
         .set({ state: "done", result: text })
-        .where(eq(work.id, question.id));
+        .where(eq(work.id, one.id));
       await tx
         .update(relay)
         .set({ accepted: true })
-        .where(eq(relay.messageId, question.id));
+        .where(eq(relay.messageId, one.id));
     }
     if (!target) {
       let parentId: string | null = null;
@@ -1022,7 +1103,10 @@ export async function tellRoom(
         threadId,
         workId: target.id,
         speaker: "Thread activity",
-        text: `The next message answers your question to the user: “${question.result ?? ""}”`,
+        text:
+          questions.length > 1
+            ? `The next message answers your questions to the user: ${questions.map((one) => `“${one.result ?? ""}”`).join(", ")}`
+            : `The next message answers your question to the user: “${question.result ?? ""}”`,
       });
     const key = crypto.randomUUID();
     await deliver(tx, {
@@ -1068,7 +1152,10 @@ export async function tellRoom(
       key,
       to: bot,
       answered: question
-        ? { bot: question.caller, question: question.result ?? "" }
+        ? {
+            bot: question.caller,
+            question: questions.map((one) => one.result ?? "").join(" · "),
+          }
         : null,
     };
   });

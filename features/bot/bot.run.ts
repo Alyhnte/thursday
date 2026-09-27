@@ -43,7 +43,7 @@ import {
 import { logger } from "@/lib/logger";
 import { estimateTokens } from "@/lib/tokens";
 import { findJobBot } from "./bot.query";
-import { isCoordinatorSeat, ROOM_THURSDAY } from "./room.schema";
+import { isCoordinatorSeat } from "./room.schema";
 import {
   argumentLine,
   findThread,
@@ -226,22 +226,8 @@ export async function runBot(
               id: call.toolCallId,
             });
             if (input.kind === "question") asked = true;
-            if (
-              !receipt ||
-              typeof receipt !== "object" ||
-              !("to" in receipt) ||
-              "note" in receipt
-            )
-              return receipt;
-            const to = String(receipt.to);
-            if (to === ROOM_THURSDAY) return receipt;
-            // Said right after the hand-off, where it changes what comes next: left unsaid, the
-            // coordinator went on researching what it had handed out (a second copy), sent work
-            // that needed this answer before it existed, and put off what only the user knew
-            return {
-              ...receipt,
-              note: `${to} has it now, and their answer starts your next turn: until then, do not research, build, guess or report their part yourself, or watch their folder. Work that needs their answer goes out now with \`after: ["${to}"]\`, and the app hands it on with that answer attached. A fact only the user has is asked for now, not after. Otherwise end your turn; the thread stays open.`,
-            };
+            // Its note says what comes next (room.query receiptFor)
+            return receipt;
           },
         }),
       }

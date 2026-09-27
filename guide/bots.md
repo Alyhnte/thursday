@@ -84,9 +84,10 @@ Enter sends it, and the room opens on the thread it started.
 An open thread's own message box takes files the same way. Once more than one bot is in a thread,
 the box says who it is addressed to and can be changed. Only the bot the job went to brings other
 bots in, asks the user and answers them; a bot it pulled in answers back to that bot, and anything
-it needs goes through it. A part that needs another bot's result waits until that result is in,
-then goes out with it. Bots do not report progress to the call or a phone: the corner shows who is
-working, and what reaches the user is a question or the ending.
+it needs goes through it. A part that needs another bot's result waits until that result is in
+and the bot the job went to has read it, then goes out with it: if the result was a question back,
+that bot settles it first. Bots do not report progress to the call or a phone: the corner shows who
+is working, and what reaches the user is a question or the ending.
 
 A picture a bot made or was given can be changed rather than drawn again: ask for what should be
 different. This needs an image model in **Settings › Models**; if the one picked cannot work from a
@@ -99,15 +100,17 @@ correction, a narrower ask. Until read they wait marked *Step-in* and can be tak
 once read they join the conversation. Saying the same to her on a call does the same thing.
 
 A bot that handed its part to another and is waiting has no step to step into; its tab shows an
-open message box instead, and words sent there start it again at once.
+open message box instead, and words sent there start it again at once. The same goes for a bot
+whose part waits on another's result: it starts on what was written, and the result still reaches
+it when it is in.
 
 ## When a bot needs the user
 
 - **A question** comes from the bot the job went to, and pauses it until answered; other bots keep
-  working. It shows where the
-  message box is, with buttons when there are choices. The card above the pill says how many need
-  a reply, and each can be answered right there (or just above the line at the foot, while that is
-  open).
+  working. It shows where the message box is, with buttons when there are choices. Two asked at
+  once are answered one by one on screen, or together by one answer on a call. The card above the
+  pill says how many need a reply, and each can be answered right there (or just above the line at
+  the foot, while that is open).
 - **A pause** — a model that broke twice, a provider that refused, the app restarting, a job that
   reached its step limit — shows as *Paused*, and **Continue** picks it up where it left off.
 - **Signing in** is always the user's: the bot opens the page and waits.

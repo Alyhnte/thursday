@@ -210,7 +210,7 @@ async function drive(work: RoomWork, signal: AbortSignal) {
     await noteRoomBreak(work, turn.failure.message);
     // Only an abort rejects the wait, and the check below reads it
     await wait(BOT_RUN.retryMs, undefined, { signal }).catch(() => {});
-    if (!signal.aborted) turn = await attempt(work, signal);
+    if (!signal.aborted) turn = await attempt(work, signal, false);
   }
   if (!turn || signal.aborted) return;
   const failure = turn.failure?.message;
@@ -262,8 +262,11 @@ async function drive(work: RoomWork, signal: AbortSignal) {
   }
 }
 
-/** One run of a participant's turn from its stored transcript: how it ended, or why it broke. Null when the thread is gone. */
-async function attempt(work: RoomWork, signal: AbortSignal) {
+/**
+ * One run of a participant's turn from its stored transcript: how it ended, or why it broke. Null
+ * when the thread is gone. A retry after a break is not a new turn, and the board it read stands.
+ */
+async function attempt(work: RoomWork, signal: AbortSignal, fresh = true) {
   const writer = new TranscriptWriter(work, signal);
   let ending: { text: string; stopped: boolean } | null = null;
   let failure: { message: string; retry: boolean } | null = null;
@@ -277,12 +280,13 @@ async function attempt(work: RoomWork, signal: AbortSignal) {
         buildJoinOpening({
           bot: work.bot,
           coordinator: thread.bot,
-          job: job ?? { from: work.caller, text: thread.request },
+          job,
+          request: thread.request,
         }),
       );
     await consumeRoomInbox(work);
     // The coordinator starts each turn knowing what it handed out is still out
-    if (isCoordinatorSeat(work.bot, thread.bot, work.caller)) {
+    if (fresh && isCoordinatorSeat(work.bot, thread.bot, work.caller)) {
       const board = await roomBoard(work);
       if (board)
         await appendRoomMessage(work.threadId, {

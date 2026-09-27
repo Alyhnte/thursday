@@ -37,7 +37,8 @@ bot's inbox (`thread_delivery`) or asks the user, and each of its turns starts w
 handed out that is still out (`roomBoard`). A bot it brings in first reads the job it was handed
 (`joinRoom`), and its turn's last words are its return, delivered once nothing it called is still
 open (`finishRoomWork`). A hand-off sent `after` other bots waits in its row (`waitsFor`) until
-they are back, then goes out with their answers. `room.query` owns those rows and settles the
+they are back and the coordinator ends the turn that read their answers without asking the user
+(`releaseWaiting`), then goes out with them; a bot the user starts early is still owed them. `room.query` owns those rows and settles the
 thread; `bot.runner` launches what they queue; `bot.run` runs one turn. What is owed to Thursday
 — a question, the coordinator's report, a stop — is a `thread_relay` row, which the call
 (`features/thursday/open-work.ts`) and a phone (`features/reach`) read and accept.
