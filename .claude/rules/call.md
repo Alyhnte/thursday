@@ -1,9 +1,9 @@
 ---
-checked: 2026-09-26
+checked: 2026-09-27
 paths:
   - "features/thursday/thursday.*.ts"
   - "features/thursday/use-*.ts"
-  - "features/thursday/{open-work,screen-act,screen-share,tool-call,call-signal}.ts"
+  - "features/thursday/{open-work,screen-act,screen-share,tool-call,call-signal,where}.ts"
   - "hooks/use-wake-word.ts"
   - "features/reach/**"
   - "lib/live/**"

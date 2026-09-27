@@ -37,6 +37,7 @@ import {
   type TextCallHandshake,
   type TextCallMoved,
   type TextCallNote,
+  type Where,
 } from "./thursday.schema";
 import { useThursdayStore } from "./thursday.store";
 import {
@@ -46,6 +47,7 @@ import {
   toolLine,
 } from "./tool-line";
 import type { ActivityLine } from "./use-thursday";
+import { whereNow } from "./where";
 
 /**
  * A call in writing, as the call screen draws it: the same turns, tool line and thinking
@@ -101,9 +103,10 @@ const notePart = (note: TextCallNote) => ({
 });
 
 export function useTextCall(): TextCall {
-  const [line, setLine] = useState<(TextCallHandshake & { at: number }) | null>(
-    null,
-  );
+  /** The call held, when it opened, and where the page found the user as it did (where.ts). */
+  const [line, setLine] = useState<
+    (TextCallHandshake & { at: number; where: Where | null }) | null
+  >(null);
   const held = useRef(line);
   held.current = line;
   /** What already stood when this call opened, and so is not put to her (open-work). */
@@ -190,6 +193,7 @@ export function useTextCall(): TextCall {
           standing: to.standing,
           runsOn: on,
           turn: name,
+          where: to.where,
         },
       });
     },
@@ -259,7 +263,10 @@ export function useTextCall(): TextCall {
       let to = held.current;
       if (!to) {
         // the hook has already said why when this throws
-        to = { ...(await open(runsOn())), at: Date.now() };
+        // Asked from the send that opens the call, so a first call's permission prompt
+        // comes with it
+        const [opened, where] = await Promise.all([open(runsOn()), whereNow()]);
+        to = { ...opened, at: Date.now(), where };
         held.current = to;
         stood.current = stoodBefore(inbox.current ?? []);
         setLine(to);

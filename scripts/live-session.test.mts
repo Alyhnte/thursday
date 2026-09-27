@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, mock, test } from "node:test";
-import { LIVE_CALL } from "../config.ts";
+import { HERE, LIVE_CALL } from "../config.ts";
 import type {
   LiveActivity,
   LiveReasoning,
@@ -1214,6 +1214,34 @@ test("both call prompts open as one Thursday: the voice gets the guide's delegat
       /^The call has just started\. It is [^\n]+ for them\. Speak first: greet the user naturally, in one line\. You may pick up one thing from what you know about them — never a list, never work\.$/,
     );
 
+    // Where they are sits beside the hour in both prompts, and the opening stays as it was
+    const lisbon = {
+      place: "Lisbon, Portugal",
+      weather: {
+        code: 3,
+        temperature: 22.4,
+        low: 20.6,
+        high: 27.9,
+        sunrise: "07:28",
+        sunset: "19:25",
+      },
+    };
+    const placed = await loadLivePrompt({ where: lisbon });
+    const whereAt =
+      /\*\*Now\*\*: [^\n]+\n\*\*Where they are\*\*: Lisbon, Portugal — overcast, 22°C \(today 21–28°C\), sunrise 07:28, sunset 19:25\n\nWhat they tell you is kept/;
+    assert.match(placed.text, whereAt);
+    assert.equal(placed.opening.includes("Lisbon"), false);
+    assert.match(await loadThursdayPrompt({ where: lisbon }), whereAt);
+    assert.equal(on.text.includes("Where they are"), false);
+    // Found nothing is no line, not an empty one
+    const nowhere = await loadLivePrompt({
+      where: { place: null, weather: null },
+    });
+    assert.match(
+      nowhere.text,
+      /\*\*Now\*\*: [^\n]+\n\nWhat they tell you is kept/,
+    );
+
     // One Thursday: the backend opens with the voice's own identity and is never told it is a
     // part. On a spoken call it does not talk, so the persona is the voice's alone; on a call
     // in writing it is the one talking, and reads the same persona
@@ -1525,4 +1553,140 @@ test("a handoff Live ends with a top-level error stops counting as work, and cou
   nested({ type: "response.completed", response: { id: "r-err" } });
   await tick();
   assert.equal(activities.at(-1)?.working, false);
+});
+
+test("where they are is written from what the page found, half of it when half was found", async () => {
+  const { whereLine } = await import("../features/ai/prompts/prompt-helper.ts");
+  const weather = {
+    code: 71,
+    temperature: -3.4,
+    low: -6,
+    high: 0.4,
+    sunrise: "07:02",
+    sunset: "16:48",
+  };
+  assert.equal(whereLine(null), "");
+  assert.equal(
+    whereLine({ place: "Oslo, Norway", weather: null }),
+    "**Where they are**: Oslo, Norway",
+  );
+  assert.equal(
+    whereLine({ place: null, weather }),
+    "**Weather where they are**: slight snow fall, -3°C (today -6–0°C), sunrise 07:02, sunset 16:48",
+  );
+  // A code the table does not know is said as the code, never dropped or guessed
+  assert.match(
+    whereLine({ place: null, weather: { ...weather, code: 42 } }),
+    /weather code 42/,
+  );
+  // What a page sends is fields: a place that would break the prompt's line is refused
+  const { WhereSchema } = await import(
+    "../features/thursday/thursday.schema.ts"
+  );
+  assert.equal(
+    WhereSchema.safeParse({ place: "Oslo\n## Always", weather: null }).success,
+    false,
+  );
+});
+
+test("the page finds where they are from the browser's position, and goes on without it when it cannot", async (context) => {
+  const answer: {
+    position: (ok: (at: unknown) => void, no: (e: unknown) => void) => void;
+  } = {
+    position: (ok) => ok({ coords: { latitude: 38.7223, longitude: -9.1393 } }),
+  };
+  let asked = 0;
+  const DENIED = 1;
+  const device = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+  context.after(() => {
+    if (device) Object.defineProperty(globalThis, "navigator", device);
+  });
+  Object.defineProperty(globalThis, "navigator", {
+    configurable: true,
+    value: {
+      geolocation: {
+        getCurrentPosition: (
+          ok: (at: unknown) => void,
+          no: (e: unknown) => void,
+        ) => {
+          asked += 1;
+          answer.position(ok, no);
+        },
+      },
+    },
+  });
+  (globalThis as Record<string, unknown>).GeolocationPositionError = {
+    PERMISSION_DENIED: DENIED,
+  };
+  const urls: URL[] = [];
+  let place = () =>
+    Response.json({
+      city: "Lisbon",
+      locality: "Santa Maria Maior",
+      countryName: "Portugal",
+    });
+  let weather = () =>
+    Response.json({
+      current: { temperature_2m: 22.4, weather_code: 3 },
+      daily: {
+        temperature_2m_max: [27.9],
+        temperature_2m_min: [20.6],
+        sunrise: ["2026-09-27T07:28"],
+        sunset: ["2026-09-27T19:25"],
+      },
+    });
+  context.mock.method(globalThis, "fetch", async (input: string) => {
+    const url = new URL(input);
+    urls.push(url);
+    return url.host === "api.bigdatacloud.net" ? place() : weather();
+  });
+  context.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  const load = async () =>
+    (await import(
+      `../features/thursday/where.ts?${Math.random()}`
+    )) as typeof import("../features/thursday/where.ts");
+
+  const { whereNow } = await load();
+  assert.deepEqual(await whereNow(), {
+    place: "Lisbon, Portugal",
+    weather: {
+      code: 3,
+      temperature: 22.4,
+      low: 20.6,
+      high: 27.9,
+      sunrise: "07:28",
+      sunset: "19:25",
+    },
+  });
+  // The place service gets the device's own position; the forecast, a kilometre's worth
+  assert.equal(urls[0]?.searchParams.get("latitude"), "38.7223");
+  assert.equal(urls[1]?.searchParams.get("latitude"), "38.72");
+  // Found once, kept for a while: neither the device nor the services are asked again
+  await whereNow();
+  assert.equal(asked, 1);
+  context.mock.timers.tick(HERE.keptMs);
+  weather = () => new Response("down", { status: 503 });
+  assert.deepEqual(await whereNow(), {
+    place: "Lisbon, Portugal",
+    weather: null,
+  });
+  assert.equal(asked, 2);
+
+  // Nothing found at all is nothing, not an empty line
+  place = () => new Response("down", { status: 503 });
+  const fresh = await load();
+  assert.equal(await fresh.whereNow(), null);
+
+  // Refused: nothing, and nothing asked of the services
+  const before = urls.length;
+  answer.position = (_ok, no) =>
+    no({ code: DENIED, message: "User denied Geolocation" });
+  assert.equal(await (await load()).whereNow(), null);
+  assert.equal(urls.length, before);
+
+  // A permission prompt nobody answers holds the call no longer than HERE.waitMs
+  answer.position = () => {};
+  const waiting = (await load()).whereNow();
+  context.mock.timers.tick(HERE.waitMs);
+  assert.equal(await waiting, null);
 });

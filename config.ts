@@ -760,6 +760,17 @@ export const HISTORY_KEEP = {
 };
 
 /**
+ * Where the user is and the weather there, read into both call prompts (features/thursday/
+ * where): the browser's position, when they allowed it, named and forecast by the browser.
+ * - `waitMs`  how long a call's start waits for it, the browser's permission prompt
+ *   included. Longer delays the call; shorter starts more calls without it, and one that
+ *   outwaits the prompt goes without while the next has it.
+ * - `keptMs`  how long what was found is used before it is found again. Longer asks the
+ *   device and the services less often and may name a place they have left.
+ */
+export const HERE = { waitMs: 3_000, keptMs: 30 * 60_000 };
+
+/**
  * How much of the previous call the prompt carries verbatim: `rows` turns are
  * fetched, then filled newest-first until `tokens` is spent.
  */

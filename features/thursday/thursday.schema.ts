@@ -14,6 +14,35 @@ import { LiveFragmentSchema } from "@/lib/live/live.schema";
  */
 export type FaceWord = { text: string; at: number; hold?: number };
 
+/**
+ * Where the browser says the user is and the weather there (where.ts), sent with a call and
+ * written into both call prompts by the server (prompt-helper `whereLine`). Fields, never
+ * text: nothing a page sends goes into the prompt word for word but the place's name.
+ */
+export const WhereSchema = z.object({
+  /** `Lisbon, Portugal`. */
+  place: z
+    .string()
+    .max(120)
+    .regex(/^[^\n\r]*$/)
+    .nullable(),
+  weather: z
+    .object({
+      /** Open-Meteo's `weather_code`, a WMO code. */
+      code: z.number().int().min(0).max(99),
+      /** °C, now. */
+      temperature: z.number(),
+      /** °C, today. */
+      low: z.number(),
+      high: z.number(),
+      /** `07:28`, the place's own time. */
+      sunrise: z.string().regex(/^\d{2}:\d{2}$/),
+      sunset: z.string().regex(/^\d{2}:\d{2}$/),
+    })
+    .nullable(),
+});
+export type Where = z.infer<typeof WhereSchema>;
+
 /** The browser receives the SDP answer, the row to save turns to, and the opening. */
 export type CallHandshake = {
   /** The row every saved turn hangs off. Exists before the connection. */

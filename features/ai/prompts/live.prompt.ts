@@ -9,6 +9,7 @@ import {
   type CallGroup,
   listRecentTurns,
 } from "@/features/thursday/thursday.query";
+import type { Where } from "@/features/thursday/thursday.schema";
 import { personaLines } from "./persona";
 import {
   clockNow,
@@ -35,6 +36,8 @@ export async function loadLivePrompt(options: {
   calledBack?: boolean;
   /** Settings › Thursday › Style: which character she is on this call (persona). */
   persona?: string;
+  /** Where they are and the weather there, when the page said (thursday/where). */
+  where?: Where | null;
 }): Promise<{ text: string; opening: string }> {
   const [open, index, calls] = await Promise.all([
     // Written out in the prompt, which is not the user asking for them: no read counted
@@ -48,7 +51,7 @@ export async function loadLivePrompt(options: {
   const earlier = earlierCalls(calls);
 
   const text = [
-    thursdayIdentity(),
+    thursdayIdentity(new Date(), options.where),
     personaLines(options.persona),
     always(),
     known(open.notes, index),

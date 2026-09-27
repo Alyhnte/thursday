@@ -11,7 +11,7 @@ import type { McpToolRef } from "@/features/connectors/mcp.schema";
 import type { MemoryIndexEntry } from "@/features/memory/memory.schema";
 import type { SkillMetadata } from "@/features/skills/skills.discover";
 import { firstSentence } from "@/features/skills/skills.schema";
-import type { CallTurn } from "@/features/thursday/thursday.schema";
+import type { CallTurn, Where } from "@/features/thursday/thursday.schema";
 import { searchOf, startedLabel } from "@/features/thursday/tool-line";
 import { toDate } from "@/lib/date-like";
 import { logger } from "@/lib/logger";
@@ -88,6 +88,53 @@ export function botWorkHead(row: BotWorkLine, self: string): string {
 /** `**Now**: 2026-09-02 (Wed) 15:41 Europe/Lisbon` */
 export const nowLine = (now = new Date()) => `**Now**: ${clockNow(now)}`;
 
+/** Open-Meteo's `weather_code`: the WMO codes its documentation lists, in its words. */
+const WEATHER: Record<number, string> = {
+  0: "clear sky",
+  1: "mainly clear",
+  2: "partly cloudy",
+  3: "overcast",
+  45: "fog",
+  48: "depositing rime fog",
+  51: "light drizzle",
+  53: "moderate drizzle",
+  55: "dense drizzle",
+  56: "light freezing drizzle",
+  57: "dense freezing drizzle",
+  61: "slight rain",
+  63: "moderate rain",
+  65: "heavy rain",
+  66: "light freezing rain",
+  67: "heavy freezing rain",
+  71: "slight snow fall",
+  73: "moderate snow fall",
+  75: "heavy snow fall",
+  77: "snow grains",
+  80: "slight rain showers",
+  81: "moderate rain showers",
+  82: "violent rain showers",
+  85: "slight snow showers",
+  86: "heavy snow showers",
+  95: "thunderstorm",
+  96: "thunderstorm with slight hail",
+  99: "thunderstorm with heavy hail",
+};
+
+/**
+ * `**Where they are**: Lisbon, Portugal — overcast, 22°C (today 21–28°C), sunrise 07:28,
+ * sunset 19:25`: what the browser found (thursday/where), or nothing when it found none.
+ */
+export function whereLine(where?: Where | null): string {
+  if (!where) return "";
+  const sky = where.weather;
+  const weather = sky
+    ? `${WEATHER[sky.code] ?? `weather code ${sky.code}`}, ${Math.round(sky.temperature)}°C (today ${Math.round(sky.low)}–${Math.round(sky.high)}°C), sunrise ${sky.sunrise}, sunset ${sky.sunset}`
+    : "";
+  if (where.place)
+    return `**Where they are**: ${where.place}${weather ? ` — ${weather}` : ""}`;
+  return weather ? `**Weather where they are**: ${weather}` : "";
+}
+
 /**
  * Who Thursday is, in the words both call prompts open with. The Live voice and its Responses
  * backend are one assistant, so neither is told it is part of something else, and one sentence
@@ -100,8 +147,12 @@ export const nowLine = (now = new Date()) => `**Now**: ${clockNow(now)}`;
  * computer (0 of 8 first calls, 6 of 8 with it). No manner — quick, warm, dry — is
  * stated: how she speaks is the persona's and the Live model's own.
  */
-export const thursdayIdentity = (now = new Date()) =>
-  `You are Thursday, this user's own: their friend first, and their assistant second — someone they call because they want to talk to you, who can also get whatever they need done in the background: your bots work on this computer, with a shell, a browser and their files, while you two keep talking, and what they make stays here as a page or a file. Named after Friday, the AI in *Iron Man*: a name, not a day of the week. ${nowLine(now)}
+export const thursdayIdentity = (
+  now = new Date(),
+  /** Where they are, beside the hour, when the page said (thursday/where). */
+  where?: Where | null,
+) =>
+  `You are Thursday, this user's own: their friend first, and their assistant second — someone they call because they want to talk to you, who can also get whatever they need done in the background: your bots work on this computer, with a shell, a browser and their files, while you two keep talking, and what they make stays here as a page or a file. Named after Friday, the AI in *Iron Man*: a name, not a day of the week. ${nowLine(now)}${whereLine(where) ? `\n${whereLine(where)}` : ""}
 
 What they tell you is kept, so you know them better over time.`;
 

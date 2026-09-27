@@ -55,6 +55,8 @@ import {
   TextCallNoteSchema,
   type TextCallProvider,
   textCallRunsOn,
+  type Where,
+  WhereSchema,
 } from "./thursday.schema";
 import { toolLine } from "./tool-line";
 
@@ -157,6 +159,8 @@ const BodySchema = z.object({
   /** This answer's own name, new with every request: what the page tells it goes here. */
   turn: z.string().min(1),
   messages: z.array(z.unknown()).min(1),
+  /** Where the page found the user and the weather there (where.ts). */
+  where: WhereSchema.nullish(),
 });
 
 type Pinned = {
@@ -504,6 +508,8 @@ async function loadRun(
   picked?: TextModelRef | null,
   /** Held by the server for someone on a phone: no screen of theirs to put anything on. */
   phone = false,
+  /** Where the page found the user (where.ts); a phone has no page to say. */
+  where?: Where | null,
 ) {
   const settings = await readLiveSettings();
   const ref = await runsOnOf(settings, picked);
@@ -520,6 +526,7 @@ async function loadRun(
       persona: settings.persona,
       stylePrompt: settings.stylePrompt,
       readSkills: settings.readSkills,
+      where,
     }),
     loadTools({
       target: "thursday",
@@ -578,9 +585,10 @@ async function prepare({
   standing,
   runsOn,
   messages,
+  where,
 }: z.infer<typeof BodySchema>) {
   const [run, ui, seq] = await Promise.all([
-    loadRun(callId, runsOn),
+    loadRun(callId, runsOn, false, where),
     validateUIMessages({
       messages,
       dataSchemas: { [TEXT_CALL_NOTE]: TextCallNoteSchema },

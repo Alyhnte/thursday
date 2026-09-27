@@ -19,6 +19,14 @@ in that moment are lost. Every call starts fresh, but she remembers the last par
 calls and picks a subject up when the user does. Anything older is gone unless she kept it in
 memory (`memory.md`). A call she places herself opens on why she called.
 
+The first call started from the page — spoken or in writing — has the browser ask to know the
+user's location. Allowed, she knows on every call which town they are in and the weather there:
+the page asks BigDataCloud for the town's name and Open-Meteo for the weather, and only those two
+reach her. What was found is used for half an hour before it is looked up again. Refused, or not
+known within three seconds, the call goes on without it and nothing is sent. The browser keeps
+the answer; it is changed in the browser's site settings for this app (the icon left of the
+address). A phone chat has no browser, so she does not know it there.
+
 ## What she does on the line, and what goes to a bot
 
 She answers from what she knows about them, searches the web, runs a single command on their

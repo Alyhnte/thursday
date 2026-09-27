@@ -83,6 +83,7 @@ import {
   toolLine,
 } from "./tool-line";
 import { useCallRing } from "./use-call-ring";
+import { whereNow } from "./where";
 
 /**
  * One live call, plus the thread inbox the app watches even with no call open.
@@ -817,6 +818,9 @@ export function useThursday(
       armAudioUnlock(tap.current.open().context);
       const chime = new Audio(CONNECTED_SOUND);
       farewell.current ??= new Audio(HUNG_UP_SOUND);
+      // Asked now, from the press, so a first call's permission prompt comes with it and the
+      // answer is found beside the lock and the offer
+      const where = whereNow();
       // After the audio, which has to be opened inside the click
       const release = await takeCallLock();
       if (!release)
@@ -897,7 +901,9 @@ export function useThursday(
 
       const live = await openLiveSession({
         initialize: async (sdp) => {
-          const handshake = unwrapResult(await openCallAction(sdp, calledBack));
+          const handshake = unwrapResult(
+            await openCallAction(sdp, calledBack, await where),
+          );
           if (!current()) {
             void endCallAction(handshake.callId);
             throw new Error("The call closed during startup.");

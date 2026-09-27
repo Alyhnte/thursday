@@ -39,6 +39,7 @@ import {
   CallTurnSchema,
   type TextCallHandshake,
   TextCallNoteSchema,
+  WhereSchema,
 } from "./thursday.schema";
 import { openTextCall, tellTextCall } from "./thursday.text";
 
@@ -77,10 +78,15 @@ async function loadToolManifest(
  * Opens a Live call from the browser's SDP offer. Both prompts, the tool manifest
  * and the account key stay here; the browser gets the SDP answer, the call row
  * and what it needs to draw and save the call. `calledBack` is the page placing it
- * for waiting work rather than the user, which changes what she opens with.
+ * for waiting work rather than the user, which changes what she opens with. `where` is where
+ * the page found the user and the weather there (where.ts), for both prompts.
  */
 export const openCallAction = serverAction(
-  async (sdp: unknown, calledBack?: unknown): Promise<CallHandshake> => {
+  async (
+    sdp: unknown,
+    calledBack?: unknown,
+    where?: unknown,
+  ): Promise<CallHandshake> => {
     const thursday = await readLiveSettings();
     const offer = z.string().min(1).max(SDP_MAX_LENGTH).parse(sdp);
     const apiKey = await readConfig(LIVE_PROVIDER.apiKeyName);
@@ -91,6 +97,7 @@ export const openCallAction = serverAction(
     }
 
     const rang = z.boolean().default(false).parse(calledBack);
+    const here = WhereSchema.nullish().parse(where);
     // What the manifest is built from, sent back with the handshake so a tool called
     // later is looked up in this same set (thursday.schema `opened`)
     const opened = {
@@ -105,10 +112,12 @@ export const openCallAction = serverAction(
           stylePrompt: thursday.stylePrompt,
           persona: thursday.persona,
           calledBack: rang,
+          where: here,
         }),
         loadThursdayPrompt({
           backendPrompt: thursday.backendPrompt,
           readSkills: thursday.readSkills,
+          where: here,
         }),
         loadToolManifest(opened),
         acceptedReasoning({

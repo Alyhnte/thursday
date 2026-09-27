@@ -19,6 +19,7 @@ import {
   type CallGroup,
   listRecentTurns,
 } from "@/features/thursday/thursday.query";
+import type { Where } from "@/features/thursday/thursday.schema";
 import { openWorkspace } from "@/features/workspace/workspace";
 import { listConnectedToolNames } from "../tools/connected";
 import { personaLines } from "./persona";
@@ -66,6 +67,8 @@ export async function loadThursdayPrompt(options: {
   stylePrompt?: string | null;
   /** Whether the call was handed `load_skill` (Settings › Thursday, load-tools). */
   readSkills?: boolean;
+  /** Where they are and the weather there, when the page said (thursday/where). */
+  where?: Where | null;
 }): Promise<string> {
   const { backendPrompt, written = false, phone = false, readSkills } = options;
   const sandbox = await openWorkspace();
@@ -85,7 +88,7 @@ export async function loadThursdayPrompt(options: {
 
   // Order matters: earlier calls go last so the current call follows them in time order
   const text = [
-    thursdayIdentity(),
+    thursdayIdentity(new Date(), options.where),
     // On a spoken call the voice is the one talking, and how she talks is its prompt's
     // (live.prompt). In writing there is no voice, so the character and their own words
     // come here instead — the same two, read by whichever of the two is speaking
