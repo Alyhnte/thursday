@@ -1641,12 +1641,9 @@ test("the page finds where they are from the browser's position, and goes on wit
     return url.host === "api.bigdatacloud.net" ? place() : weather();
   });
   context.mock.timers.enable({ apis: ["setTimeout", "Date"] });
-  const load = async () =>
-    (await import(
-      `../features/thursday/where.ts?${Math.random()}`
-    )) as typeof import("../features/thursday/where.ts");
-
-  const { whereNow } = await load();
+  // One module throughout: on Node 22 tsx loads it as CommonJS, cached by path, so a query
+  // on the import brings back the same one. What it keeps runs out on the mocked clock.
+  const { whereNow } = await import("../features/thursday/where.ts");
   assert.deepEqual(await whereNow(), {
     place: "Lisbon, Portugal",
     weather: {
@@ -1672,21 +1669,21 @@ test("the page finds where they are from the browser's position, and goes on wit
   });
   assert.equal(asked, 2);
 
-  // Nothing found at all is nothing, not an empty line
+  // Nothing found at all is nothing, not an empty line, and is not kept
+  context.mock.timers.tick(HERE.keptMs);
   place = () => new Response("down", { status: 503 });
-  const fresh = await load();
-  assert.equal(await fresh.whereNow(), null);
+  assert.equal(await whereNow(), null);
 
   // Refused: nothing, and nothing asked of the services
   const before = urls.length;
   answer.position = (_ok, no) =>
     no({ code: DENIED, message: "User denied Geolocation" });
-  assert.equal(await (await load()).whereNow(), null);
+  assert.equal(await whereNow(), null);
   assert.equal(urls.length, before);
 
   // A permission prompt nobody answers holds the call no longer than HERE.waitMs
   answer.position = () => {};
-  const waiting = (await load()).whereNow();
+  const waiting = whereNow();
   context.mock.timers.tick(HERE.waitMs);
   assert.equal(await waiting, null);
 });
