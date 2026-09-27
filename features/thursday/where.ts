@@ -115,7 +115,7 @@ async function find(signal: AbortSignal): Promise<Where | null> {
  */
 export async function whereNow(): Promise<Where | null> {
   if (kept && Date.now() - kept.at < HERE.keptMs) return kept.where;
-  if (!("geolocation" in navigator)) return null;
+  if (!navigator.geolocation) return null;
   const deadline = new AbortController();
   const late = setTimeout(() => deadline.abort(), HERE.waitMs);
   try {
@@ -128,9 +128,9 @@ export async function whereNow(): Promise<Where | null> {
     if (where) kept = { where, at: Date.now() };
     return where;
   } catch (cause) {
-    const refused =
-      (cause as GeolocationPositionError).code ===
-      GeolocationPositionError.PERMISSION_DENIED;
+    // 1 is PERMISSION_DENIED in the spec, read as a number: a browser without the
+    // GeolocationPositionError global would throw here and fail the call it only adds to
+    const refused = (cause as { code?: unknown } | null)?.code === 1;
     if (!refused)
       console.warn(`No position for the call: ${errorToString(cause)}`);
     return null;

@@ -159,9 +159,23 @@ const BodySchema = z.object({
   /** This answer's own name, new with every request: what the page tells it goes here. */
   turn: z.string().min(1),
   messages: z.array(z.unknown()).min(1),
-  /** Where the page found the user and the weather there (where.ts). */
-  where: WhereSchema.nullish(),
+  /** Where the page found the user and the weather there (where.ts), read by readWhere. */
+  where: z.unknown().optional(),
 });
+
+/**
+ * What a page sent of where the user is, or null. It is extra to the call: what does not fit
+ * the schema — a service that sent a null — is dropped with a warning, never a failed call.
+ */
+export function readWhere(value: unknown): Where | null {
+  if (value == null) return null;
+  const read = WhereSchema.safeParse(value);
+  if (read.success) return read.data;
+  logger.warn(
+    `The call goes on without where the user is: ${read.error.issues[0]?.message}`,
+  );
+  return null;
+}
 
 type Pinned = {
   __textCallTurns?: Map<string, { callId: string; notes: TextCallNote[] }>;
@@ -588,7 +602,7 @@ async function prepare({
   where,
 }: z.infer<typeof BodySchema>) {
   const [run, ui, seq] = await Promise.all([
-    loadRun(callId, runsOn, false, where),
+    loadRun(callId, runsOn, false, readWhere(where)),
     validateUIMessages({
       messages,
       dataSchemas: { [TEXT_CALL_NOTE]: TextCallNoteSchema },

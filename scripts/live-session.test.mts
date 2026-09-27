@@ -1615,9 +1615,9 @@ test("the page finds where they are from the browser's position, and goes on wit
       },
     },
   });
-  (globalThis as Record<string, unknown>).GeolocationPositionError = {
-    PERMISSION_DENIED: DENIED,
-  };
+  // No GeolocationPositionError global here, as in a browser without one: a refusal is
+  // still read, and nothing throws out of whereNow
+  assert.equal("GeolocationPositionError" in globalThis, false);
   const urls: URL[] = [];
   let place = () =>
     Response.json({

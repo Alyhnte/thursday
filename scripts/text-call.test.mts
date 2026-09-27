@@ -491,6 +491,45 @@ test("a call in writing reads its own words as the conversation, never again as 
   assert.doesNotMatch(system, /harbour at dawn/);
 });
 
+test("where the page found them reaches her prompt, and a malformed one is dropped, never failing the turn", async () => {
+  const { callId } = await openTextCall();
+  const systemOf = () =>
+    (JSON.parse(prompts.at(-1) ?? "[]") as { role: string; content: unknown }[])
+      .filter((message) => message.role === "system")
+      .map((message) => String(message.content))
+      .join("\n");
+  const weather = {
+    code: 3,
+    temperature: 21.3,
+    low: 21,
+    high: 28.1,
+    sunrise: "07:28",
+    sunset: "19:25",
+  };
+  const asked = words("u-w1", "what should I wear");
+  steps.push(() => [{ type: "text", text: "A light jacket." }]);
+  await pageTurn({
+    callId,
+    turn: "turn-w1",
+    messages: [asked],
+    where: { place: "Lisbon, Portugal", weather },
+  });
+  assert.match(
+    systemOf(),
+    /\*\*Where they are\*\*: Lisbon, Portugal — overcast, 21°C/,
+  );
+
+  // A service that sent a null: the turn is answered as if nothing were sent
+  steps.push(() => [{ type: "text", text: "Still a jacket." }]);
+  await pageTurn({
+    callId,
+    turn: "turn-w2",
+    messages: [asked, words("u-w2", "and tonight")],
+    where: { place: "Lisbon, Portugal", weather: { ...weather, low: null } },
+  });
+  assert.doesNotMatch(systemOf(), /Where they are/);
+});
+
 test("a closing tab's beacon ends the call it held", async () => {
   const { POST } = await import("../app/api/thursday/call/end/route.ts");
   const { callId } = await openTextCall();

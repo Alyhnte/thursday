@@ -39,9 +39,8 @@ import {
   CallTurnSchema,
   type TextCallHandshake,
   TextCallNoteSchema,
-  WhereSchema,
 } from "./thursday.schema";
-import { openTextCall, tellTextCall } from "./thursday.text";
+import { openTextCall, readWhere, tellTextCall } from "./thursday.text";
 
 // Server actions run one at a time per client, so the recording actions stay
 // small: a tool call mid-sentence may be queued behind them.
@@ -97,7 +96,7 @@ export const openCallAction = serverAction(
     }
 
     const rang = z.boolean().default(false).parse(calledBack);
-    const here = WhereSchema.nullish().parse(where);
+    const here = readWhere(where);
     // What the manifest is built from, sent back with the handshake so a tool called
     // later is looked up in this same set (thursday.schema `opened`)
     const opened = {
