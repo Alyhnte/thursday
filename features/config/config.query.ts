@@ -3,7 +3,6 @@ import { appEvents } from "@/app/api/events/app-event.server";
 import { ENV_PATH } from "@/config";
 import { database } from "@/database/db";
 import { configTable } from "@/database/tables";
-import { publicError } from "@/lib/public-error";
 import {
   ENCRYPTION_KEY_NAME,
   isSealed,
@@ -17,13 +16,16 @@ import {
   CONFIG_KEYS,
   groupSatisfied,
   isSecretKey,
+  LOST_KEY_WHY,
   VOICE_GROUP_ID,
 } from "./config.const";
 
 /**
- * Env var wins over the row the settings screen wrote. A secret the data folder's key cannot
- * open throws, saying so: moving on as if it were unset would run on another provider nobody
- * chose (ai/model resolveDefaultModel), and the screen shows it unset already (`hasConfig`).
+ * Env var wins over the row the settings screen wrote. A secret this data folder's key cannot
+ * open reads as unset, as a key may be anywhere: a use that can go without it — search, a studio
+ * model, one phone service among several — goes on without it rather than stopping. Settings
+ * marks it to be entered again (`configState`), boot names it, and a use that needs that one key
+ * says why it has none (`missingKeyWords`).
  */
 export async function readConfig(key: string) {
   const fromEnv = process.env[key]?.trim();
@@ -31,20 +33,42 @@ export async function readConfig(key: string) {
 
   const stored = await readRow(key);
   if (stored === undefined) return undefined;
-  const value = opened(stored);
-  if (value === null) publicError(unreadableWords(key));
-  return value.trim() || undefined;
+  return opened(stored)?.trim() || undefined;
 }
 
 /**
- * Whether a key is set and can be read: what Settings shows as set and what `isCallable`
- * counts. A secret sealed under a key this data folder no longer has is not set — nothing can
- * use it, and entering it again replaces it.
+ * What a use that needs this one key says when `readConfig` found none: why, when it was saved
+ * and can no longer be read, else `unset` — the caller's words for a key never given.
  */
-export async function hasConfig(key: string): Promise<boolean> {
-  if (process.env[key]?.trim()) return true;
+export async function missingKeyWords(
+  key: string,
+  unset: string,
+): Promise<string> {
+  return (await configState(key)) === "unreadable"
+    ? unreadableWords(key)
+    : unset;
+}
+
+/**
+ * What Settings shows of a key: set, unset, or saved but unreadable — sealed under a key this
+ * data folder no longer has. The last is not set, since nothing can use it; it is kept rather
+ * than deleted, so the data folder's old `.env`, put back, opens it again, and entering the key
+ * again replaces it.
+ */
+export async function configState(
+  key: string,
+): Promise<"set" | "unset" | "unreadable"> {
+  if (process.env[key]?.trim()) return "set";
   const stored = await readRow(key);
-  return stored !== undefined && Boolean(opened(stored)?.trim());
+  if (stored === undefined) return "unset";
+  const value = opened(stored);
+  if (value === null) return "unreadable";
+  return value.trim() ? "set" : "unset";
+}
+
+/** Whether a key is set and can be read: what `isCallable` and the providers list count. */
+export async function hasConfig(key: string): Promise<boolean> {
+  return (await configState(key)) === "set";
 }
 
 async function readRow(key: string): Promise<string | undefined> {
@@ -65,11 +89,12 @@ function opened(stored: string): string | null {
   }
 }
 
-/** How a use of a secret the key cannot open says so. */
+/** How a use of a secret the key cannot open says so, with the file to put back if there is one. */
 function unreadableWords(key: string): string {
   const entry = CONFIG_ENTRIES[key];
-  const again = entry?.signIn ? "sign in again" : "enter it again";
-  return `The saved ${entry?.label ?? key} ${entry?.signIn ? "sign-in" : "key"} was sealed with an encryption key this data folder no longer has (${ENCRYPTION_KEY_NAME} in ${ENV_PATH}) — ${again} in Settings.`;
+  const what = entry?.signIn ? "sign-in" : "key";
+  const again = entry?.signIn ? "Sign in again" : "Enter it again";
+  return `The saved ${entry?.label ?? key} ${what} can't be unlocked any more: ${LOST_KEY_WHY} (${ENCRYPTION_KEY_NAME} in ${ENV_PATH}). ${again} in Settings.`;
 }
 
 /**

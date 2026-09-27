@@ -5,6 +5,7 @@ import { existsSync } from "node:fs";
 import {
   chmod,
   cp,
+  mkdir,
   mkdtemp,
   readdir,
   readFile,
@@ -27,6 +28,7 @@ const ROOT = join(import.meta.dirname, "..");
 // What this machine exports stays out of it: the environment wins over a row (readConfig)
 const OPENAI = "OPENAI_API_KEY";
 const CHATGPT = "CHATGPT_SIGN_IN";
+const ANTHROPIC = "ANTHROPIC_API_KEY";
 const { EXA_API_KEY, DEFAULT_MODEL_KEY, DEFAULT_EFFORT_KEY } = await import(
   "../features/config/config.const.ts"
 );
@@ -37,6 +39,7 @@ for (const name of [
   "THURSDAY_ENCRYPTION_KEY",
   OPENAI,
   CHATGPT,
+  ANTHROPIC,
   EXA_API_KEY,
   TELEGRAM_TOKEN_KEY,
   DEFAULT_MODEL_KEY,
@@ -109,6 +112,40 @@ async function get<T>(route: {
 
 const refusedAs = (words: RegExp) => (error: unknown) =>
   isPublicError(error) && words.test(error.message);
+
+/**
+ * What `next dev` loads from each folder's .env into process.env, which this app reads first.
+ * Its loader is resolved through `next`, the copy Next itself runs, not a dependency of this
+ * repo's own (knip.json ignores it for that).
+ */
+function nextReads(dirs: string[]): (string | undefined)[] {
+  const require = createRequire(import.meta.url);
+  const loader = require.resolve("@next/env", {
+    paths: [require.resolve("next")],
+  });
+  const run = spawnSync(
+    process.execPath,
+    [
+      "-e",
+      `const { loadEnvConfig } = require(${JSON.stringify(loader)});
+       const read = ${JSON.stringify(dirs)}.map((dir) => {
+         delete process.env.THURSDAY_ENCRYPTION_KEY;
+         loadEnvConfig(dir, true, { info() {}, error() {} }, true);
+         return process.env.THURSDAY_ENCRYPTION_KEY ?? null;
+       });
+       process.stdout.write(JSON.stringify(read));`,
+    ],
+    // As `next dev` runs: nothing of this process's own environment to win over a file
+    {
+      env: { PATH: process.env.PATH, NODE_ENV: "development" },
+      encoding: "utf8",
+    },
+  );
+  assert.equal(run.stderr, "");
+  return (JSON.parse(run.stdout) as (string | null)[]).map(
+    (value) => value ?? undefined,
+  );
+}
 
 test("a pick or a domain's own row is written as it is, and reading it makes no key", async () => {
   await config.writeConfig(DEFAULT_MODEL_KEY, "xai/grok-4");
@@ -183,42 +220,73 @@ test("keys an older build wrote in the clear read as before, and are sealed at b
   assert.equal(await rawConfig(EXA_API_KEY), before);
 });
 
-test("a key sealed under a key this folder no longer has is asked for again — never used, and Settings still opens", async () => {
+test("a key sealed under a key this folder no longer has is asked for again — never used, never in the way, and Settings still opens", async () => {
   const lost = randomBytes(32);
   await putConfig(OPENAI, secret.sealSecret("sk-sealed-elsewhere", lost));
   await putConfig(CHATGPT, secret.sealSecret('{"access":"x"}', lost));
+  await putConfig(EXA_API_KEY, secret.sealSecret("exa-sealed-elsewhere", lost));
 
-  await assert.rejects(
-    config.readConfig(OPENAI),
-    refusedAs(/saved OpenAI key .* enter it again in Settings/),
-  );
-  await assert.rejects(
-    config.readConfig(CHATGPT),
-    refusedAs(/sign-in .* sign in again in Settings/),
-  );
+  // Read as none, as anywhere a key may be absent: what can go without it goes on
+  assert.equal(await config.readConfig(OPENAI), undefined);
+  assert.equal(await config.readConfig(EXA_API_KEY), undefined);
   assert.equal(await config.hasConfig(OPENAI), false);
+  assert.equal(await config.configState(OPENAI), "unreadable");
+
+  // A use that needs that one key says why, where to put the file back, and what to do otherwise
+  assert.match(
+    await config.missingKeyWords(OPENAI, "No OpenAI key"),
+    /^The saved OpenAI key can't be unlocked any more: the \.env in the data folder that unlocks it was lost or replaced \(THURSDAY_ENCRYPTION_KEY in .*\.env\)\. Enter it again in Settings\.$/,
+  );
+  assert.match(
+    await config.missingKeyWords(CHATGPT, "Not signed in"),
+    / sign-in can't be unlocked any more: .* Sign in again in Settings\.$/,
+  );
+  assert.equal(
+    await config.missingKeyWords(ANTHROPIC, "No Anthropic key"),
+    "No Anthropic key",
+  );
+  const { getTextModel } = await import("../features/ai/model.ts");
+  await assert.rejects(
+    getTextModel({ provider: "openai", model: "gpt-5-mini" }),
+    refusedAs(/^The saved OpenAI key can't be unlocked any more: /),
+  );
   // The first screen asks for the voice key again rather than failing to draw
   assert.equal(await config.isCallable(), false);
   const { unreadable } = await config.sealConfigSecrets();
-  assert.deepEqual(unreadable.sort(), [CHATGPT, OPENAI].sort());
+  assert.deepEqual(unreadable.sort(), [CHATGPT, EXA_API_KEY, OPENAI].sort());
 
-  // Settings draws both as unset, and the plan of a sign-in it cannot open is not read
-  const status = await get<{ key: string; set: boolean }[]>(
+  // Settings draws both as unset and marked to be entered again, and the plan of a sign-in it
+  // cannot open is not read
+  const status = await get<{ key: string; set: boolean; unreadable?: true }[]>(
     await import("../app/api/config/route.ts"),
   );
-  assert.equal(status.find((one) => one.key === OPENAI)?.set, false);
-  assert.equal(status.find((one) => one.key === CHATGPT)?.set, false);
+  assert.deepEqual(
+    status.find((one) => one.key === OPENAI),
+    { key: OPENAI, set: false, unreadable: true },
+  );
+  assert.deepEqual(
+    status.find((one) => one.key === CHATGPT),
+    { key: CHATGPT, set: false, unreadable: true },
+  );
+  assert.deepEqual(
+    status.find((one) => one.key === DEFAULT_EFFORT_KEY),
+    { key: DEFAULT_EFFORT_KEY, set: true, value: "high" },
+  );
   const providers = await get<
     { id: string; hasKey: boolean; plan?: string | null }[]
   >(await import("../app/api/llm-model/route.ts"));
   assert.equal(providers.find((one) => one.id === "openai")?.hasKey, false);
   assert.equal(providers.find((one) => one.id === "chatgpt")?.plan, null);
 
-  // Entering it again replaces it
+  // Entering it again replaces it, and the mark goes with it
   await config.writeConfig(OPENAI, "sk-entered-again");
   assert.equal(await config.readConfig(OPENAI), "sk-entered-again");
   assert.equal(await config.isCallable(), true);
+  assert.equal(await config.configState(OPENAI), "set");
+  // Removed, it is gone rather than lost
   await config.removeConfig(CHATGPT);
+  assert.equal(await config.configState(CHATGPT), "unset");
+  await config.writeConfig(EXA_API_KEY, "exa-entered-again");
 });
 
 test("a connector's headers and env are sealed; its url, command and args are not", async () => {
@@ -346,7 +414,7 @@ test("a connector an older build wrote in the clear reads as before, and is seal
   assert.deepEqual(await mcp.sealMcpSecrets(), { sealed: 0, unreadable: [] });
 });
 
-test("a connector sealed under a key this folder no longer has says to add it again, and is still listed", async () => {
+test("a connector whose key was sealed under a key this folder no longer has says to add it again, on its row too", async () => {
   await database.insert(mcpServerTable).values({
     name: "stranger",
     config: {
@@ -356,17 +424,65 @@ test("a connector sealed under a key this folder no longer has says to add it ag
       },
     },
   });
-  await assert.rejects(
-    mcp.findServer("stranger"),
-    refusedAs(/"stranger" .* remove it from Connectors and add it again/),
-  );
+  const addAgain =
+    /^The key saved for "stranger" can't be unlocked any more: .* Add it again under the same name, with its key: bots keep the tools they pinned\.$/;
+  await assert.rejects(mcp.findServer("stranger"), refusedAs(addAgain));
   assert.deepEqual((await mcp.sealMcpSecrets()).unreadable, ["stranger"]);
-  const listed = await mcp.findAllServers();
-  assert.deepEqual(
-    listed.find((server) => server.name === "stranger")?.config,
-    { url: "https://stranger.example/mcp" },
+  // The Connectors screen says it on the row, and still lists it
+  const listed = (await mcp.findAllServers()).find(
+    (server) => server.name === "stranger",
+  );
+  assert.deepEqual(listed?.config, { url: "https://stranger.example/mcp" });
+  assert.match(listed?.lastError ?? "", addAgain);
+
+  // Added again under its name with the key: it opens, and the row is clear
+  await mcp.upsertServer({
+    name: "stranger",
+    config: {
+      url: "https://stranger.example/mcp",
+      headers: { Authorization: "Bearer y" },
+    },
+  });
+  assert.deepEqual(await openedConfig("stranger"), {
+    url: "https://stranger.example/mcp",
+    headers: { Authorization: "Bearer y" },
+  });
+  assert.equal(
+    (await mcp.findAllServers()).find((server) => server.name === "stranger")
+      ?.lastError,
+    null,
   );
   await mcp.deleteServer("stranger");
+});
+
+test("a connector whose sign-in was sealed under a lost key asks for the sign-in again, and keeps its state", async () => {
+  await database.insert(mcpServerTable).values({
+    name: "signed",
+    config: { url: "https://signed.example/mcp" },
+    oauth: {
+      state: "st-signed",
+      authorizationServer: { issuer: "https://auth.signed.example" },
+      sealed: secret.sealSecret(
+        JSON.stringify({ tokens: { access_token: "gone" } }),
+        randomBytes(32),
+      ),
+    },
+  });
+  // Nothing to open is nothing held: the next connect starts a sign-in, which replaces it
+  assert.deepEqual((await mcp.findServer("signed"))?.oauth, {
+    state: "st-signed",
+    authorizationServer: { issuer: "https://auth.signed.example" },
+  });
+  assert.equal((await mcp.findServerByOAuthState("st-signed"))?.name, "signed");
+  assert.deepEqual((await mcp.sealMcpSecrets()).unreadable, ["signed"]);
+  assert.match(
+    (await mcp.findAllServers()).find((server) => server.name === "signed")
+      ?.lastError ?? "",
+    /^The sign-in saved for "signed" can't be unlocked any more: .* Reconnect to sign in again\.$/,
+  );
+  // The sealed blob is kept until a sign-in writes over it: the old .env put back opens it
+  assert.ok(JSON.parse((await rawServer("signed")).oauth ?? "{}").sealed);
+  await mcp.deleteServer("signed");
 });
 
 test("an older build refuses a database this one opened, instead of sending a sealed value as a key", async () => {
@@ -445,28 +561,8 @@ test("a checkout's own .env keeps what it had, and Next reads the key this app r
     if (process.platform !== "win32")
       assert.equal((await stat(file)).mode & 0o777, 0o600);
 
-    // `next dev` loads a checkout's .env into process.env, which this app reads first. Its loader
-    // is resolved through `next`, the copy Next itself runs, not a dependency of this repo's own
-    // (knip.json ignores it for that)
-    const require = createRequire(import.meta.url);
-    const nextEnv = require.resolve("@next/env", {
-      paths: [require.resolve("next")],
-    });
-    const next = spawnSync(
-      process.execPath,
-      [
-        "-e",
-        `require(${JSON.stringify(nextEnv)}).loadEnvConfig(${JSON.stringify(dir)}, true, { info() {}, error() {} });
-         process.stdout.write(process.env.THURSDAY_ENCRYPTION_KEY ?? "");`,
-      ],
-      // As `next dev` runs: nothing of this process's own environment to win over the file
-      {
-        env: { PATH: process.env.PATH, NODE_ENV: "development" },
-        encoding: "utf8",
-      },
-    );
-    assert.equal(next.stderr, "");
-    assert.ok(Buffer.from(next.stdout, "base64").equals(made.key));
+    const [next] = nextReads([dir]);
+    assert.ok(Buffer.from(next ?? "", "base64").equals(made.key));
     assert.equal(secret.loadEncryptionKey(file, {}).from, "file");
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -489,21 +585,123 @@ test("a key set in the environment wins and is written nowhere", async () => {
   }
 });
 
-test("a malformed key stops the load, and nothing is written over it", async () => {
+test("an empty or blank key is not set, in the environment and in the file alike", async () => {
   const dir = await mkdtemp(join(tmpdir(), "thursday-key-"));
   try {
     const file = join(dir, ".env");
-    assert.throws(
-      () =>
-        secret.loadEncryptionKey(file, { THURSDAY_ENCRYPTION_KEY: "hunter2" }),
-      /THURSDAY_ENCRYPTION_KEY in the environment is not a key/,
+    const kept = secret.loadEncryptionKey(file, {});
+    for (const blank of ["", "   ", "\t \t"]) {
+      const got = secret.loadEncryptionKey(file, {
+        THURSDAY_ENCRYPTION_KEY: blank,
+      });
+      assert.equal(got.from, "file", JSON.stringify(blank));
+      assert.ok(got.key.equals(kept.key));
+    }
+
+    // Left blank in the file, as a template leaves it: a key is made below it, and read back as
+    // the one — by this app and by Next alike
+    const other = join(dir, "blank");
+    await mkdir(other);
+    await writeFile(join(other, ".env"), 'THURSDAY_ENCRYPTION_KEY="   "\n');
+    const made = secret.loadEncryptionKey(join(other, ".env"), {
+      THURSDAY_ENCRYPTION_KEY: " ",
+    });
+    assert.equal(made.from, "made");
+    assert.ok(
+      secret.loadEncryptionKey(join(other, ".env"), {}).key.equals(made.key),
     );
+    const [next] = nextReads([other]);
+    assert.ok(Buffer.from(next ?? "", "base64").equals(made.key));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a key written any way a .env allows is read as Next reads it", async () => {
+  const key = randomBytes(32).toString("base64");
+  const shapes = [
+    `THURSDAY_ENCRYPTION_KEY=${key}`,
+    `THURSDAY_ENCRYPTION_KEY="${key}"`,
+    `THURSDAY_ENCRYPTION_KEY='${key}'`,
+    `THURSDAY_ENCRYPTION_KEY=${key} # kept by Thursday`,
+    `export THURSDAY_ENCRYPTION_KEY=${key}`,
+    `A=1\r\nTHURSDAY_ENCRYPTION_KEY=${key}\r\n`,
+    `THURSDAY_ENCRYPTION_KEY = ${key}`,
+    `THURSDAY_ENCRYPTION_KEY=   ${key}   `,
+    `THURSDAY_ENCRYPTION_KEY=\nTHURSDAY_ENCRYPTION_KEY=${key}`,
+  ];
+  const root = await mkdtemp(join(tmpdir(), "thursday-key-"));
+  try {
+    const dirs = await Promise.all(
+      shapes.map(async (text, at) => {
+        const dir = join(root, String(at));
+        await mkdir(dir);
+        await writeFile(join(dir, ".env"), text);
+        return dir;
+      }),
+    );
+    const next = nextReads(dirs);
+    dirs.forEach((dir, at) => {
+      const got = secret.loadEncryptionKey(join(dir, ".env"), {});
+      assert.equal(got.from, "file", shapes[at]);
+      assert.equal(got.key.toString("base64"), key, shapes[at]);
+      assert.equal(next[at]?.trim(), key, `Next reads ${shapes[at]} otherwise`);
+    });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a key in the environment beside another in the file says so; the same one does not", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "thursday-key-"));
+  try {
+    const file = join(dir, ".env");
+    const kept = secret.loadEncryptionKey(file, {});
+    const other = randomBytes(32).toString("base64");
+    assert.equal(
+      secret.loadEncryptionKey(file, { THURSDAY_ENCRYPTION_KEY: other })
+        .shadows,
+      true,
+    );
+    assert.equal(
+      secret.loadEncryptionKey(file, {
+        THURSDAY_ENCRYPTION_KEY: kept.key.toString("base64"),
+      }).shadows,
+      undefined,
+    );
+    // The environment's is the one used: what the file holds, even nonsense, stops nothing
+    await writeFile(file, "THURSDAY_ENCRYPTION_KEY=nonsense\n");
+    const got = secret.loadEncryptionKey(file, {
+      THURSDAY_ENCRYPTION_KEY: other,
+    });
+    assert.equal(got.from, "environment");
+    assert.equal(got.shadows, undefined);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a hex key, a passphrase or one cut short stops the load, saying what to do, and nothing is written over it", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "thursday-key-"));
+  try {
+    const file = join(dir, ".env");
+    for (const wrong of [
+      randomBytes(32).toString("hex"),
+      "hunter2",
+      randomBytes(16).toString("base64"),
+      `${randomBytes(32).toString("base64")}x`,
+    ])
+      assert.throws(
+        () =>
+          secret.loadEncryptionKey(file, { THURSDAY_ENCRYPTION_KEY: wrong }),
+        /THURSDAY_ENCRYPTION_KEY in the environment is not a key: .*openssl rand -base64 32.* unset it/,
+      );
     assert.equal(existsSync(file), false);
 
     await writeFile(file, "THURSDAY_ENCRYPTION_KEY=too-short\n");
     assert.throws(
       () => secret.loadEncryptionKey(file, {}),
-      /THURSDAY_ENCRYPTION_KEY in .* is not a key/,
+      /THURSDAY_ENCRYPTION_KEY in .* is not a key: .*Put back the line it had.* delete the line, and a new key is made/,
     );
     assert.equal(
       await readFile(file, "utf8"),
@@ -525,11 +723,33 @@ test("a .env this account cannot read is not replaced by a new key", {
   try {
     await writeFile(file, "SOMETHING=1\n");
     await chmod(file, 0o000);
-    assert.throws(() => secret.loadEncryptionKey(file, {}), /EACCES/);
+    assert.throws(
+      () => secret.loadEncryptionKey(file, {}),
+      /Cannot read .*\.env, where THURSDAY_ENCRYPTION_KEY is kept \(EACCES\): let this account read it/,
+    );
     await chmod(file, 0o600);
     assert.equal(await readFile(file, "utf8"), "SOMETHING=1\n");
   } finally {
     await chmod(file, 0o600).catch(() => {});
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a folder the key cannot be written to stops the load, saying why", {
+  skip:
+    process.platform === "win32" || process.getuid?.() === 0
+      ? "file modes do not stop this account"
+      : false,
+}, async () => {
+  const dir = await mkdtemp(join(tmpdir(), "thursday-key-"));
+  try {
+    await chmod(dir, 0o500);
+    assert.throws(
+      () => secret.loadEncryptionKey(join(dir, ".env"), {}),
+      /Cannot write a new THURSDAY_ENCRYPTION_KEY to .* \(EACCES\): let this account write there, or set THURSDAY_ENCRYPTION_KEY in the environment/,
+    );
+  } finally {
+    await chmod(dir, 0o700);
     await rm(dir, { recursive: true, force: true });
   }
 });

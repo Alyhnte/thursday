@@ -1,5 +1,11 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
-import { appendFileSync, chmodSync, mkdirSync, readFileSync } from "node:fs";
+import {
+  appendFileSync,
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+} from "node:fs";
 import { dirname } from "node:path";
 import { parseEnv } from "node:util";
 import { ENV_PATH } from "@/config";
@@ -43,26 +49,45 @@ type EncryptionKey = {
   key: Buffer;
   /** `made` is a key this load created and wrote down. */
   from: "environment" | "file" | "made";
+  /** Taken from the environment while `envFile` holds another: what that one sealed does not open. */
+  shadows?: true;
 };
 
 /**
  * The key: from the environment, else from `envFile`, else made and appended there — so a first
- * start asks nothing of the user, and a data folder that lost its `.env` gets a new one.
+ * start asks nothing of the user, and a data folder that lost its `.env` gets a new one. An empty
+ * or blank value is not set, in either place: `NAME=` is how a file leaves a value to fill in.
  *
  * A malformed value is thrown, never replaced: a new key would leave every secret sealed under
  * the old one unreadable, and only the person who wrote the value can say what it should be. A
- * file that exists but cannot be read is thrown for the same reason.
+ * file that exists but cannot be read, or a key that cannot be written, is thrown for the same
+ * reason. Each says what to do.
  */
 export function loadEncryptionKey(
   envFile: string,
   env: Record<string, string | undefined> = process.env,
 ): EncryptionKey {
   const set = env[ENCRYPTION_KEY_NAME]?.trim();
-  if (set)
-    return { key: parseKey(set, "the environment"), from: "environment" };
+  if (set) {
+    const key = parseKey(
+      set,
+      "the environment",
+      `Correct it, or unset it to have the app keep its own in ${envFile}.`,
+    );
+    return shadowed(envFile, key)
+      ? { key, from: "environment", shadows: true }
+      : { key, from: "environment" };
+  }
 
   const kept = keptKey(envFile);
-  if (kept) return { key: parseKey(kept, envFile), from: "file" };
+  if (kept) {
+    const key = parseKey(
+      kept,
+      envFile,
+      "Put back the line it had, from a backup of that file; or delete the line, and a new key is made — the keys saved in Settings are then entered again.",
+    );
+    return { key, from: "file" };
+  }
 
   return { key: makeKey(envFile), from: "made" };
 }
@@ -128,24 +153,52 @@ export function openSecret(value: string, key?: Buffer): string {
   }
 }
 
-function parseKey(value: string, where: string): Buffer {
+/** The 32 bytes a value holds; null for anything else — hex, a passphrase, a key cut short. */
+function keyBytes(value: string): Buffer | null {
   const key = KEY_SHAPE.test(value) ? Buffer.from(value, "base64") : null;
-  if (key?.length !== KEY_BYTES) {
+  return key?.length === KEY_BYTES ? key : null;
+}
+
+function parseKey(value: string, where: string, fix: string): Buffer {
+  const key = keyBytes(value);
+  if (!key) {
     throw new Error(
-      `${ENCRYPTION_KEY_NAME} in ${where} is not a key: it takes ${KEY_BYTES} random bytes in base64, as \`openssl rand -base64 ${KEY_BYTES}\` prints them.`,
+      `${ENCRYPTION_KEY_NAME} in ${where} is not a key: it takes ${KEY_BYTES} random bytes in base64, as \`openssl rand -base64 ${KEY_BYTES}\` prints them. ${fix}`,
     );
   }
   return key;
 }
 
-/** The key `envFile` holds, read as Next reads it: a name set twice takes its last value. */
+/**
+ * Whether `envFile` holds a key other than the environment's. Only said, never thrown: the
+ * environment's is the one used, so a file that cannot be read, or holds no key, changes nothing.
+ */
+function shadowed(envFile: string, key: Buffer): boolean {
+  let kept: string | undefined;
+  try {
+    kept = keptKey(envFile);
+  } catch {
+    return false;
+  }
+  const other = kept ? keyBytes(kept) : null;
+  return Boolean(other && !other.equals(key));
+}
+
+/**
+ * The key `envFile` holds, read as Next reads it — quotes, `export`, a trailing comment, and a name
+ * set twice taking its last value (Node's `parseEnv` and `@next/env` agree on each).
+ */
 function keptKey(envFile: string): string | undefined {
   let text: string;
   try {
     text = readFileSync(envFile, "utf8");
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
-    throw error;
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") return undefined;
+    throw new Error(
+      `Cannot read ${envFile}, where ${ENCRYPTION_KEY_NAME} is kept (${code ?? error}): let this account read it.`,
+      { cause: error },
+    );
   }
   return parseEnv(text)[ENCRYPTION_KEY_NAME]?.trim() || undefined;
 }
@@ -158,24 +211,29 @@ function keptKey(envFile: string): string | undefined {
 function makeKey(envFile: string): Buffer {
   const key = randomBytes(KEY_BYTES).toString("base64");
 
-  let before = "";
-  try {
-    before = readFileSync(envFile, "utf8");
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-    mkdirSync(dirname(envFile), { recursive: true });
-  }
+  // Read by keptKey just before, which threw on anything but a file not there yet
+  const before = existsSync(envFile) ? readFileSync(envFile, "utf8") : "";
   const gap = !before ? "" : before.endsWith("\n") ? "\n" : "\n\n";
-  // `mode` applies only when this creates the file
-  appendFileSync(envFile, `${gap}${KEY_NOTE}${ENCRYPTION_KEY_NAME}=${key}\n`, {
-    mode: 0o600,
-  });
+  try {
+    mkdirSync(dirname(envFile), { recursive: true });
+    // `mode` applies only when this creates the file
+    appendFileSync(
+      envFile,
+      `${gap}${KEY_NOTE}${ENCRYPTION_KEY_NAME}=${key}\n`,
+      { mode: 0o600 },
+    );
+  } catch (error) {
+    throw new Error(
+      `Cannot write a new ${ENCRYPTION_KEY_NAME} to ${envFile} (${(error as NodeJS.ErrnoException).code ?? error}): let this account write there, or set ${ENCRYPTION_KEY_NAME} in the environment.`,
+      { cause: error },
+    );
+  }
   ownerOnly(envFile);
 
   // Read back as the next start will: a key is kept only once the file says it
   if (keptKey(envFile) !== key) {
     throw new Error(
-      `Could not keep a new ${ENCRYPTION_KEY_NAME} in ${envFile}.`,
+      `A new ${ENCRYPTION_KEY_NAME} was added to ${envFile}, but the file does not read back as it: something changed that file while the app started. Start it again.`,
     );
   }
   return Buffer.from(key, "base64");

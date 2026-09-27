@@ -37,8 +37,13 @@ export async function boot() {
   // or read without it, and a new key in its place would strand every secret sealed under it.
   const { ENCRYPTION_KEY_NAME, encryptionKey } = await import("@/lib/secret");
   try {
-    if (encryptionKey().from === "made")
+    const { from, shadows } = encryptionKey();
+    if (from === "made")
       logger.info(`made the key that seals saved secrets, in ${ENV_PATH}`);
+    if (shadows)
+      logger.warn(
+        `${ENCRYPTION_KEY_NAME} is taken from the environment, and ${ENV_PATH} holds another: what that one sealed cannot be opened`,
+      );
   } catch (cause) {
     logger.error(`Cannot load ${ENCRYPTION_KEY_NAME}`);
     console.error(`  ${cause instanceof Error ? cause.message : cause}\n`);
@@ -59,7 +64,7 @@ export async function boot() {
       ];
       if (lost.length)
         logger.warn(
-          `${lost.join(", ")}: sealed with an encryption key this data folder no longer has (${ENCRYPTION_KEY_NAME} in ${ENV_PATH}) — each has to be entered again in Settings`,
+          `${lost.join(", ")} can't be unlocked: sealed with an encryption key this data folder no longer has (${ENCRYPTION_KEY_NAME} in ${ENV_PATH}). Put that .env back from a backup to open them, or enter each again — Settings marks them`,
         );
     })
     .catch((cause) => logger.error("seal secrets", cause));

@@ -1,12 +1,12 @@
 import { and, count, eq, inArray, notInArray, sql } from "drizzle-orm";
 import { appEvents } from "@/app/api/events/app-event.server";
-import { ENV_PATH } from "@/config";
 import { database } from "@/database/db";
 import {
   botMcpToolTable,
   mcpServerTable,
   mcpToolTable,
 } from "@/database/tables";
+import { LOST_KEY_WHY } from "@/features/config/config.const";
 import {
   isRemoteConfig,
   type MCPOAuthData,
@@ -16,7 +16,6 @@ import {
 } from "@/features/connectors/mcp.schema";
 import { publicError } from "@/lib/public-error";
 import {
-  ENCRYPTION_KEY_NAME,
   isSealed,
   openSecret,
   sealSecret,
@@ -208,6 +207,50 @@ function openOAuth(stored: MCPStoredOAuth): MCPOAuthData {
     : rest;
 }
 
+/** A config with its credentials opened; null when this data folder's key cannot open one. */
+function openedConfig(config: MCPServerConfig): MCPServerConfig | null {
+  try {
+    return openConfig(config);
+  } catch (cause) {
+    if (cause instanceof UnreadableSecret) return null;
+    throw cause;
+  }
+}
+
+/**
+ * The OAuth blob opened. One this data folder's key cannot open is left at what was never
+ * secret — the state and the server's metadata — so the next connect asks for a sign-in, which
+ * is what brings the credentials back; the sealed blob stays until that sign-in replaces it.
+ */
+function openedOAuth(stored: MCPStoredOAuth): {
+  oauth: MCPOAuthData;
+  lost: boolean;
+} {
+  try {
+    return { oauth: openOAuth(stored), lost: false };
+  } catch (cause) {
+    if (!(cause instanceof UnreadableSecret)) throw cause;
+    return {
+      oauth: {
+        state: stored.state,
+        authorizationServer: stored.authorizationServer,
+      },
+      lost: true,
+    };
+  }
+}
+
+/**
+ * What a connector says when its key cannot be opened. Added again under the same name, its
+ * config is replaced and its tool rows stay (upsertServer), so no bot loses a pin; deleting it
+ * would take them.
+ */
+const lostKeyWords = (name: string) =>
+  `The key saved for "${name}" can't be unlocked any more: ${LOST_KEY_WHY}. Add it again under the same name, with its key: bots keep the tools they pinned.`;
+
+const lostSignInWords = (name: string) =>
+  `The sign-in saved for "${name}" can't be unlocked any more: ${LOST_KEY_WHY}. Reconnect to sign in again.`;
+
 /** A row with its credentials opened, as the manager connects with them. */
 function openRow<
   Row extends {
@@ -216,19 +259,14 @@ function openRow<
     oauth: MCPStoredOAuth | null;
   },
 >(row: Row) {
-  try {
-    return {
-      ...row,
-      config: openConfig(row.config),
-      oauth: row.oauth && openOAuth(row.oauth),
-    };
-  } catch (cause) {
-    if (!(cause instanceof UnreadableSecret)) throw cause;
-    // Said in words: the connect that asked shows it on the server's row (mcp.action)
-    publicError(
-      `The saved credentials of "${row.name}" were sealed with an encryption key this data folder no longer has (${ENCRYPTION_KEY_NAME} in ${ENV_PATH}) — remove it from Connectors and add it again.`,
-    );
-  }
+  const config = openedConfig(row.config);
+  // Said in words: the connect that asked shows it (mcp.action), as does the row (sealMcpSecrets)
+  if (!config) publicError(lostKeyWords(row.name));
+  return {
+    ...row,
+    config,
+    oauth: row.oauth && openedOAuth(row.oauth).oauth,
+  };
 }
 
 /** The whole row including credentials, opened; for the manager, never a route. */
@@ -334,8 +372,9 @@ export async function findServerByOAuthState(state: string) {
 
 /**
  * Seals the credentials written before sealing began, and names the servers whose sealed ones
- * this data folder's key cannot open. Run at boot beside config.query sealConfigSecrets; a
- * second run seals nothing, and one transaction leaves a start that dies halfway to the next.
+ * this data folder's key cannot open — on their rows too, where the Connectors screen shows it
+ * until a connect succeeds. Run at boot beside config.query sealConfigSecrets; a second run seals
+ * nothing, and one transaction leaves a start that dies halfway to the next.
  */
 export async function sealMcpSecrets(): Promise<{
   sealed: number;
@@ -352,8 +391,17 @@ export async function sealMcpSecrets(): Promise<{
     const unreadable: string[] = [];
     let sealed = 0;
     for (const row of rows) {
-      if (!opens(row)) {
+      const config = openedConfig(row.config);
+      if (!config || (row.oauth && openedOAuth(row.oauth).lost)) {
         unreadable.push(row.name);
+        await tx
+          .update(mcpServerTable)
+          .set({
+            lastError: config
+              ? lostSignInWords(row.name)
+              : lostKeyWords(row.name),
+          })
+          .where(eq(mcpServerTable.name, row.name));
         continue;
       }
       if (!inTheClear(row)) continue;
@@ -369,21 +417,6 @@ export async function sealMcpSecrets(): Promise<{
     }
     return { sealed, unreadable };
   });
-}
-
-/** Whether this data folder's key opens every sealed credential of a row. */
-function opens(row: {
-  config: MCPServerConfig;
-  oauth: MCPStoredOAuth | null;
-}): boolean {
-  try {
-    openConfig(row.config);
-    if (row.oauth) openOAuth(row.oauth);
-    return true;
-  } catch (cause) {
-    if (cause instanceof UnreadableSecret) return false;
-    throw cause;
-  }
 }
 
 /** Whether a row holds a credential in the clear: one written before sealing began. */

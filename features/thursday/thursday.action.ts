@@ -12,7 +12,7 @@ import { loadThursdayPrompt } from "@/features/ai/prompts/thursday.prompt";
 import { removeThread } from "@/features/bot/bot.runner";
 import { listAllThreadIds } from "@/features/bot/thread.query";
 import { EXA_API_KEY } from "@/features/config/config.const";
-import { readConfig } from "@/features/config/config.query";
+import { missingKeyWords, readConfig } from "@/features/config/config.query";
 import { deleteAllNotes } from "@/features/memory/memory.query";
 import {
   LIVE_MODEL,
@@ -91,7 +91,10 @@ export const openCallAction = serverAction(
     const apiKey = await readConfig(LIVE_PROVIDER.apiKeyName);
     if (!apiKey) {
       publicError(
-        `No ${LIVE_PROVIDER.label} key — add one in Settings › API keys.`,
+        await missingKeyWords(
+          LIVE_PROVIDER.apiKeyName,
+          `No ${LIVE_PROVIDER.label} key — add one in Settings › API keys.`,
+        ),
       );
     }
 

@@ -345,6 +345,11 @@ export function isSecretKey(key: string): boolean {
 export type ConfigStatus = {
   key: string;
   set: boolean;
+  /**
+   * Saved, but sealed under a key the data folder no longer has (lib/secret): not set, since
+   * nothing can use it, and the screen asks for it again rather than showing it as never given.
+   */
+  unreadable?: true;
   /** Choice entries only. */
   value?: string;
 };
@@ -355,6 +360,22 @@ export function isConfigSet(
 ): boolean {
   return status?.some((entry) => entry.key === key && entry.set) ?? false;
 }
+
+export function isConfigUnreadable(
+  status: ConfigStatus[] | undefined,
+  key: string,
+): boolean {
+  return (
+    status?.some((entry) => entry.key === key && entry.unreadable) ?? false
+  );
+}
+
+/**
+ * Why a saved secret cannot be read, as every screen and error says it: the one cause there is
+ * (config.query readConfig, mcp.query). Plain words; the file's path is in the terminal's.
+ */
+export const LOST_KEY_WHY =
+  "the .env in the data folder that unlocks it was lost or replaced";
 
 export function groupSatisfied(
   group: ConfigGroup,

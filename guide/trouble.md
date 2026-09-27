@@ -57,10 +57,13 @@ A job does not fail for good; it pauses and waits.
 
 The keys, tokens, sign-in and connectors saved in Settings are sealed with a key kept in the data
 folder's `.env` (`setup.md`, Where the files are). When that `.env` is lost or replaced, or the
-database moved without it, the terminal names what it cannot open, and each reads as unset. The
-`.env` from a backup, put back before anything is entered anew, opens them again; otherwise enter
-each again in **Settings › API keys**, and remove a connector in **Settings › Connectors** and add
-it again.
+database moved without it, what can no longer be opened is marked where it is set: **Enter again**
+on its row in **Settings › API keys**, with a dot on the section; **Stopped** on its service in
+**Settings › Phone**; a line on the connector in **Settings › Connectors**. The terminal names them
+too. Nothing is deleted: the `.env` from a backup, put back before anything is entered anew, opens
+them again. Otherwise paste each one again, or remove the ones no longer wanted. A connector is
+added again under the same name with its key, and its bots keep their tools; one that signs in asks
+for the sign-in again on **Reconnect**.
 
 ## Starting over
 
