@@ -1,0 +1,53 @@
+{
+  "size": "1920x1080",
+  "theme": "paper",
+  "scenes": [
+    {
+      "kind": "title",
+      "kicker": "How it works",
+      "title": "Invoices that pay themselves",
+      "dur": 3,
+      "say": "Here is how invoices pay themselves."
+    },
+    {
+      "kind": "pill",
+      "icon": "upload",
+      "label": "Upload an invoice",
+      "dur": 2.4,
+      "say": "You upload an invoice."
+    },
+    {
+      "kind": "progress",
+      "title": "Reading it",
+      "items": ["Supplier", "Amount", "Due date"],
+      "dur": 3.4,
+      "say": "It reads the supplier, the amount and the due date."
+    },
+    {
+      "kind": "toggles",
+      "title": "Rules",
+      "items": [
+        { "label": "Pay known suppliers", "on": false },
+        { "label": "Ask me above a limit", "on": false }
+      ],
+      "flip": [0, 1],
+      "dur": 3,
+      "say": "You set the rules once."
+    },
+    {
+      "kind": "toast",
+      "icon": "check",
+      "title": "Paid on the due date",
+      "text": "And never twice",
+      "dur": 2.8,
+      "say": "It pays on the due date, and never twice."
+    },
+    {
+      "kind": "end",
+      "icon": "bolt",
+      "title": "[PRODUCT NAME]",
+      "sub": "[their address]",
+      "dur": 3
+    }
+  ]
+}

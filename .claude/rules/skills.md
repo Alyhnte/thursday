@@ -1,5 +1,5 @@
 ---
-checked: 2026-09-26
+checked: 2026-09-27
 paths:
   - "skills/**"
   - "seed-skills/**"
@@ -9,13 +9,13 @@ paths:
   - "features/ai/tools/{skills,deck}.tool.ts"
   - "app/api/{skills,artifact,file}/**"
   - "app/artifact/**"
-  - "scripts/{skill-files,page-edits,deck,sheet,artifact-paths}.test.mts"
+  - "scripts/{skill-files,page-edits,deck,sheet,motion,artifact-paths}.test.mts"
 ---
 
 # Skills and finished work
 
-Every bot makes pages, canvases, decks, picture books and reports with the same shipped skills, and
-the user opens what they made in the app and edits a page, a deck or a canvas there.
+Every bot makes pages, canvases, decks, picture books, videos and reports with the same shipped
+skills, and the user opens what they made in the app and edits a page, a deck or a canvas there.
 
 ## Start here
 - `skills/README.md` — which folders are not skills, the script paths promised, outside copies.
@@ -24,6 +24,7 @@ the user opens what they made in the app and edits a page, a deck or a canvas th
 - `skills/artifact/SKILL.md` — what the user keeps or uses (document, canvas, picture book, deck, sheet, page, app, chart, diagram) as one skill, its `runtime/` behind it; a sheet is a real .xlsx (`skills/artifact/scripts/spreadsheet.mjs`).
 - `skills/artifact/runtime/shell/put.mjs` — how a bot writes into a page a skill made; the revision saves check.
 - `features/ai/tools/deck.tool.ts` — `make_deck`: typed slides that `skills/artifact/runtime/deck` draws.
+- `skills/artifact/scripts/motion.mjs` — a motion video: JSON scenes (`runtime/motion/schema.mjs`) drawn by `runtime/motion`, rendered to mp4.
 - `features/bot/bot.seed.ts` — the seed bots' roles, and what a role may name.
 - `features/artifact/artifact.query.ts` — finished work, listed from the bots' folders alone.
 - `app/api/file/[...path]/route.ts` — a workspace file served; a page runs on its own origin.
@@ -56,7 +57,7 @@ it shows goes to the page as `changed`. A seed's own skills are read in place fr
   does is not understood.
 
 ## Check
-`pnpm test:skills` (`load_skill`'s file list, `put` against a reader's save, `make_deck`) and
-`pnpm test:artifact` (which finished file opens, viewer URLs). A kit script run by hand from an
-empty folder outside the checkout and the workspace, with `THURSDAY_ARTIFACTS` unset, writes
-under `./artifacts`: `node <repo>/skills/artifact/scripts/document.mjs put demo <repo>/skills/artifact/templates/document/memo.md`.
+`pnpm test:skills` (`load_skill`'s file list, `put` against a reader's save, `make_deck`, motion
+checks) and `pnpm test:artifact` (which finished file opens, viewer URLs). A kit script run by
+hand from an empty folder outside the checkout and the workspace, with `THURSDAY_ARTIFACTS`
+unset, writes under `./artifacts`: `node <repo>/skills/artifact/scripts/document.mjs put demo <repo>/skills/artifact/templates/document/memo.md`.

@@ -40,6 +40,14 @@ now only run the chart, the document script and the camera the artifact skill ho
   shared by every app; recharts and react-markdown are in it.
 - **`artifact/scripts/archify`** is a trimmed copy of archify (MIT); its README says what was
   cut.
+- **`artifact`'s motion video** (`runtime/motion`, `scripts/motion.mjs`) follows the engine of
+  the motion-broll skill in [Barty-Bart/motion-graphics](https://github.com/Barty-Bart/motion-graphics)
+  at `e8d610a` (MIT, `runtime/motion/LICENSE.txt`): every style a function of time alone, a
+  value's changes summed as closed-form springs, a swap blurred out and in, and a frame blended
+  from four pictures across a half turn of the shutter. It is written again here, not copied:
+  scenes are JSON drawn by the parts in `parts.js` instead of HTML written for each clip, one card
+  runs through the whole video, and the player, captions, voices, recordings and reuse of still
+  frames are this app's own. Its fonts are Geist and Geist Mono (OFL, `runtime/motion/fonts/OFL.txt`).
 - **`find-skills`** is adapted from vercel-labs/skills' find-skills at 7407f38 (MIT, `LICENSE` in
   the folder), and **`skill-creator`** from Anthropic's skill-creator at anthropics/skills 34040c9
   (Apache-2.0, `LICENSE.txt`); each ends with a line saying what changed. Both have the bot at

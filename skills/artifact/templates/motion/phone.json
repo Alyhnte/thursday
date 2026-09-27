@@ -1,0 +1,33 @@
+{
+  "size": "1080x1920",
+  "theme": "ink",
+  "scenes": [
+    {
+      "kind": "chapter",
+      "number": "01",
+      "title": "Three habits that stick",
+      "dur": 2.6,
+      "say": "Three habits that actually stick."
+    },
+    {
+      "kind": "steps",
+      "items": ["Start small", "Same time", "Track it"],
+      "dur": 3.6,
+      "say": "Start small, keep the same time, and track it."
+    },
+    {
+      "kind": "list",
+      "check": true,
+      "title": "This week",
+      "items": ["Walk 10 minutes", "Read 5 pages", "Lights out by 11"],
+      "dur": 3.6,
+      "say": "Tick them off as you go."
+    },
+    {
+      "kind": "quote",
+      "text": "Small steps, every day.",
+      "dur": 2.6,
+      "say": "Small steps, every day."
+    }
+  ]
+}

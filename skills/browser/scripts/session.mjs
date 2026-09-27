@@ -97,11 +97,19 @@ export function inPage(fn, args = {}, helpers = {}) {
  * that one may be a window on the user's screen. Its name carries the session's, so the
  * app closes it with the job's others if a run dies before closing it.
  */
-export async function inPageApart(fn, args = {}, helpers = {}) {
+export function inPageApart(fn, args = {}, helpers = {}) {
+  return apart((run) => run(fn, args, helpers));
+}
+
+/**
+ * `work(inPage)` in that browser of its own, for a script that needs several calls in it —
+ * its tabs stay open from one call to the next — and closed after, however `work` ends.
+ */
+export async function apart(work) {
   const own = process.env.PLAYWRIGHT_CLI_SESSION;
   process.env.PLAYWRIGHT_CLI_SESSION = `${own || "default"}-apart`;
   try {
-    return await inPage(fn, args, helpers);
+    return await work(inPage);
   } finally {
     await cli(["close"]);
     if (own === undefined) delete process.env.PLAYWRIGHT_CLI_SESSION;

@@ -147,7 +147,7 @@ an open file, it is shown fresh with **Reloaded at** and the time; a sound or vi
 file, a spreadsheet or anything else the app cannot show has **Open it**, which opens it in the
 computer's own program.
 
-## Books, canvases, decks and pages
+## Books, canvases, decks, videos and pages
 
 A page, canvas or deck opened inside the app takes the keyboard once clicked; opened in its own tab
 (↗) it has the whole window. Its top bar names the bot that made it.
@@ -172,6 +172,14 @@ screen (**f**), Present, a theme button and **Export** (**Print · one slide a p
 as a picture**, **Download this file**). Presenting shows the slide alone, never the notes. There is
 no PowerPoint file; a handout prints to PDF. **Edit** changes words and notes in place, moves,
 duplicates or deletes the open slide, or changes the palette; ⌘Z undoes.
+
+A **motion video** is a short animated video — an explainer, a launch clip, a tall clip for a
+phone, or scenes cut in over a recording of the user's own. Any bot can make one: one card moves
+from scene to scene, a pointer clicks what is clicked, and what is said shows as captions. It comes
+back as an .mp4, beside a player that opens in the app: space plays and pauses, the arrow keys
+step a second, and dragging the bar scrubs, with its sound. Words on screen need nothing more; a
+voice reading it needs a speech model in **Settings › Models**, and timing it to a recording a
+transcription model. Ask the bot for changes; it makes the .mp4 again.
 
 A **sheet** is for numbers to keep working on — a budget, a ledger, a list of clients. It is a real
 Excel file (.xlsx) with a page that shows it in the app: a tab per sheet, the picked cell's formula

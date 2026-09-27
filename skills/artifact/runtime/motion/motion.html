@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{title}}</title>
+    <style>
+      /* motion.css */
+    </style>
+  </head>
+  <body>
+    <div id="player">
+      <div id="frame">
+        <div id="stage">
+          <div id="canvas"></div>
+          <div id="world"><div id="card"></div></div>
+          <div id="captions"><div id="caption"></div></div>
+          <svg id="cursor" viewBox="0 0 40 56" aria-hidden="true">
+            <path
+              d="M3 3 L3 41 L12.5 32 L19 47 L25.5 44.2 L19.2 29.8 L32 29.8 Z"
+              fill="#0B0B0B"
+              stroke="#fff"
+              stroke-width="2.6"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </div>
+      </div>
+      <div id="controls">
+        <button id="play" type="button" aria-label="Play"></button>
+        <div id="scrub"><div id="scrub-fill"></div></div>
+        <span id="time"></span>
+      </div>
+    </div>
+    <script type="application/json" id="motion-spec">
+      "{{spec}}"
+    </script>
+    <script>
+      // motion.js
+    </script>
+  </body>
+</html>

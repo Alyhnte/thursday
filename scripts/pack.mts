@@ -412,14 +412,17 @@ const REQUIRED = [
   "skills/browser/scripts/session.mjs",
   // Without its lockfile the page kit installs whatever versions are current that day
   "skills/artifact/runtime/app/kit/package-lock.json",
-  // What `document.mjs new`, `canvas.mjs new`, `book.mjs new` and `deck.mjs put` inline, and
-  // what turns a document's Markdown into its body; without them each is an error
+  // What `document.mjs new`, `canvas.mjs new`, `book.mjs new`, `deck.mjs put` and
+  // `motion.mjs put` inline, and what turns a document's Markdown into its body; without
+  // them each is an error
   "skills/artifact/runtime/document/pages/blank.html",
   "skills/artifact/runtime/document/markdown.mjs",
   "skills/artifact/runtime/vendor/marked.mjs",
   "skills/artifact/runtime/canvas/canvas.html",
   "skills/artifact/runtime/book/book.html",
   "skills/artifact/runtime/deck/deck.html",
+  "skills/artifact/runtime/motion/motion.html",
+  "skills/artifact/runtime/motion/fonts/Geist-Variable.woff2",
   "skills/artifact/runtime/render.mjs",
   "skills/artifact/runtime/shell/wear.mjs",
   "skills/artifact/runtime/shell/put.mjs",
