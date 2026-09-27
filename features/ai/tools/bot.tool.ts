@@ -80,12 +80,16 @@ export const threadSeenSpec = {
   parameters: z.object({ thread: THREAD_REF }),
 };
 
+/**
+ * The coordinator's one way out (bot.run): work to a bot, or a question to the user. Thursday
+ * takes nothing else, since the user sees who is working and the result is the turn's last words.
+ */
 export const sendMessageSpec = {
   description:
-    "Send a message to another bot or to Thursday; the delivery receipt comes back immediately. A bot answers with the final text of its turn, which reaches you later as a new message. Mark a question for Thursday to request user input; ordinary messages to Thursday are notifications and need no answer.",
+    "Hand part of the job to another bot, or put a question to the user through Thursday; the receipt comes back at once. A bot answers with the last words of its turn, which reach you later as a new message and start your next turn. Your own result reaches the user as the last words of your turn, so Thursday takes only questions.",
   parameters: RoomMessageSchema.extend({
     kind: RoomMessageSchema.shape.kind.describe(
-      "Use question only when Thursday must obtain an answer from the user: it ends your turn, and you continue when the answer arrives. Use message for bot collaboration, progress updates and reports.",
+      "question to Thursday when only the user can answer: it ends your turn, and you continue when the answer arrives. message to a bot.",
     ),
     options: RoomMessageSchema.shape.options.describe(
       "With a question, offer concise answer choices when useful. Omit for an open-ended question; the user can always type their own answer.",
@@ -95,14 +99,14 @@ export const sendMessageSpec = {
       .trim()
       .min(1)
       .describe(
-        "A bot from the roster other than the one you are answering, or Thursday to reach the user.",
+        "A bot from the roster, or Thursday for a question to the user.",
       ),
     text: z
       .string()
       .trim()
       .min(1)
       .describe(
-        "Write the message and include the context the recipient needs. A question to Thursday is put to the user word for word, on screen, on their phone and read aloud: write it to them.",
+        "Write the message and include the context the recipient needs. **What the user asked, never your reading of it**: a condition, a caution or a smaller goal they did not say is how work comes back as the wrong thing. A question to Thursday is put to the user word for word, on screen, on their phone and read aloud: write it to them.",
       ),
     why: z
       .string()
@@ -111,6 +115,9 @@ export const sendMessageSpec = {
       .describe(
         "What you need from them, in a few words, written for the user to read: they see who was brought in and what for.",
       ),
+    after: RoomMessageSchema.shape.after.describe(
+      "Bots already working for you whose answers this work needs. It goes out once they are all back, with their answers attached, so hand it out now rather than holding it yourself.",
+    ),
   }),
 };
 

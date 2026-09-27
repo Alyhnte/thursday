@@ -3,7 +3,7 @@ import type { ModelMessage } from "ai";
 import { and, desc, eq, inArray, max, or, sql } from "drizzle-orm";
 import type { z } from "zod";
 import { appEvents } from "@/app/api/events/app-event.server";
-import { BOT_RUN } from "@/config";
+import { BOT_RUN, PROMPT_LINE } from "@/config";
 import { database } from "@/database/db";
 import {
   threadDeliveryTable as delivery,
@@ -14,6 +14,7 @@ import {
 } from "@/database/tables";
 import { TOOL_NAMES } from "@/features/ai/tools/tool-name";
 import { publicError } from "@/lib/public-error";
+import { clip } from "@/lib/utils";
 import { THREAD_CONTINUE, tagSpeaker } from "./bot.schema";
 import {
   RESUME_CHECK,
@@ -191,6 +192,80 @@ async function deliver(tx: Tx, input: typeof delivery.$inferInsert) {
     );
 }
 
+/**
+ * The bots a hand-off names in `after`, as the room spells them. Each must have had work from the
+ * sender, or there is nothing to wait for; a model that names one is told what to do instead.
+ */
+function awaited(all: RoomWork[], caller: string, to: string, names: string[]) {
+  const bots = new Map(
+    all
+      .filter((row) => row.caller === caller && row.bot !== ROOM_THURSDAY)
+      .map((row) => [row.bot.toLowerCase(), row.bot]),
+  );
+  const after: string[] = [];
+  for (const name of names) {
+    if (name.toLowerCase() === to.toLowerCase())
+      publicError(
+        `${to} cannot wait on its own answer; leave it out of after.`,
+      );
+    const bot = bots.get(name.toLowerCase());
+    if (!bot)
+      publicError(
+        `${name} has no work from you to wait on: hand ${name} its part first, or leave it out of after.`,
+      );
+    if (!after.includes(bot)) after.push(bot);
+  }
+  return after;
+}
+
+/** Whether a bot still has open work from this caller. */
+const isOut = (all: RoomWork[], caller: string, bot: string) =>
+  all.some(
+    (row) => row.caller === caller && row.bot === bot && !terminal(row.state),
+  );
+
+/** Each awaited bot's latest answer to this caller, as a hand-off carries it. */
+function answersOf(all: RoomWork[], caller: string, bots: string[]) {
+  return bots.map((bot) => {
+    const last = all
+      .filter((row) => row.caller === caller && row.bot === bot)
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+      .at(-1);
+    return last?.state === "done" && last.result
+      ? `## ${bot}'s answer\n\n${last.result}`
+      : `## ${bot}\n\n${bot} stopped without an answer.`;
+  });
+}
+
+/**
+ * Hand-offs that waited on a bot now back (`after`): once none of the bots they wait on is out,
+ * their answers are delivered, which queues the hand-off. Held in the row, so a restart keeps it.
+ */
+async function releaseWaiting(tx: Tx, run: RoomWork) {
+  const all = await tx
+    .select()
+    .from(work)
+    .where(eq(work.threadId, run.threadId))
+    .orderBy(sql`${work}.rowid`);
+  for (const row of all) {
+    if (
+      row.caller !== run.caller ||
+      !row.waitsFor.includes(run.bot) ||
+      terminal(row.state)
+    )
+      continue;
+    if (row.waitsFor.some((bot) => isOut(all, run.caller, bot))) continue;
+    await deliver(tx, {
+      key: `after:${row.id}`,
+      threadId: run.threadId,
+      workId: row.id,
+      speaker: run.caller,
+      text: answersOf(all, run.caller, row.waitsFor).join("\n\n"),
+    });
+    await tx.update(work).set({ waitsFor: [] }).where(eq(work.id, row.id));
+  }
+}
+
 export async function sendRoomMessage(
   run: RoomWork,
   raw: z.input<typeof RoomMessageSchema> & { id: string },
@@ -202,6 +277,14 @@ export async function sendRoomMessage(
     );
   if (input.options?.length && input.kind !== "question")
     publicError("Offer answer choices only with a user question.");
+  // The user sees who is working without being told; a message to Thursday that asks nothing
+  // was the room's most common wasted turn, and asking a model not to send it made it send more
+  if (input.to === ROOM_THURSDAY && input.kind !== "question")
+    publicError(
+      "Send Thursday only a question for the user. The user already sees who is working, and your result reaches them as the last words of your turn.",
+    );
+  if (input.to === ROOM_THURSDAY && input.after?.length)
+    publicError("`after` is for work handed to a bot, not for a question.");
   const result = await database.transaction(async (tx) => {
     await current(tx, run);
     const key = messageKey(run.threadId, run.bot, input.id);
@@ -236,6 +319,21 @@ export async function sendRoomMessage(
         !terminal(row.state),
     );
     const joined = calls.find((row) => row.state === "running") ?? calls[0];
+    // More words for a call still waiting on other answers wait with it, unread
+    if (joined?.waitsFor.length) {
+      await tx.insert(delivery).values({
+        key,
+        threadId: run.threadId,
+        workId: joined.id,
+        speaker: run.bot,
+        text: input.text,
+      });
+      return {
+        messageId: key,
+        to: input.to,
+        note: `${input.to} gets this with the rest once ${joined.waitsFor.join(" and ")} ${joined.waitsFor.length > 1 ? "are" : "is"} back.`,
+      };
+    }
     if (joined) {
       const held = await isAsking(tx, run.threadId, input.to);
       await deliver(tx, {
@@ -273,6 +371,12 @@ export async function sendRoomMessage(
     const held =
       input.to !== ROOM_THURSDAY &&
       (await isAsking(tx, run.threadId, input.to));
+    const after = awaited(all, run.bot, input.to, input.after ?? []);
+    const out = after.filter((bot) => isOut(all, run.bot, bot));
+    // Answers already back travel with the words now; any still out hold them until they are
+    const text = out.length
+      ? input.text
+      : [input.text, ...answersOf(all, run.bot, after)].join("\n\n");
     await tx.insert(work).values({
       id: key,
       threadId: run.threadId,
@@ -284,12 +388,31 @@ export async function sendRoomMessage(
           ? input.kind === "question"
             ? "external"
             : "done"
-          : held
+          : held || out.length
             ? "waiting"
             : "queued",
       result: input.to === ROOM_THURSDAY ? input.text : null,
       options: [...new Set(input.options ?? [])],
+      waitsFor: out.length ? after : [],
     });
+    if (out.length) {
+      await tx.insert(delivery).values({
+        key,
+        threadId: run.threadId,
+        workId: key,
+        speaker: run.bot,
+        text,
+      });
+      await tx
+        .update(thread)
+        .set({ wrapped: false, updatedAt: new Date() })
+        .where(eq(thread.id, run.threadId));
+      return {
+        messageId: key,
+        to: input.to,
+        note: `Held: it goes to ${input.to} once ${out.join(" and ")} ${out.length > 1 ? "are" : "is"} back, with ${after.length > 1 ? "their answers" : "the answer"} attached. There is nothing to do for it until then.`,
+      };
+    }
     if (input.to === ROOM_THURSDAY) {
       await tx.insert(relay).values({
         key,
@@ -305,7 +428,7 @@ export async function sendRoomMessage(
         threadId: run.threadId,
         workId: key,
         speaker: run.bot,
-        text: input.text,
+        text,
       });
     }
     await tx
@@ -439,6 +562,96 @@ export async function consumeRoomInbox(run: RoomWork): Promise<string[]> {
   return texts;
 }
 
+/**
+ * A bot's first row in a thread it is brought into: who brought it and the job as they handed
+ * it over (bot.prompt buildJoinOpening), in place of the thread's first request, which is stale
+ * once the user has asked for more. Like the opening, it outlives every compaction.
+ */
+export async function joinRoom(
+  run: RoomWork,
+  build: (
+    job: { from: string; text: string } | null,
+  ) => ModelMessage["content"],
+) {
+  await database.transaction(async (tx) => {
+    await current(tx, run);
+    const [job] = await tx
+      .select()
+      .from(delivery)
+      .where(
+        and(
+          eq(delivery.workId, run.id),
+          eq(delivery.consumed, false),
+          eq(delivery.visible, false),
+          eq(delivery.speaker, run.caller),
+        ),
+      )
+      .orderBy(delivery.id)
+      .limit(1);
+    await append(tx, run.threadId, {
+      bot: run.bot,
+      parent: run.id,
+      role: "user",
+      content: build(job ? { from: job.speaker, text: job.text } : null),
+      hidden: true,
+    });
+    if (job)
+      await tx
+        .update(delivery)
+        .set({ consumed: true })
+        .where(eq(delivery.id, job.id));
+  });
+  changed();
+}
+
+/** How one handed-out exchange stands, in the coordinator's words. */
+function standing(row: RoomWork) {
+  if (row.waitsFor.length) return `waits for ${row.waitsFor.join(" and ")}`;
+  if (row.state === "running") return "working";
+  if (row.state === "queued") return "about to start";
+  if (row.state === "paused") return "paused";
+  return "waiting";
+}
+
+/**
+ * What the coordinator handed out that is not back yet, read at the start of each of its turns:
+ * without it, a coordinator woken by one answer asked again for work already on its way. Null
+ * when it has handed nothing out.
+ */
+export async function roomBoard(run: RoomWork) {
+  const mine = await database
+    .select()
+    .from(work)
+    .where(and(eq(work.threadId, run.threadId), eq(work.parentId, run.id)))
+    .orderBy(work.createdAt);
+  const shown = mine.filter((row) => row.bot !== ROOM_THURSDAY);
+  if (!shown.length) return null;
+  const open = shown.filter((row) => !terminal(row.state));
+  if (!open.length) return "Everything you handed out is back.";
+  const asked = new Map<string, string>();
+  for (const row of await database
+    .select({ workId: delivery.workId, text: delivery.text })
+    .from(delivery)
+    .where(
+      inArray(
+        delivery.workId,
+        open.map((row) => row.id),
+      ),
+    )
+    .orderBy(delivery.id))
+    if (!asked.has(row.workId)) asked.set(row.workId, row.text);
+  const now = Date.now();
+  const lines = open.map((row) => {
+    const minutes = Math.max(
+      0,
+      Math.round((now - row.createdAt.getTime()) / 60_000),
+    );
+    const first = (asked.get(row.id) ?? "").split("\n")[0].trim();
+    return `- ${row.bot}, ${standing(row)} (${minutes} min): "${clip(first, PROMPT_LINE.boardAsk)}"`;
+  });
+  return `What you handed out that is not back yet:\n${lines.join("\n")}`;
+}
+
 function deliveryText(row: typeof delivery.$inferSelect) {
   return row.visible
     ? tagSpeaker(row.speaker === ROOM_USER ? "user" : "thursday", row.text)
@@ -500,6 +713,7 @@ export async function finishRoomWork(run: RoomWork, text: string) {
           text: text || "This turn ended without a message.",
         });
       }
+      await releaseWaiting(tx, run);
     }
     const [room] = await tx
       .select()
@@ -745,6 +959,10 @@ export async function tellRoom(
           (row) =>
             row.bot === bot && !terminal(row.state) && row.state !== "external",
         ));
+    // Words to a bot held for other answers (`after`) start it now: the user's word outranks the
+    // hold, and a hold left behind would outlive a turn that has already ended
+    if (target?.waitsFor.length)
+      await tx.update(work).set({ waitsFor: [] }).where(eq(work.id, target.id));
     if (question) {
       await tx
         .update(work)

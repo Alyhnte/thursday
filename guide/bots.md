@@ -82,8 +82,11 @@ The **+** at the left end of the pill, or the `/` key, opens the line at the foo
 Enter sends it, and the room opens on the thread it started.
 
 An open thread's own message box takes files the same way. Once more than one bot is in a thread,
-the box says who it is addressed to and can be changed; only the bot the job went to answers the
-user, and a bot it pulled in answers back to that bot.
+the box says who it is addressed to and can be changed. Only the bot the job went to brings other
+bots in, asks the user and answers them; a bot it pulled in answers back to that bot, and anything
+it needs goes through it. A part that needs another bot's result waits until that result is in,
+then goes out with it. Bots do not report progress to the call or a phone: the corner shows who is
+working, and what reaches the user is a question or the ending.
 
 A picture a bot made or was given can be changed rather than drawn again: ask for what should be
 different. This needs an image model in **Settings › Models**; if the one picked cannot work from a
@@ -100,7 +103,8 @@ open message box instead, and words sent there start it again at once.
 
 ## When a bot needs the user
 
-- **A question** pauses that bot until answered; other bots keep working. It shows where the
+- **A question** comes from the bot the job went to, and pauses it until answered; other bots keep
+  working. It shows where the
   message box is, with buttons when there are choices. The card above the pill says how many need
   a reply, and each can be answered right there (or just above the line at the foot, while that is
   open).

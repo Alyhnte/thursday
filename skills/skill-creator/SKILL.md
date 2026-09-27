@@ -33,7 +33,7 @@ This section replaces the parts of Anthropic's original that run only in Claude'
 
 **If you are Thursday**, on a call, the interview is yours, out loud (one question per turn, no lists read aloud). Then hand the whole brief with `thread_start` to the bot whose work the skill is for, or to any bot when it serves every bot's work. The bot cannot hear the call, so the request carries every answer, anything the user said about who should have the skill, and that the skill is validated before it is reported. Writing and testing a skill takes minutes, which is a bot's work.
 
-**If you are a bot**, the brief is in your hands. The user is not at your screen: what you need from them goes to Thursday with `send_message`, kind `question` (clearly, with the context to answer, and short options when they help), and your turn ends there until the answer brings you back. So ask what only the user knows in one question with parts, not an interview, and never ask what the brief or the conversation already answers.
+**If you are a bot**, the brief is in your hands. The user is not at your screen: what you need from them you ask as a question, the way your instructions say to ask the user (clearly, with the context to answer, and short options when they help), and your turn ends there until the answer brings you back. So ask what only the user knows in one question with parts, not an interview, and never ask what the brief or the conversation already answers.
 
 ### Who it is for, and where it goes
 

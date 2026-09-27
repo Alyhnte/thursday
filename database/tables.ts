@@ -295,6 +295,14 @@ export const threadWorkTable = sqliteTable(
       .$type<string[]>()
       .notNull()
       .default([]),
+    /**
+     * Bots whose answers this exchange waits on (`send_message` `after`): it stays `waiting`,
+     * its words unread, until each of them is back, then goes out with their answers.
+     */
+    waitsFor: text("waits_for", { mode: "json" })
+      .$type<string[]>()
+      .notNull()
+      .default([]),
     createdAt: int("created_at", { mode: "timestamp_ms" })
       .notNull()
       .$defaultFn(() => new Date()),

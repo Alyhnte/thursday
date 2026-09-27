@@ -3,8 +3,8 @@
 `yt.mjs` says "No captions on this video" when YouTube has none — music, some new or
 non-speech videos. A podcast off YouTube arrives the same way, and so does a recording of their
 own — a meeting, a lecture, a voice memo, in the `inbox` folder when they sent it with a message. The words then come from the
-studio's transcription model, which costs by the minute of audio: past an hour, send
-Thursday one `send_message` question with the length before transcribing it.
+studio's transcription model, which costs by the minute of audio: past an hour, ask the
+user first, with the length, and end your turn before transcribing it.
 
 1. Check it is there: `transcribe` under `studio`, either among your own tools or in the
    `## Connected tools` chapter of your prompt. In neither means no transcription model is
