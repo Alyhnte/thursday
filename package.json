@@ -24,15 +24,15 @@
     "url": "https://github.com/cgoinglove/thursday/issues"
   },
   "bin": {
-    "thursday": "bin/thursday.mjs"
+    "thursday": "bin/thursday.cjs"
   },
   "engines": {
     "node": ">=22.18"
   },
   "scripts": {
-    "dev": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/dev.mts",
+    "dev": "node bin/node-check.cjs && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/dev.mts",
     "build": "next build",
-    "start": "node bin/thursday.mjs",
+    "start": "node bin/thursday.cjs",
     "lint": "biome check && node scripts/maps.mts",
     "knip": "knip",
     "test:live": "node --experimental-test-module-mocks --import tsx --test scripts/live-session.test.mts scripts/live-history.test.mts",
@@ -41,6 +41,7 @@
     "test:reach": "node --experimental-test-module-mocks --import tsx --test scripts/reach.test.mts scripts/reach-channels.test.mts scripts/text-call.test.mts",
     "test:artifact": "node --import tsx --test scripts/artifact-paths.test.mts scripts/proxy.test.mts",
     "test:skills": "node --import tsx --test scripts/skill-files.test.mts scripts/page-edits.test.mts scripts/deck.test.mts scripts/sheet.test.mts",
+    "test:cli": "node --import tsx --test scripts/node-check.test.mts",
     "format": "biome format --write",
     "reset": "node scripts/reset.mts",
     "typecheck": "next typegen && tsc --noEmit",

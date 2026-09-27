@@ -140,7 +140,7 @@ const shellQuoted = (text) => `'${text.replace(/'/g, `'\\''`)}'`;
  * version managers keep one that stays put. The first alone broke on the day it went: a version
  * manager keeps each version in a folder of its own and removes it with the version (`nvm
  * uninstall`), and Homebrew removes the file behind its link on an upgrade — the job then failed
- * at every login. Each is tried with the copy's own version check (node-check.mjs), so one gone,
+ * at every login. Each is tried with the copy's own version check (node-check.cjs), so one gone,
  * broken or too old is passed over, and the log says which ran when it was not the first; with
  * none, the log says so and launchd tries again in half a minute, which picks up a Node
  * installed meanwhile. The log is kept to its size here too: a job that fails at once is started
@@ -175,7 +175,7 @@ function launcherOf({ cli, log }) {
   return `log=${shellQuoted(log)}
 if [ -f "$log" ] && [ "$(stat -f %z "$log")" -gt ${LOG_BYTES} ]; then cp "$log" "$log.1" && : > "$log"; fi
 first=${shellQuoted(process.execPath)}
-check=${shellQuoted(join(dirname(cli), "node-check.mjs"))}
+check=${shellQuoted(join(dirname(cli), "node-check.cjs"))}
 seen=
 for node in "$first" "$(command -v node)" ${stays.join(" ")} ${nvm}; do
   [ -x "$node" ] || continue
