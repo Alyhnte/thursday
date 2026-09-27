@@ -58,11 +58,13 @@ function connect(): Client {
 }
 
 /**
- * Locks the database to the account that runs the app. It holds every provider
- * key and every sign-in token as plain text (features/config), and SQLite makes
- * the file with the process umask — 644 on macOS, which any other account on the
- * machine can read, as can whatever syncs the folder it sits in. The sign-ins
- * beside it are already owner-only (signins.query write).
+ * Locks the database to the account that runs the app. It holds every call,
+ * memory and job in plain text, and every provider key and sign-in token sealed
+ * under a key in the `.env` beside it (lib/secret) — and SQLite makes the file
+ * with the process umask, 644 on macOS, which any other account on the machine
+ * can read, as can whatever syncs the folder it sits in. The sign-ins beside it
+ * are already owner-only (signins.query write), as is the `.env` a key is
+ * written to (lib/secret).
  */
 function ownerOnly(): void {
   for (const file of [DB_PATH, `${DB_PATH}-wal`, `${DB_PATH}-shm`]) {

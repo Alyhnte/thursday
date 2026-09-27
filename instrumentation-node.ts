@@ -1,6 +1,13 @@
 export async function boot() {
-  const { APP_DIR, APP_NAME, DATA_DIR, DB_PATH, HISTORY_KEEP, WORKSPACE_KEEP } =
-    await import("@/config");
+  const {
+    APP_DIR,
+    APP_NAME,
+    DATA_DIR,
+    DB_PATH,
+    ENV_PATH,
+    HISTORY_KEEP,
+    WORKSPACE_KEEP,
+  } = await import("@/config");
   const { logger } = await import("@/lib/logger");
 
   // Nothing can run on a database this build cannot migrate, and nothing can
@@ -24,6 +31,38 @@ export async function boot() {
     );
     process.exit(65);
   });
+
+  // The secrets in the database are sealed with one key (lib/secret), made here on a first
+  // start. One that cannot be read or is malformed stops the start: nothing could be saved
+  // or read without it, and a new key in its place would strand every secret sealed under it.
+  const { ENCRYPTION_KEY_NAME, encryptionKey } = await import("@/lib/secret");
+  try {
+    if (encryptionKey().from === "made")
+      logger.info(`made the key that seals saved secrets, in ${ENV_PATH}`);
+  } catch (cause) {
+    logger.error(`Cannot load ${ENCRYPTION_KEY_NAME}`);
+    console.error(`  ${cause instanceof Error ? cause.message : cause}\n`);
+    process.exit(1);
+  }
+
+  // What an older build wrote in the clear is sealed before anything reads it; what this
+  // key cannot open is said, and asked for again where it is used (config.query readConfig)
+  const { sealConfigSecrets } = await import("@/features/config/config.query");
+  const { sealMcpSecrets } = await import("@/features/connectors/mcp.query");
+  await Promise.all([sealConfigSecrets(), sealMcpSecrets()])
+    .then(([config, mcp]) => {
+      const sealed = config.sealed + mcp.sealed;
+      if (sealed) logger.info(`sealed ${sealed} secret(s) kept in the clear`);
+      const lost = [
+        ...config.unreadable,
+        ...mcp.unreadable.map((name) => `connector "${name}"`),
+      ];
+      if (lost.length)
+        logger.warn(
+          `${lost.join(", ")}: sealed with an encryption key this data folder no longer has (${ENCRYPTION_KEY_NAME} in ${ENV_PATH}) — each has to be entered again in Settings`,
+        );
+    })
+    .catch((cause) => logger.error("seal secrets", cause));
 
   // The two notes about the user must exist before any prompt lists them.
   const { ensureRootNotes } = await import("@/features/memory/memory.query");

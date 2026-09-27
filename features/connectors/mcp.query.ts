@@ -1,5 +1,6 @@
 import { and, count, eq, inArray, notInArray, sql } from "drizzle-orm";
 import { appEvents } from "@/app/api/events/app-event.server";
+import { ENV_PATH } from "@/config";
 import { database } from "@/database/db";
 import {
   botMcpToolTable,
@@ -10,8 +11,17 @@ import {
   isRemoteConfig,
   type MCPOAuthData,
   type MCPServerConfig,
+  type MCPStoredOAuth,
   type MCPToolInfo,
 } from "@/features/connectors/mcp.schema";
+import { publicError } from "@/lib/public-error";
+import {
+  ENCRYPTION_KEY_NAME,
+  isSealed,
+  openSecret,
+  sealSecret,
+  UnreadableSecret,
+} from "@/lib/secret";
 
 /**
  * `oauth` holds tokens, so reads that reach the browser select columns
@@ -144,13 +154,90 @@ export function listServerNames() {
     .orderBy(mcpServerTable.name);
 }
 
-/** The whole row including credentials; for the manager, never a route. */
+/**
+ * A server's credentials are sealed at rest (lib/secret): the values of its headers and env, and
+ * its OAuth client, tokens and verifier. Its url, command and args are not, since the lists show
+ * them, and neither is the OAuth `state`, which the callback looks up in SQL.
+ */
+function sealConfig(config: MCPServerConfig): MCPServerConfig {
+  if (isRemoteConfig(config))
+    return config.headers
+      ? { ...config, headers: sealValues(config.headers) }
+      : config;
+  return config.env ? { ...config, env: sealValues(config.env) } : config;
+}
+
+function openConfig(config: MCPServerConfig): MCPServerConfig {
+  if (isRemoteConfig(config))
+    return config.headers
+      ? { ...config, headers: openValues(config.headers) }
+      : config;
+  return config.env ? { ...config, env: openValues(config.env) } : config;
+}
+
+/** Each value sealed; one sealed already stays as it is, so sealing twice is sealing once. */
+const sealValues = (values: Record<string, string>) =>
+  Object.fromEntries(
+    Object.entries(values).map(([name, value]) => [
+      name,
+      isSealed(value) ? value : sealSecret(value),
+    ]),
+  );
+
+const openValues = (values: Record<string, string>) =>
+  Object.fromEntries(
+    Object.entries(values).map(([name, value]) => [name, openSecret(value)]),
+  );
+
+/** The client, tokens and verifier sealed together (mcp.schema MCPStoredOAuth). */
+function sealOAuth(oauth: MCPOAuthData): MCPStoredOAuth {
+  const { state, authorizationServer, ...secret } = oauth;
+  const held = Object.values(secret).some((value) => value !== undefined);
+  return {
+    state,
+    authorizationServer,
+    ...(held && { sealed: sealSecret(JSON.stringify(secret)) }),
+  };
+}
+
+/** What `sealOAuth` stored. A row from before sealing holds it in the clear and comes back as it is. */
+function openOAuth(stored: MCPStoredOAuth): MCPOAuthData {
+  const { sealed, ...rest } = stored;
+  return sealed
+    ? { ...rest, ...(JSON.parse(openSecret(sealed)) as MCPOAuthData) }
+    : rest;
+}
+
+/** A row with its credentials opened, as the manager connects with them. */
+function openRow<
+  Row extends {
+    name: string;
+    config: MCPServerConfig;
+    oauth: MCPStoredOAuth | null;
+  },
+>(row: Row) {
+  try {
+    return {
+      ...row,
+      config: openConfig(row.config),
+      oauth: row.oauth && openOAuth(row.oauth),
+    };
+  } catch (cause) {
+    if (!(cause instanceof UnreadableSecret)) throw cause;
+    // Said in words: the connect that asked shows it on the server's row (mcp.action)
+    publicError(
+      `The saved credentials of "${row.name}" were sealed with an encryption key this data folder no longer has (${ENCRYPTION_KEY_NAME} in ${ENV_PATH}) — remove it from Connectors and add it again.`,
+    );
+  }
+}
+
+/** The whole row including credentials, opened; for the manager, never a route. */
 export async function findServer(name: string) {
   const [server] = await database
     .select()
     .from(mcpServerTable)
     .where(eq(mcpServerTable.name, name));
-  return server ?? null;
+  return server ? openRow(server) : null;
 }
 
 /** Signals the screen to re-read; called at every write. */
@@ -161,17 +248,16 @@ export async function upsertServer(input: {
   name: string;
   config: MCPServerConfig;
 }) {
-  const [server] = await database
+  const config = sealConfig(input.config);
+  await database
     .insert(mcpServerTable)
-    .values({ ...input, lastError: null })
+    .values({ name: input.name, config, lastError: null })
     .onConflictDoUpdate({
       target: mcpServerTable.name,
       // Tools are left alone; the connect that follows syncs them
-      set: { config: input.config, lastError: null },
-    })
-    .returning();
+      set: { config, lastError: null },
+    });
   changed();
-  return server;
 }
 
 /**
@@ -232,18 +318,86 @@ export async function saveConnectionError(name: string, lastError: string) {
 export async function saveOAuthData(name: string, oauth: MCPOAuthData | null) {
   await database
     .update(mcpServerTable)
-    .set({ oauth })
+    .set({ oauth: oauth && sealOAuth(oauth) })
     .where(eq(mcpServerTable.name, name));
   changed();
 }
 
-/** The OAuth callback only knows `state`. */
+/** The OAuth callback only knows `state`, which is kept in the clear for this (sealOAuth). */
 export async function findServerByOAuthState(state: string) {
   const [server] = await database
     .select()
     .from(mcpServerTable)
     .where(sql`json_extract(${mcpServerTable.oauth}, '$.state') = ${state}`);
-  return server ?? null;
+  return server ? openRow(server) : null;
+}
+
+/**
+ * Seals the credentials written before sealing began, and names the servers whose sealed ones
+ * this data folder's key cannot open. Run at boot beside config.query sealConfigSecrets; a
+ * second run seals nothing, and one transaction leaves a start that dies halfway to the next.
+ */
+export async function sealMcpSecrets(): Promise<{
+  sealed: number;
+  unreadable: string[];
+}> {
+  return database.transaction(async (tx) => {
+    const rows = await tx
+      .select({
+        name: mcpServerTable.name,
+        config: mcpServerTable.config,
+        oauth: mcpServerTable.oauth,
+      })
+      .from(mcpServerTable);
+    const unreadable: string[] = [];
+    let sealed = 0;
+    for (const row of rows) {
+      if (!opens(row)) {
+        unreadable.push(row.name);
+        continue;
+      }
+      if (!inTheClear(row)) continue;
+      await tx
+        .update(mcpServerTable)
+        .set({
+          config: sealConfig(row.config),
+          oauth:
+            row.oauth && !row.oauth.sealed ? sealOAuth(row.oauth) : row.oauth,
+        })
+        .where(eq(mcpServerTable.name, row.name));
+      sealed++;
+    }
+    return { sealed, unreadable };
+  });
+}
+
+/** Whether this data folder's key opens every sealed credential of a row. */
+function opens(row: {
+  config: MCPServerConfig;
+  oauth: MCPStoredOAuth | null;
+}): boolean {
+  try {
+    openConfig(row.config);
+    if (row.oauth) openOAuth(row.oauth);
+    return true;
+  } catch (cause) {
+    if (cause instanceof UnreadableSecret) return false;
+    throw cause;
+  }
+}
+
+/** Whether a row holds a credential in the clear: one written before sealing began. */
+function inTheClear(row: {
+  config: MCPServerConfig;
+  oauth: MCPStoredOAuth | null;
+}): boolean {
+  const values = isRemoteConfig(row.config)
+    ? row.config.headers
+    : row.config.env;
+  if (Object.values(values ?? {}).some((value) => !isSealed(value)))
+    return true;
+  const { state, authorizationServer, sealed, ...secret } = row.oauth ?? {};
+  return Object.values(secret).some((value) => value !== undefined);
 }
 
 export async function deleteServer(name: string) {

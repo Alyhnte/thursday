@@ -332,6 +332,15 @@ export const CONFIG_CHOICES: Record<string, ConfigChoice[]> =
       .map((entry) => [entry.key, entry.choices as ConfigChoice[]]),
   );
 
+/**
+ * Whether a key's value is a secret: every Settings entry without `choices` — a key, a token,
+ * the ChatGPT sign-in. Sealed before it is written (config.query), and never served.
+ */
+export function isSecretKey(key: string): boolean {
+  const entry = CONFIG_ENTRIES[key];
+  return Boolean(entry && !entry.choices);
+}
+
 /** What /api/config returns; never a secret's value. */
 export type ConfigStatus = {
   key: string;

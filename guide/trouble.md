@@ -53,6 +53,15 @@ A job does not fail for good; it pauses and waits.
   Connectors**; **Reconnect** fixes it.
 - **Take a file**: at most 8 files go with one message, 25 MB each.
 
+## A saved key is asked for again
+
+The keys, tokens, sign-in and connectors saved in Settings are sealed with a key kept in the data
+folder's `.env` (`setup.md`, Where the files are). When that `.env` is lost or replaced, or the
+database moved without it, the terminal names what it cannot open, and each reads as unset. The
+`.env` from a backup, put back before anything is entered anew, opens them again; otherwise enter
+each again in **Settings › API keys**, and remove a connector in **Settings › Connectors** and add
+it again.
+
 ## Starting over
 
 **Settings › Thursday › History › Reset history** deletes every call, every job and everything she
