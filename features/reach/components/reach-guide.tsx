@@ -417,7 +417,7 @@ function ChannelWords({
   if (status?.problem)
     return (
       <ShinyText
-        text={`${status.bot ? "Reconnecting" : "Connecting"}… ${status.problem}`}
+        text={`${status.bot ? "Reconnecting" : "Connecting"} ${status.problem}`}
         className={cn(small, "align-middle")}
       />
     );

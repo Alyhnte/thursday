@@ -140,7 +140,7 @@ export function Combobox({
             )}
 
             <Autocomplete.Empty className="px-2 py-2 font-mono text-[11px] text-muted-foreground empty:hidden">
-              {loading ? "Loading…" : empty}
+              {loading ? "Loading" : empty}
             </Autocomplete.Empty>
 
             <Autocomplete.List className="max-h-64 overflow-y-auto outline-none">
