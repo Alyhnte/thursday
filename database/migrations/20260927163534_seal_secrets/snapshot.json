@@ -1,7 +1,7 @@
 {
-  "id": "d30d597c-c677-4ac5-b497-993e116d2151",
+  "id": "6e4902b0-937d-4936-ba47-2c506f9485d2",
   "prevIds": [
-    "8c7bdf72-b0dd-458b-adad-8213407fa89e"
+    "af1a7574-7222-4b05-ae67-455c2963c00f"
   ],
   "version": "7",
   "dialect": "sqlite",
@@ -1377,6 +1377,16 @@
       "default": "'[]'",
       "generated": null,
       "name": "options",
+      "entityType": "columns",
+      "table": "thread_work"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": "'[]'",
+      "generated": null,
+      "name": "waits_for",
       "entityType": "columns",
       "table": "thread_work"
     },

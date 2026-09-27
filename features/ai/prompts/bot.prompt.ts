@@ -25,6 +25,7 @@ import {
   workHandle,
 } from "@/features/bot/bot.schema";
 import { findBotSeed } from "@/features/bot/bot.seed";
+import { isCoordinatorSeat } from "@/features/bot/room.schema";
 import { listBotWork } from "@/features/bot/thread.query";
 import { findPinnedTools } from "@/features/connectors/mcp.query";
 import type { McpToolRef } from "@/features/connectors/mcp.schema";
@@ -111,7 +112,7 @@ export async function loadBotPrompt(
     // After Environment: its folder is named against the Cwd said there
     memoryOn ? ownMemory(botMemoryFolder(name), kept) : "",
     otherThreads(name, work),
-    roster(peers),
+    roster(peers, name, seat),
     collaboration(name, seat),
     // Last, so it is the closest thing to the work and outranks the rest
     ownerInstruction(name, persona),
@@ -141,6 +142,9 @@ function identity(name: string, me: JobBot | null, seat?: Seat | null): string {
     : "";
 
   const known = me ? `\nOthers know you as: ${rosterLine(me)}` : "";
+  const reach = handsOut(name, seat)
+    ? "your tools, the other bots, this machine"
+    : `your tools, this machine, and the other bots through ${owner}`;
 
   return `You are ${name}, one of the bots in this thread. ${todayLine()}${known}
 
@@ -149,7 +153,7 @@ function identity(name: string, me: JobBot | null, seat?: Seat | null): string {
 - ${coordinator}
 - **Everyone on it** keeps their own work and conversation; the others see only the messages sent to them.${current}
 
-**The job is done, not described.** You are on the user's own computer, with a shell, files and the web, and how you get there is yours: when one way fails, try another; where no tool exists, write one — \`node\` is always here. Before deciding something cannot be done, look at what you have — your tools, the other bots, this machine. Bring back the thing itself — their account, their file, the real result — not a smaller, safer stand-in, and not a note on why not.
+**The job is done, not described.** You are on the user's own computer, with a shell, files and the web, and how you get there is yours: when one way fails, try another; where no tool exists, write one — \`node\` is always here. Before deciding something cannot be done, look at what you have — ${reach}. Bring back the thing itself — their account, their file, the real result — not a smaller, safer stand-in, and not a note on why not.
 
 **Never present a guess as a result.** Thursday says what you return out loud, as fact: say which part is unverified and why.`;
 }
@@ -322,37 +326,54 @@ Inside the workspace, set up whatever the job needs yourself; installing anythin
 
 ${botGuideLine()}`;
 
+/** Whether this seat hands work to other bots: the coordinator's alone (room.schema isCoordinatorSeat). */
+function handsOut(name: string, seat?: Seat | null): boolean {
+  return !seat || isCoordinatorSeat(name, seat.owner, seat.caller);
+}
+
 /** The other bots, used the other way from the call's roster: which part of a held job is someone else's. */
-function roster(peers: JobBot[]): string {
+function roster(peers: JobBot[], name: string, seat?: Seat | null): string {
   if (peers.length === 0) return "";
+  const bringIn = handsOut(name, seat)
+    ? `When part of the job is another bot's strength, bring it in with \`${TOOL_NAMES.send_message}\` rather than rebuilding it yourself.`
+    : `When part of the job is another bot's strength, say so in your answer: ${seat?.owner ?? "the coordinator"} brings them in.`;
 
   return `## Bots
 
 ${peers.map((bot) => `- **${bot.name}** — ${rosterLine(bot)}`).join("\n")}
 
-These lines were written for the user: where one says "you", it means them. When part of the job is another bot's strength, bring it in with \`${TOOL_NAMES.send_message}\` rather than rebuilding it yourself.`;
+These lines were written for the user: where one says "you", it means them. ${bringIn}`;
 }
 
 /**
  * How participants reach each other. Nobody reads anyone else's transcript, so the one thing that
- * decides whether collaboration works is what a single message carries. What becomes of the files
- * a result names is the runner's rule (bot.runner, the `artifact` event), said in the same terms.
+ * decides whether collaboration works is what a single message carries. Only the coordinator hands
+ * work out and asks the user; a bot it brings in answers with its turn's last words alone. What
+ * becomes of the files a result names is the runner's rule (bot.runner, the `artifact` event),
+ * said in the same terms.
  */
 function collaboration(name: string, seat?: Seat | null): string {
-  const owner = (seat?.owner ?? name) === name;
-  const ending = owner
-    ? `While work you handed out is still out, your result waits for it: end your turn and its answer wakes you; write the result once everything you asked for is in. Bring what you received together into one result for Thursday: what was done, where it is, what you decided that the request did not say, and what is still open, at the detail the user asked for. Every file you name in it is drawn under your words in the thread and waits in the screen's corner for the user to open, so name each one you want them to see — the page to read first, then the rest.`
-    : `Your final text is your answer to ${seat?.caller ?? "whoever asked"}, and all they see of your work: give them everything they need to carry on. When you cannot go on without something from them, end with that question instead; their reply brings you back with all you have done still in front of you.`;
+  const caller = seat?.caller ?? "whoever asked";
+  const tail = `Write in the user's language, and name the paths of finished work. In Markdown, reference images by absolute route (\`/api/file/${PATHS.artifacts}/…\`).`;
+
+  if (!handsOut(name, seat))
+    return `## Working together
+
+Nobody sees your work but you: ${caller} sees only your final text, so it has to stand on its own — exact values, file paths and what is still unverified. ${seat?.owner ?? "The coordinator"} brings the other bots in, not you.
+
+Your final text is your answer to ${caller}, and all they see of your work: give them everything they need to carry on. When you cannot go on without something — from them, from another bot, or a fact only the user has, such as a date, a name, a place or an amount — end with that question instead of guessing it or leaving a blank; ${caller} gets it for you, and their reply brings you back with all you have done still in front of you.
+
+${tail}`;
 
   return `## Working together
 
-Nobody sees your work but you, and you see only what others send you, so whatever crosses between you has to stand on its own. A request says what is wanted, what is already known or done, and where the files are; an answer gives exact values, file paths and what is still unverified. Tell a bot you handed work to when what it depends on changes: it reads that before its next step. End your turn when you have nothing more to do now: replies arrive as new messages and wake you.
+Nobody sees your work but you, and you see only what others send you, so whatever crosses between you has to stand on its own. A request says what is wanted, what is already known or done, and where the files are; an answer gives exact values, file paths and what is still unverified. Tell a bot you handed work to when what it depends on changes: it reads that before its next step. End your turn when you have nothing more to do now: answers arrive as new messages and wake you. The bots you bring in answer only to you: when one needs another bot's work or something from the user, it says so in its answer, and you decide.
 
-Ask the user, through Thursday, with kind \`question\` only for a decision, permission or something only they know: clearly, with the context to answer, and short options when they help. Use kind \`message\` for news that needs no answer, and your final text for the result.
+Before you hand anything out, check what each part needs that only the user knows — dates, names, places, amounts, whose it is. If any of it is missing, ask for all of it in one question first, and hand the work out once the answer is in; never tell a bot to guess it or leave a blank for it. When a bot's answer ends with a question, get it answered — from what you already know, or from the user — and send the answer back to that same bot. Ask the user through Thursday, with kind \`question\`, only for a decision, permission or something only they know: clearly, with the context to answer, and short options when they help.
 
-${ending}
+While work you handed out is still out, your result waits for it: end your turn and each answer wakes you, with a line on what is still out; write the result once everything you asked for is in. Bring what you received together into one result for Thursday: what was done, where it is, what you decided that the request did not say, and what is still open, at the detail the user asked for. Every file you name in it is drawn under your words in the thread and waits in the screen's corner for the user to open, so name each one you want them to see — the page to read first, then the rest.
 
-Write in the user's language, and name the paths of finished work. In Markdown, reference images by absolute route (\`/api/file/${PATHS.artifacts}/…\`).`;
+${tail}`;
 }
 
 /** A user message's content; every seat's first message is two text parts (buildThreadOpening). */
@@ -398,6 +419,42 @@ export function buildThreadOpening(input: {
     {
       type: "text",
       text: `## ${by} → ${input.bot}: the job\n\n${input.request.trim()}`,
+    },
+  ];
+}
+
+/**
+ * A bot's first message in a thread it is brought into: who brought it in and the job as they
+ * handed it over (room.query joinRoom), in place of the thread's first request, which is stale
+ * once the user has asked for more. Like the opening, it outlives every compaction. A bot the user
+ * wrote to before any bot handed it work is told so, and reads the thread's first request as that.
+ */
+export function buildJoinOpening(input: {
+  bot: string;
+  coordinator: string;
+  job: { from: string; text: string } | null;
+  request: string;
+}): OpeningContent {
+  if (!input.job)
+    return [
+      {
+        type: "text",
+        text: `You are ${input.bot}. The user writes to you in this thread, which ${input.coordinator} coordinates.`,
+      },
+      {
+        type: "text",
+        text: `## The thread's first request\n\n${input.request.trim()}`,
+      },
+    ];
+  const { from } = input.job;
+  return [
+    {
+      type: "text",
+      text: `You are ${input.bot}. ${from} brings you into this thread, ${from === input.coordinator ? "which they coordinate" : `which ${input.coordinator} coordinates`}.`,
+    },
+    {
+      type: "text",
+      text: `## ${from} → ${input.bot}: the job\n\n${input.job.text.trim()}`,
     },
   ];
 }

@@ -444,7 +444,8 @@ test("a bot's question goes to the phone as the bot wrote it, and a button answe
     },
   });
   await until(() => answered.length === 1, "the bot is answered");
-  assert.deepEqual(answered[0], ["thread-1", "Travel", "user", "Insta"]);
+  // The button names its question, so a bot with two open gets this one answered
+  assert.deepEqual(answered[0], ["thread-1", "Travel", "user", "Insta", "q-1"]);
 
   // Told once: the same question coming round again is not news
   const count = sent.length;

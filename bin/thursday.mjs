@@ -1,10 +1,9 @@
 #!/usr/bin/env node
-// `npx thursday-agent` — the whole install story. Points the app's two roots at
-// the build and at the user's home (config.ts APP_DIR / DATA_DIR), then boots
-// the standalone server. Plain JavaScript: this runs before anything is built.
+// `npx thursday-agent` — the whole install story, loaded by thursday.cjs once the
+// Node is new enough. Points the app's two roots at the build and at the user's
+// home (config.ts APP_DIR / DATA_DIR), then boots the standalone server. Plain
+// JavaScript: this runs before anything is built.
 
-// First, so an older Node is told what it needs before anything else is evaluated
-import "./node-check.mjs";
 import { spawn } from "node:child_process";
 import {
   existsSync,

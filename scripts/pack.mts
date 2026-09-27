@@ -401,6 +401,9 @@ writeFileSync(
 /** What must be there for a fresh machine to boot (config.ts APP_DIR). */
 const REQUIRED = [
   "server.js",
+  // The command, and the check that runs before it is parsed
+  "bin/thursday.cjs",
+  "bin/node-check.cjs",
   "bin/thursday.mjs",
   ".next/static",
   "database/migrations",

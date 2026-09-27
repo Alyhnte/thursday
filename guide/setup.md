@@ -144,7 +144,8 @@ says so and uses the next free one for that run, and the browser shows different
 data folder, `--no-open` starts without opening a browser, and `--help` lists everything.
 
 Starting it again while it already runs on the same data folder opens the running one in the
-browser instead of starting a second, and says how to stop it. It needs Node 22.18 or newer.
+browser instead of starting a second, and says how to stop it. It needs Node 22.18 or newer; on an
+older one it prints the commands that update it and start it again.
 Closing the terminal it runs in stops it like Ctrl+C: running jobs pause and wait for **Continue**;
 in the background, closing the terminal changes nothing.
 

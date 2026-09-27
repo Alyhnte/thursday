@@ -1,5 +1,5 @@
 ---
-checked: 2026-09-27
+checked: 2026-09-28
 paths:
   - "bin/**"
   - ".github/**"
@@ -16,7 +16,8 @@ touches anyone's data.
 
 ## Start here
 - `config.ts` — the roots, paths, limits and tuning numbers.
-- `bin/thursday.mjs` — `npx thursday-agent` and `pnpm start`: two roots, a port, the built server.
+- `bin/thursday.cjs` — where `npx thursday-agent` and `pnpm start` begin: `node-check.cjs`, in syntax any Node parses, then `thursday.mjs`.
+- `bin/thursday.mjs` — the command: two roots, a port, the built server.
 - `bin/background.mjs` — `start`, `stop`, `status` and the first run's question: the launchd job, and the copy it runs from `~/.thursday/app`.
 - `scripts/dev.mts` — `pnpm dev`: `next dev` on a free loopback port.
 - `instrumentation-node.ts` — boot: migrate, seal what is still in the clear, sweep the last run, start routines and the phone.
@@ -45,6 +46,8 @@ Such a change is tried as `npm pack ./dist`, installed in an empty folder, boote
 `--home` with a markdown page opened, and resolved per platform with `npm install --os/--cpu/--libc`.
 `node scripts/pack.mts` runs the release gates and writes `dist/` without publishing;
 `pnpm pack:check` repacks the last build, checking its files but not lint, types or the build;
-`pnpm release` publishes and is never a check. A starter or boot change is served from the build,
-which a running `next dev` does not block; `--home` keeps it off the checkout's own database:
+`pnpm release` publishes and is never a check. `pnpm test:cli` checks what an older Node is told,
+and CI's `old-node` job runs the command on Nodes the app does not take. A starter or boot change
+is served from the build, which a running `next dev` does not block; `--home` keeps it off the
+checkout's own database:
 `pnpm build && THURSDAY_SKIP_BROWSER=1 pnpm start --home "$(mktemp -d)" --port <n> --no-open`

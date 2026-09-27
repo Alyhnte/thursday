@@ -92,7 +92,7 @@ Narrow comes first because a skill's description is read by every bot that has i
 
 ### Step 6: Ask Before Installing
 
-An installed skill is someone else's instructions and scripts, run with your permissions on the user's computer, and public registries have carried skills that steal keys or install malware. So the user says yes to each install. Unless the user named this exact skill and asked for it to be installed, send Thursday one `send_message` with kind `question` before you install anything: what the skill does and why this job needs it, who published it, its license, what its audits found, what it needs to run (a key, a CLI), and who you decided gets it and why, with the options "Install" and "Don't install". Then end your turn. The user is not at your screen; their answer brings you back.
+An installed skill is someone else's instructions and scripts, run with your permissions on the user's computer, and public registries have carried skills that steal keys or install malware. So the user says yes to each install. Unless the user named this exact skill and asked for it to be installed, ask the user one question before you install anything: what the skill does and why this job needs it, who published it, its license, what its audits found, what it needs to run (a key, a CLI), and who you decided gets it and why, with the options "Install" and "Don't install". Then end your turn. The user is not at your screen; their answer brings you back.
 
 Example question:
 

@@ -984,6 +984,8 @@ export const PROMPT_LINE = {
   routineRequest: 300,
   /** How a routine's last run ended, as the `routine` tool returns one; the run's thread holds the rest. */
   routineOutcome: 200,
+  /** The first line of each hand-off still out, in the coordinator's list of them; the full words are in its transcript. */
+  boardAsk: 100,
 };
 
 /**

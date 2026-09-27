@@ -46,7 +46,7 @@ Node.js 22.18 이상과 OpenAI API 키 하나면 됩니다. 첫 화면에 키를
 
 ### 한마디면 팀이 움직입니다
 
-봇들은 일을 나눠 맡고, 서로의 결과를 확인하고, 내가 정해야 할 때만 묻습니다. 주고받은 것은 전부 스레드에 남습니다. 누가 뭘 했는지 열어 보고, 중간에 끼어들 수도 있습니다.
+일을 받은 봇이 다른 봇들을 불러 나눠 맡기고, 앞 결과가 필요한 일은 그 결과가 나올 때까지 잡아 두었다 넘기며, 돌아온 것을 확인하고, 내가 정해야 할 때만 묻습니다. 주고받은 것은 전부 스레드에 남습니다. 누가 뭘 했는지 열어 보고, 중간에 끼어들 수도 있습니다.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/cgoinglove/thursday/main/docs/images/film-team-dark.png">

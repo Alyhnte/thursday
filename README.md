@@ -46,7 +46,7 @@ A speech model that opens a browser goes silent for a minute, and a silent call 
 
 ### One ask, a whole team
 
-Bots hand parts of a job to each other, check what comes back, and ask you only when a decision is yours. Every handoff is saved: open the thread to see who did what, or step in.
+The bot you hand a job to brings in the others, can hold a part until the result it needs is in, checks what comes back, and asks you only when a decision is yours. Every handoff is saved: open the thread to see who did what, or step in.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/cgoinglove/thursday/main/docs/images/film-team-dark.png">

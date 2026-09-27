@@ -1,5 +1,5 @@
 ---
-checked: 2026-09-26
+checked: 2026-09-27
 paths:
   - "features/bot/{bot,room,thread}.{action,file,memory,query,run,runner,schema}.ts"
   - "features/routine/**"
@@ -31,12 +31,17 @@ cannot go on it waits for a person, and everything it did stays as rows.
 ## How it fits
 A thread is a room with one participant per bot, each with its own transcript
 (`thread_message`); only messages cross between transcripts. Each exchange is a `thread_work`
-row — who called whom, and the row a reply wakes (`parentId`). `send_message` puts words in the
-callee's inbox (`thread_delivery`), and a turn's last words are its return, delivered once
-nothing it called is still open (`finishRoomWork`). `room.query` owns those rows and settles the
+row — who called whom, and the row a reply wakes (`parentId`). Only the coordinator's seat — the
+thread's bot answering Thursday (`isCoordinatorSeat`) — holds `send_message`: it puts words in a
+bot's inbox (`thread_delivery`) or asks the user, and each of its turns starts with what it
+handed out that is still out (`roomBoard`). A bot it brings in first reads the job it was handed
+(`joinRoom`), and its turn's last words are its return, delivered once nothing it called is still
+open (`finishRoomWork`). A hand-off sent `after` other bots waits in its row (`waitsFor`) until
+they are back and the coordinator ends the turn that read their answers without asking the user
+(`releaseWaiting`), then goes out with them; a bot the user starts early is still owed them. `room.query` owns those rows and settles the
 thread; `bot.runner` launches what they queue; `bot.run` runs one turn. What is owed to Thursday
-— a message, a question, the coordinator's report, a stop — is a `thread_relay` row, which the
-call (`features/thursday/open-work.ts`) and a phone (`features/reach`) read and accept.
+— a question, the coordinator's report, a stop — is a `thread_relay` row, which the call
+(`features/thursday/open-work.ts`) and a phone (`features/reach`) read and accept.
 
 ## What breaks
 - `bot.runner` is the only caller of `runBot` and of the `room.query` writes that queue, pause or

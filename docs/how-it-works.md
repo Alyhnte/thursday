@@ -33,7 +33,7 @@ A bot is a text model from any provider you added, with:
 - **skills**, methods it reads before it starts
 - **MCP servers** you connected
 - a **studio** for images, video, speech, and transcription
-- **each other**, to hand off part of a job
+- **each other**: the bot a job went to hands parts to the others, and they answer it
 
 ![A thread open over the call: a planner hands work to another bot, its steps fold into tiles, and a question waits for you](images/room.png)
 

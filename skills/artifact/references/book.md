@@ -132,8 +132,8 @@ fix it and run this again.
    and `tools: ["generate_speech"]` (and `generate_image` when a page needs a
    drawn picture). A name that does not come back means nobody picked that
    model, and a call answering that the model cannot make audio means the wrong
-   one is picked. Either way send Thursday a `send_message` question saying to
-   pick a speech (or image) model in Settings › Models, and end your turn.
+   one is picked. Either way ask the user to pick a speech (or image) model in
+   Settings › Models, and end your turn.
    Never work around it with another voice.
 2. **One `generate_speech` call per page**, in page order, `text` set to that
    page's `data-say`, the same `voice` every time. Keep the paths it returns in

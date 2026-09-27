@@ -3,7 +3,10 @@ import type { ModelMessage } from "ai";
 import { appEvents, presence } from "@/app/api/events/app-event.server";
 import { BOT_RUN, FINISHED_NOTICE, WORKSPACE_KEEP } from "@/config";
 import { isProviderRefusal, modelErrorToString } from "@/features/ai/model";
-import { buildThreadOpening } from "@/features/ai/prompts/bot.prompt";
+import {
+  buildJoinOpening,
+  buildThreadOpening,
+} from "@/features/ai/prompts/bot.prompt";
 import { isAnyCallLive } from "@/features/thursday/thursday.query";
 import { leadFirst, pathsIn } from "@/features/workspace/file-kind";
 import {
@@ -38,6 +41,7 @@ import {
   claimRoomWork,
   consumeRoomInbox,
   finishRoomWork,
+  joinRoom,
   listParticipantTranscript,
   listRoomReceipts,
   listRoomWork,
@@ -46,12 +50,13 @@ import {
   pauseRoom,
   type RoomWork,
   resumeRoom,
+  roomBoard,
   roomContextBudget,
   sendRoomMessage,
   settleRoom,
   tellRoom,
 } from "./room.query";
-import { ROOM_THURSDAY, ROOM_USER } from "./room.schema";
+import { isCoordinatorSeat, ROOM_THURSDAY, ROOM_USER } from "./room.schema";
 import {
   addThreadUsage,
   deleteMessages,
@@ -205,7 +210,7 @@ async function drive(work: RoomWork, signal: AbortSignal) {
     await noteRoomBreak(work, turn.failure.message);
     // Only an abort rejects the wait, and the check below reads it
     await wait(BOT_RUN.retryMs, undefined, { signal }).catch(() => {});
-    if (!signal.aborted) turn = await attempt(work, signal);
+    if (!signal.aborted) turn = await attempt(work, signal, false);
   }
   if (!turn || signal.aborted) return;
   const failure = turn.failure?.message;
@@ -257,8 +262,11 @@ async function drive(work: RoomWork, signal: AbortSignal) {
   }
 }
 
-/** One run of a participant's turn from its stored transcript: how it ended, or why it broke. Null when the thread is gone. */
-async function attempt(work: RoomWork, signal: AbortSignal) {
+/**
+ * One run of a participant's turn from its stored transcript: how it ended, or why it broke. Null
+ * when the thread is gone. A retry after a break is not a new turn, and the board it read stands.
+ */
+async function attempt(work: RoomWork, signal: AbortSignal, fresh = true) {
   const writer = new TranscriptWriter(work, signal);
   let ending: { text: string; stopped: boolean } | null = null;
   let failure: { message: string; retry: boolean } | null = null;
@@ -266,15 +274,29 @@ async function attempt(work: RoomWork, signal: AbortSignal) {
     const thread = await findThread(work.threadId);
     if (!thread) return null;
     const prior = await listParticipantTranscript(work.threadId, work.bot);
+    // A bot brought in reads the job it was handed, not the thread's first request
     if (!prior.length)
-      await appendRoomMessage(work.threadId, {
-        bot: work.bot,
-        parent: work.id,
-        role: "user",
-        content: `Request: ${thread.request}\nCoordinator: ${thread.bot}. Continue as ${work.bot} in this thread.`,
-        hidden: true,
-      });
+      await joinRoom(work, (job) =>
+        buildJoinOpening({
+          bot: work.bot,
+          coordinator: thread.bot,
+          job,
+          request: thread.request,
+        }),
+      );
     await consumeRoomInbox(work);
+    // The coordinator starts each turn knowing what it handed out is still out
+    if (fresh && isCoordinatorSeat(work.bot, thread.bot, work.caller)) {
+      const board = await roomBoard(work);
+      if (board)
+        await appendRoomMessage(work.threadId, {
+          bot: work.bot,
+          parent: work.id,
+          role: "user",
+          content: board,
+          hidden: true,
+        });
+    }
     const history = await listParticipantTranscript(work.threadId, work.bot);
     await runBot(
       {

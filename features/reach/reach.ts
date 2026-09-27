@@ -951,7 +951,14 @@ async function choose(
   for (const [key, one] of state.choices)
     if (one.question === choice.question) state.choices.delete(key);
   try {
-    await answerThread(choice.threadId, choice.answer, "user", choice.bot);
+    // The button knows its question: a bot with two open would otherwise take one answer for both
+    await answerThread(
+      choice.threadId,
+      choice.answer,
+      "user",
+      choice.bot,
+      choice.question || undefined,
+    );
     if (under) await live.channel.settle(person.chat, under, choice.answer);
     // She is told, as she is when a question is answered on screen: a fact, not a turn
     live.notes.push({

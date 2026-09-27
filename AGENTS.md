@@ -90,8 +90,8 @@ docs/                how-it-works.md, and the images the READMEs show.
 # Checks
 
 - `pnpm typecheck`, `pnpm lint`, and the suite for the area changed (`pnpm test:live`, `test:bot`,
-  `test:memory`, `test:reach`, `test:artifact`, `test:skills`, `test:secrets`; all offline). A
-  client/server boundary change also needs `pnpm build`.
+  `test:memory`, `test:reach`, `test:artifact`, `test:skills`, `test:cli`, `test:secrets`; all
+  offline). A client/server boundary change also needs `pnpm build`.
 - Schema change: `pnpm db:generate`, and commit the migration with it. Never `drizzle-kit push`. A
   running server applies it only after a restart; say so.
 - A change the user would notice updates `guide/` in the same commit.

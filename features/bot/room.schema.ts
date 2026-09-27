@@ -11,6 +11,8 @@ export const RoomMessageSchema = z.object({
   why: z.string().trim().min(1),
   kind: z.enum(["message", "question"]).default("message"),
   options: z.array(z.string().trim().min(1)).nullish(),
+  /** Bots whose answers must be back first; the words go out with those answers (room.query). */
+  after: z.array(z.string().trim().min(1)).nullish(),
 });
 
 /** Server scheduling state, independent of whether a bot wrote a final sentence. */
@@ -53,6 +55,14 @@ export const ROOM_THURSDAY = "Thursday";
  * deliveryText). Rows already hold it, so it does not change on its own.
  */
 export const ROOM_USER = "The user";
+
+/**
+ * The seat that holds a thread for Thursday: the thread's own bot, answering Thursday. Only it
+ * hands work to other bots and asks the user; a bot it brings in answers it with the last words
+ * of its turn, which always arrive, since that bot opened nothing of its own.
+ */
+export const isCoordinatorSeat = (bot: string, owner: string, caller: string) =>
+  bot === owner && caller === ROOM_THURSDAY;
 
 /**
  * What a participant reads after why its turn broke off (room.query breakNote).

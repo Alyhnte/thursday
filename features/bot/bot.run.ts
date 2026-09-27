@@ -43,7 +43,7 @@ import {
 import { logger } from "@/lib/logger";
 import { estimateTokens } from "@/lib/tokens";
 import { findJobBot } from "./bot.query";
-import { ROOM_THURSDAY } from "./room.schema";
+import { isCoordinatorSeat } from "./room.schema";
 import {
   argumentLine,
   findThread,
@@ -127,6 +127,7 @@ type RunOptions = {
     why: string;
     kind?: "message" | "question";
     options?: string[] | null;
+    after?: string[] | null;
   }) => Promise<unknown>;
   emit: (event: ThreadEvent) => Promise<void>;
 };
@@ -206,27 +207,31 @@ export async function runBot(
 
   // A committed question to the user ends the turn; the answer brings the bot back (room.query tellRoom).
   let asked = false;
-  const agentTools: ToolSet = {
-    ...tools,
-    [TOOL_NAMES.send_message]: tool({
-      description: sendMessageSpec.description,
-      inputSchema: sendMessageSpec.parameters,
-      execute: async (input, call) => {
-        const receipt = await options.send({ ...input, id: call.toolCallId });
-        if (input.kind === "question") asked = true;
-        if (!receipt || typeof receipt !== "object" || !("to" in receipt))
-          return receipt;
-        const to = String(receipt.to);
-        if (to === ROOM_THURSDAY) return receipt;
-        // What a handoff means for the one who made it: left unsaid, a caller whose colleague
-        // was slow watched their folder with sleep and then did the work itself (a second copy)
-        return {
-          ...receipt,
-          note: `${to} has it now. When they finish, their answer — what they did and where the files are — comes to you as a new message and wakes you. Until then you do not know it: do not report it, guess it or do it yourself, and do not watch their folder. Go on with other work, or end your turn if there is none; the thread stays open.`,
-        };
-      },
-    }),
-  };
+  // Only the coordinator's seat hands work out (room.schema isCoordinatorSeat). A bot it brought
+  // in answers with its last words: with a way to send, helpers passed work sideways, answered
+  // their caller with a message that was refused, and left answers held behind their own sends.
+  const agentTools: ToolSet = isCoordinatorSeat(
+    name,
+    options.owner,
+    options.caller,
+  )
+    ? {
+        ...tools,
+        [TOOL_NAMES.send_message]: tool({
+          description: sendMessageSpec.description,
+          inputSchema: sendMessageSpec.parameters,
+          execute: async (input, call) => {
+            const receipt = await options.send({
+              ...input,
+              id: call.toolCallId,
+            });
+            if (input.kind === "question") asked = true;
+            // Its note says what comes next (room.query receiptFor)
+            return receipt;
+          },
+        }),
+      }
+    : tools;
   // Persist local calls before their side effects, and results before another model step.
   // The stream can repeat these events; the writer deduplicates them by call ID.
   const inFlight = new Set<Promise<unknown>>();
