@@ -42,6 +42,7 @@
     "test:artifact": "node --import tsx --test scripts/artifact-paths.test.mts scripts/proxy.test.mts",
     "test:skills": "node --import tsx --test scripts/skill-files.test.mts scripts/page-edits.test.mts scripts/deck.test.mts scripts/sheet.test.mts",
     "test:cli": "node --import tsx --test scripts/node-check.test.mts",
+    "test:secrets": "node --import tsx --test scripts/secrets.test.mts",
     "format": "biome format --write",
     "reset": "node scripts/reset.mts",
     "typecheck": "next typegen && tsc --noEmit",
