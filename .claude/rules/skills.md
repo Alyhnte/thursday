@@ -40,6 +40,9 @@ it shows goes to the page as `changed`. A seed's own skills are read in place fr
 `seed-skills/<name>/`; older copies in bots' folders stay, unlisted (`seed-skills/retired.json`).
 
 ## What breaks
+- A motion film's tears and wobbles are seeded by the order of draw calls (`X.n` in
+  `runtime/motion/kit-core.js`): a drawing a scene makes only some of the time moves the tear of
+  everything drawn after it, unless it is `sealed` or wrapped in `quiet`.
 - A job's browser may be a window on the user's screen: a role or `SKILL.md` that sends a bot to
   the browser to look at what it made opens it in front of the user, where a skill's `shots` over
   `render.mjs --apart` shows it to the bot alone.
