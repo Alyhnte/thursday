@@ -94,12 +94,13 @@ async function look(file, { w, h } = { w: 1920, h: 1080 }) {
           tab.on("pageerror", (e) => thrown.push(String(e?.message ?? e)));
           await tab.setViewportSize({ width: w, height: h });
           await tab.goto(url, { waitUntil: "load" });
-          await tab
-            .waitForFunction(() => window.FILM || window.READY, null, {
-              timeout: 60000,
-            })
-            .catch(() => {});
-          const film = await tab.evaluate(() => window.FILM ?? null);
+          // Laid out, or stopped by what its code threw: whichever comes first
+          let film = null;
+          for (let i = 0; i < 600 && !film; i++) {
+            film = await tab.evaluate(() => window.FILM ?? null);
+            if (!film && thrown.length) break;
+            if (!film) await tab.waitForTimeout(100);
+          }
           await tab.close();
           return { film, thrown };
         },

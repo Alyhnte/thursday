@@ -378,6 +378,7 @@ window.film = (def) => {
   start().catch((error) => {
     F.problems.push(String(error?.message ?? error));
     window.FILM = info([]);
+    window.READY = true;
   });
 };
 

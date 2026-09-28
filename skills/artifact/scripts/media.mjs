@@ -44,7 +44,7 @@ export function findFfmpeg(workspace, Stop) {
  * What ffmpeg reads off a file: its length in seconds, and for a video its size and frame
  * rate. Read, never guessed: a file ffmpeg cannot read stops the script.
  */
-export function probe(ffmpeg, file, Stop) {
+function probe(ffmpeg, file, Stop) {
   const read = spawnSync(ffmpeg, ["-hide_banner", "-i", file], {
     encoding: "utf8",
   });
