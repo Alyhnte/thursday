@@ -3,6 +3,9 @@
 Design exploration for new moments on Thursday's face (the ascii orb). No app code has changed
 yet: the work so far is a design canvas, https://claude.ai/artifact/CMHZ6oW7wYJ21Sgyq3Ydi2
 
+Everything is drawn on her own grid (ascii-orb: 8px glyphs on 5.4 × 7.1px cells, so neighbours
+touch), with her glyph ramp, emoji pool, eyes and washes.
+
 ## Here: where you are and the sky over it
 
 - Runs once a day, for users who have given their location.
