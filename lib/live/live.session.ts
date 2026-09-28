@@ -33,6 +33,14 @@ export type LiveToolCall = {
  */
 export type LiveToolResult = { output: string; image?: string };
 /**
+ * A picture of what the user shows, as the plan's line asks for one with a hand-over: the
+ * picture and what it is of, why none was taken, or null while nothing is shown.
+ */
+export type LivePicture =
+  | { image: string; kind: string }
+  | { failed: string }
+  | null;
+/**
  * One reasoning summary part of the backend, whole. A summary is the backend's
  * own account of its thinking, not its reasoning tokens, and comes only while a
  * model reasons.
@@ -81,6 +89,8 @@ type LiveOptions = {
   audio: LiveAudio;
   on: {
     runTool(call: LiveToolCall): Promise<string | LiveToolResult>;
+    /** What is shown as it is now, when the plan's line asks for it (`showing`). */
+    picture?(): Promise<LivePicture>;
     reasoning?(part: LiveReasoning): void;
     search?(search: LiveSearch): void;
     /** URL citations on a backend answer, by the response that wrote it. */
@@ -161,6 +171,8 @@ type LiveEvent = {
   event_id?: string;
   delegation_id?: string;
   client_event_id?: string;
+  /** The plan's line asking for a picture of what is shown (thursday.plan). */
+  request_id?: string;
   delta?: string;
   start_ms?: number;
   end_ms?: number;
@@ -451,7 +463,7 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
   /**
    * A picture for the backend, as the user's image. One the connection will not carry is
    * said to the backend instead, which was told a picture follows and without a word
-   * described a screen it never saw — and to the user, whose screen went unseen.
+   * described what it never saw — and to the user, whose screen or camera went unseen.
    */
   const sendImage = (image: string) => {
     try {
@@ -476,12 +488,12 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
           content: [
             {
               type: "input_text",
-              text: `The picture of their screen did not go through, so nothing on it was seen: ${reason}`,
+              text: `The picture of what they show did not go through, so nothing on it was seen: ${reason}`,
             },
           ],
         },
       });
-      on.warn(`The picture of your screen did not go through: ${reason}`);
+      on.warn(`The picture of what you show did not go through: ${reason}`);
     }
   };
   const handle = (event: LiveEvent) => {
@@ -559,6 +571,24 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
             response.stale = true;
           }
         activity();
+        break;
+      }
+      // The plan's line alone: its backend, run by the app, sees what is shown with each
+      // hand-over, so it asks for the picture as the hand-over comes (thursday.plan)
+      case "thursday.picture.requested": {
+        const requestId = event.request_id;
+        if (!requestId) break;
+        void Promise.resolve()
+          .then(() => on.picture?.() ?? null)
+          .catch((cause): LivePicture => ({ failed: errorToString(cause) }))
+          .then((picture) => {
+            if (closed || closing) return;
+            transport.send({
+              type: "thursday.picture",
+              request_id: requestId,
+              ...(picture ?? {}),
+            });
+          });
         break;
       }
       case "response.event": {
@@ -815,6 +845,22 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
       held = { mute: crypto.randomUUID(), unmute: null };
       transport.send({ type: "session.input_audio.mute", event_id: held.mute });
       holdTimer = setTimeout(letGo, ms);
+    },
+    /**
+     * Whether the call's events go through the app (the plan's line), whose backend sees what
+     * is shown with each hand-over rather than only when it looks.
+     */
+    relayed(): boolean {
+      return transport.relayed();
+    },
+    /**
+     * Tells the plan's line what the user shows, or that they stopped, so a hand-over asks
+     * for its picture only while something is. A key's line has no use for it: its backend
+     * sees what is shown when it looks.
+     */
+    showing(kind: string | null): void {
+      if (!transport.relayed() || closed || closing) return;
+      transport.send({ type: "thursday.showing", kind });
     },
     /**
      * The largest message the connection carries, in bytes, once it is up: a picture for the

@@ -43,14 +43,19 @@ export const LIVE_CALL = {
  *   and the talk its end. Codex's own bound (codex-rs core context/realtime_delegation.rs
  *   `MAX_REALTIME_DELEGATION_FIELD_BYTES`). More hands the backend more of the talk at more
  *   input; less cuts a long request short.
- * - `pictureBytes`  the largest picture of a shared screen the page sends her backend on this
- *   line, where it goes over HTTP instead of a data channel with a limit of its own: about what
- *   Chrome's channel takes on a key's call. More costs the backend more to read, less blurs
- *   small text.
+ * - `pictureBytes`  the largest picture of what the user shows (features/thursday/show.ts) the
+ *   page sends her backend on this line, where it goes over HTTP instead of a data channel with
+ *   a limit of its own: about what Chrome's channel takes on a key's call. More costs the
+ *   backend more to read, less blurs small text.
+ * - `pictureMs`  how long a hand-over waits for the page's picture of what is shown before her
+ *   backend starts without it, told that it did not come. It covers a share that has not shown
+ *   a frame yet (SHOWING.firstFrameMs) and the picture's trip; longer holds a page that stopped
+ *   answering against every hand-over, shorter cuts off a share just started.
  */
 export const PLAN_CALL = {
   delegationBytes: 4 * 1024,
   pictureBytes: 262_144,
+  pictureMs: 5_000,
 };
 
 /**
@@ -869,20 +874,20 @@ export const MEMORY_EDIT = { maxSteps: 20 };
 export const LOOK = { maxBytes: 4 * 1024 * 1024 };
 
 /**
- * A screen the user shares with a spoken call (features/thursday/screen-share.ts).
- * - `frameRate`  how often the browser grabs the screen while it is shared. Only a still is
- *   ever taken, when she looks: more costs the computer for nothing, fewer makes a look up to
- *   that much older.
+ * What the user shows a spoken call, a screen or their camera (features/thursday/show.ts).
+ * - `frameRate`  how often the browser grabs the screen or camera while it is shown. Only a
+ *   still is ever taken: more costs the computer for nothing, fewer makes a picture up to that
+ *   much older.
  * - `longestSide`  the longest side, in pixels, a look is taken at. Larger keeps small text on
  *   a big screen readable, and has the picture shrink further to fit the connection's one
  *   message; smaller loses that text first.
  * - `qualities` then `scales`  what a picture too large for that message steps down through:
  *   at each size the JPEG quality, then the size, until it fits.
- * - `firstFrameMs`  how long a look waits for a share that has not shown anything yet, as one
- *   just started has not. Longer gives a slow start its chance before she hears that nothing
+ * - `firstFrameMs`  how long a picture waits for a capture that has not shown anything yet, as
+ *   one just started has not. Longer gives a slow start its chance before she hears that nothing
  *   showed; she is silent that long first.
  */
-export const SCREEN_SHARE = {
+export const SHOWING = {
   frameRate: 5,
   longestSide: 1600,
   qualities: [0.8, 0.6, 0.45],

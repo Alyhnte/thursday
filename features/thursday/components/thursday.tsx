@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 import {
+  Fragment,
   type ReactNode,
   useCallback,
   useEffect,
@@ -65,11 +66,12 @@ import {
 import { openSettings } from "@/features/settings/settings.store";
 import { useCallHeld } from "@/features/thursday/call-signal";
 import {
-  canShare,
-  share,
-  stopSharing,
-  useSharedScreen,
-} from "@/features/thursday/screen-share";
+  canShow,
+  type ShownKind,
+  show,
+  stopShowing,
+  useShown,
+} from "@/features/thursday/show";
 import { silentVoice } from "@/features/thursday/silent-voice";
 import {
   type CallMessage,
@@ -224,7 +226,7 @@ function CallScreen({
           hidden={status !== "idle" || ringing !== null || writing}
         />
         {/* On the caller's side, clear of the captions stacked beside her face */}
-        <SharedScreen />
+        <ShownPreview />
       </div>
 
       {/* Top padding in vh, like the face itself, so the face+text column sits below center */}
@@ -1526,7 +1528,7 @@ function Hint({
         ) : (
           <Elapsed since={since} />
         )}
-        <ShareScreen />
+        <ShowOnLine />
       </>
     );
   } else if (ended) {
@@ -1591,58 +1593,79 @@ function Hint({
 const LINE_BUTTON =
   "rounded-md outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50";
 
+/** What each way to show her is called on the line, and what the browser refusing it says. */
+const SHOW_WAYS: Record<
+  ShownKind,
+  { press: string; on: string; refused: string }
+> = {
+  screen: {
+    press: "Share screen",
+    on: "Sharing screen",
+    refused: "Nothing was shared",
+  },
+  camera: {
+    press: "Camera",
+    on: "Camera on",
+    refused: "The camera did not start",
+  },
+};
+
 /**
- * The way to show her a screen, on the line while a spoken call is up. The browser asks which
- * screen, window or tab, and only from a press; she sees it only when she looks (screen-share).
+ * The ways to show her a screen or the camera, on the line while a spoken call is up; one at
+ * a time. The browser asks which screen, window or tab, or for the camera, and only from a
+ * press (show).
  */
-function ShareScreen() {
-  const stream = useSharedScreen();
-  if (!canShare()) return null;
-  return (
-    <>
-      <span className="text-muted-foreground/40">·</span>
-      {stream ? (
-        <>
-          <span>Sharing</span>
-          <span className="text-muted-foreground/40">·</span>
-          <button type="button" onClick={stopSharing} className={LINE_BUTTON}>
-            Stop
-          </button>
-        </>
-      ) : (
-        <button
-          type="button"
-          // What the browser refused, in its words: a press that did nothing left the person
-          // guessing, where the system's screen recording permission was the answer
-          onClick={() =>
-            share().catch((cause: unknown) =>
-              toast.add({
-                type: "warning",
-                title: "Nothing was shared",
-                description: errorToString(cause),
-              }),
-            )
-          }
-          className={LINE_BUTTON}
-        >
-          Share screen
+function ShowOnLine() {
+  const shown = useShown();
+  if (shown)
+    return (
+      <>
+        <span className="text-muted-foreground/40">·</span>
+        <span>{SHOW_WAYS[shown.kind].on}</span>
+        <span className="text-muted-foreground/40">·</span>
+        <button type="button" onClick={stopShowing} className={LINE_BUTTON}>
+          Stop
         </button>
-      )}
-    </>
-  );
+      </>
+    );
+  return (["screen", "camera"] as const).filter(canShow).map((kind) => (
+    <Fragment key={kind}>
+      <span className="text-muted-foreground/40">·</span>
+      <button
+        type="button"
+        // What the browser refused, in its words: a press that did nothing left the person
+        // guessing, where the system's screen recording permission was the answer
+        onClick={() =>
+          show(kind).catch((cause: unknown) =>
+            toast.add({
+              type: "warning",
+              title: SHOW_WAYS[kind].refused,
+              description: errorToString(cause),
+            }),
+          )
+        }
+        className={LINE_BUTTON}
+      >
+        {SHOW_WAYS[kind].press}
+      </button>
+    </Fragment>
+  ));
 }
 
 /**
- * What is shared with her, small, while it is. Nothing of it leaves the page until she looks,
- * which the backend decides, most often when asked: the caption says only what the code holds.
+ * What is shown to her, small, while it is. The caption says when a picture of it leaves the
+ * page, as the call's line has it: with each hand-over on the plan's, and only when her backend
+ * looks on a key's.
  */
-function SharedScreen() {
-  const stream = useSharedScreen();
+function ShownPreview() {
+  const shown = useShown();
   const video = useRef<HTMLVideoElement>(null);
+  const stream = shown?.stream ?? null;
   useEffect(() => {
     if (video.current) video.current.srcObject = stream;
   }, [stream]);
-  if (!stream) return null;
+  if (!shown) return null;
+  const camera = shown.kind === "camera";
   return (
     <figure className="flex w-44 animate-in flex-col items-end gap-1.5 fade-in duration-300">
       <video
@@ -1650,11 +1673,18 @@ function SharedScreen() {
         autoPlay
         muted
         playsInline
-        aria-label="The screen you are sharing"
-        className="aspect-video w-full rounded-lg bg-muted object-contain ring-1 ring-border/60"
+        aria-label={camera ? "Your camera" : "The screen you are sharing"}
+        // The camera as a mirror, the way people expect to see themselves; the picture she
+        // gets is not flipped
+        className={cn(
+          "w-full rounded-lg bg-muted object-contain ring-1 ring-border/60",
+          camera ? "aspect-[4/3] -scale-x-100" : "aspect-video",
+        )}
       />
       <figcaption className="font-mono text-[11px] text-muted-foreground">
-        Sent only when she looks
+        {shown.eachHandOver
+          ? "Sent when you ask her something"
+          : "Sent only when she looks"}
       </figcaption>
     </figure>
   );

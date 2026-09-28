@@ -47,6 +47,11 @@ type PageEvent = {
   type?: unknown;
   event_id?: unknown;
   content?: unknown;
+  /** `thursday.showing` and `thursday.picture`: what is shown, and its picture or why none. */
+  kind?: unknown;
+  request_id?: unknown;
+  image?: unknown;
+  failed?: unknown;
   item?: {
     type?: unknown;
     role?: unknown;
@@ -88,10 +93,17 @@ type PlanLine = {
    */
   outputs: Map<string, string>;
   pictures: string[];
+  /** What the user shows the call, as the page says: a hand-over asks for its picture while it is. */
+  showing: string | null;
+  /** Hand-overs waiting on the page's picture, by the request's id. */
+  looks: Map<string, (seen: Seen) => void>;
   /** The page asked for the next response; `next` is waiting on it, when it is. */
   asked: boolean;
   next: (() => void) | null;
 };
+
+/** The page's answer to a hand-over's request for a picture of what is shown. */
+type Seen = { image: string; kind: string } | { failed: string } | null;
 
 type Pinned = { __planLines?: Map<string, PlanLine> };
 /** Open lines by their call's row. Pinned to globalThis: the action that opens one and the route that follows it load apart. */
@@ -185,6 +197,8 @@ export async function openPlanLine(input: {
     working: false,
     outputs: new Map(),
     pictures: [],
+    showing: null,
+    looks: new Map(),
     asked: false,
     next: null,
   };
@@ -347,6 +361,26 @@ function take(line: PlanLine, event: PageEvent) {
       if (line.next) line.next();
       else line.asked = true;
       return;
+    case "thursday.showing":
+      line.showing =
+        event.kind === "screen" || event.kind === "camera" ? event.kind : null;
+      return;
+    case "thursday.picture": {
+      const answer =
+        typeof event.request_id === "string"
+          ? line.looks.get(event.request_id)
+          : undefined;
+      if (!answer) return;
+      if (
+        typeof event.image === "string" &&
+        (event.kind === "screen" || event.kind === "camera")
+      )
+        answer({ image: event.image, kind: event.kind });
+      else if (typeof event.failed === "string")
+        answer({ failed: event.failed });
+      else answer(null);
+      return;
+    }
     case "session.close":
       end(line, "close_requested");
       return;
@@ -413,7 +447,33 @@ async function respond(line: PlanLine, handed: { id: string; text: string }) {
     .splice(0)
     .map((entry) => `${entry.role}: ${entry.text}`)
     .join("\n");
-  line.messages.push({ role: "user", content: handedOver(handed.text, talk) });
+  const said = handedOver(handed.text, talk);
+  // What they show goes with what they asked, so her backend sees it on its first step
+  // rather than after a step spent asking to look (look_at_shared)
+  const seen = line.showing ? await lookNow(line, line.showing) : null;
+  if (line.over) return;
+  if (seen && "image" in seen) forgetPictures(line.messages);
+  line.messages.push({
+    role: "user",
+    content: !seen
+      ? said
+      : "image" in seen
+        ? [
+            { type: "text", text: said },
+            {
+              type: "text",
+              text: `Their ${seen.kind} as this was handed to you follows, as a picture.`,
+            },
+            { type: "image", image: seen.image },
+          ]
+        : [
+            { type: "text", text: said },
+            {
+              type: "text",
+              text: `They are showing you their ${line.showing ?? "screen"}, but no picture of it came with this: ${seen.failed}`,
+            },
+          ],
+  });
 
   for (let step = 0; step < TEXT_CALL.maxSteps && !line.over; step += 1) {
     for (const fact of line.facts.splice(0))
@@ -465,11 +525,53 @@ async function respond(line: PlanLine, handed: { id: string; text: string }) {
     });
     for (const call of done.calls) line.outputs.delete(call.toolCallId);
     const pictures = line.pictures.splice(0);
+    if (pictures.length) forgetPictures(line.messages);
     if (pictures.length)
       line.messages.push({
         role: "user",
         content: pictures.map((image) => ({ type: "image" as const, image })),
       });
+  }
+}
+
+/**
+ * Asks the page for a picture of what is shown, for a hand-over. A page that does not answer
+ * within PLAN_CALL.pictureMs is said to have not, and the hand-over goes on without it.
+ */
+function lookNow(line: PlanLine, kind: string): Promise<Seen> {
+  const id = randomUUID();
+  return new Promise((done) => {
+    const answer = (seen: Seen) => {
+      clearTimeout(timer);
+      line.looks.delete(id);
+      done(seen);
+    };
+    const timer = setTimeout(() => {
+      logger.warn("Plan call picture did not come", { kind });
+      answer({ failed: "the page did not send it in time." });
+    }, PLAN_CALL.pictureMs);
+    line.looks.set(id, answer);
+    toPage(line, { type: "thursday.picture.requested", request_id: id });
+  });
+}
+
+/**
+ * Puts a note where each earlier picture of what is shown was. Only the latest is what is
+ * there now, and the whole conversation goes with every step: kept, each picture went to the
+ * model again on every step after it.
+ */
+function forgetPictures(messages: ModelMessage[]) {
+  for (const message of messages) {
+    if (message.role !== "user" || typeof message.content === "string")
+      continue;
+    message.content = message.content.map((part) =>
+      part.type === "image"
+        ? {
+            type: "text" as const,
+            text: "(An earlier picture of what they showed, no longer kept.)",
+          }
+        : part,
+    );
   }
 }
 
@@ -616,6 +718,7 @@ function end(line: PlanLine, reason: string) {
   clearTimeout(line.orphan);
   line.stop.abort();
   line.next?.();
+  for (const answer of line.looks.values()) answer(null);
   line.wire.close();
   lines.delete(line.id);
   toPage(line, { type: "session.closed", reason });
