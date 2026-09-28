@@ -1,5 +1,5 @@
 ---
-checked: 2026-09-26
+checked: 2026-09-28
 paths:
   - "features/workspace/*.ts"
   - "lib/sandbox.ts"
@@ -45,8 +45,8 @@ Settings › Sign-ins or `signin-ask.tsx` in its question lets it in.
   `lib/sandbox.ts` does not match is read by every bot's project as its own: Thursday's port,
   production mode, Next's config.
 - Every shell can read the sign-in vault, so the tools are its lock: a kept sign-in is replaced
-  only by a bot on its list and renewed only from a browser the app lent it to (`keepSignIn`,
-  `holdSignIn`).
+  only by a bot on its list and renewed only from the browser the app lent it to, told by the
+  mark `holdSignIn` sets on that browser through `run-code` (`keepSignIn`, `holdSignIn`).
 - This area leans on `@playwright/cli`'s variable names, `list --json`, the `.playwright` marker
   and how it names its daemon folder, where a change fails quietly as windows left open and
   profiles piling up. It is pinned to one version in `package.json`, which each install of the

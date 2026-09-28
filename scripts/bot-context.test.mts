@@ -22,15 +22,33 @@ await writeFile(
 const fs = require("node:fs");
 const path = require("node:path");
 const root = ${JSON.stringify(home)};
-if (process.argv[2] === "list") {
+const [command, arg] = process.argv.slice(2).filter((one) => one !== "--raw");
+// What the app sets on a browser's context (signins.query), one file a session
+const mark = path.join(root, "marks", String(process.env.PLAYWRIGHT_CLI_SESSION));
+if (command === "list") {
   const fixture = path.join(root, "browsers.json");
   console.log(fs.existsSync(fixture) ? fs.readFileSync(fixture, "utf8") : '{"browsers":[]}');
-} else if (process.argv[2] === "close") {
+} else if (command === "close") {
   fs.appendFileSync(path.join(root, "closed.txt"), process.env.PLAYWRIGHT_CLI_SESSION + "\\n");
-} else if (process.argv[2] === "state-save") {
+  fs.rmSync(mark, { force: true });
+} else if (command === "open") {
+  // Another browser under the same session: nothing stored, no mark
+  fs.writeFileSync(path.join(root, "state.json"), '{"cookies":[]}');
+  fs.rmSync(mark, { force: true });
+} else if (command === "state-save") {
   const fixture = path.join(root, "state.json");
   if (!fs.existsSync(fixture)) process.exit(1);
-  fs.copyFileSync(fixture, process.argv[3]);
+  fs.copyFileSync(fixture, arg);
+} else if (command === "state-load") {
+  // The browser's storage is the state's alone, as Playwright's setStorageState leaves it
+  fs.copyFileSync(arg, path.join(root, "state.json"));
+} else if (command === "run-code") {
+  const set = /= '([^']+)'/.exec(arg ?? "");
+  if (set) {
+    fs.mkdirSync(path.dirname(mark), { recursive: true });
+    fs.writeFileSync(mark, set[1]);
+    console.log("true");
+  } else console.log(JSON.stringify(fs.existsSync(mark) ? fs.readFileSync(mark, "utf8") : null));
 }
 `,
 );
@@ -3268,10 +3286,13 @@ test("a bot's shell has the user's environment, not what the app set to run itse
   }
 });
 
-test("a kept sign-in is renewed only from a browser holding it for a bot allowed it, and never kept over by another bot", async () => {
+test("a kept sign-in is renewed only from the browser it was lent to, for a bot allowed it, and never kept over by another bot", async () => {
   const { keepSignIn, holdSignIn, renewSignIns, borrowSignIn, removeSignIn } =
     await import("../features/signins/signins.query.ts");
-  const { jobShellEnv } = await import("../features/workspace/workspace.ts");
+  const { jobShellEnv, openWorkspace } = await import(
+    "../features/workspace/workspace.ts"
+  );
+  const sandbox = await openWorkspace();
   const cookie = (value: string) => ({
     name: "PHPSESSID",
     domain: "shop.example",
@@ -3284,18 +3305,22 @@ test("a kept sign-in is renewed only from a browser holding it for a bot allowed
       ? (got.state as { cookies: { value: string }[] }).cookies[0].value
       : got.kind;
   };
-  // A browser the CLI lists as a participant's own, holding these cookies
-  const browser = async (session: string, value: string) => {
-    const name = jobShellEnv(session).PLAYWRIGHT_CLI_SESSION;
-    await writeFile(
-      join(home, "browsers.json"),
-      JSON.stringify({ browsers: [{ name, headed: false }] }),
-    );
-    await writeFile(
+  const holds = (value: string) =>
+    writeFile(
       join(home, "state.json"),
       JSON.stringify({ cookies: [cookie(value)] }),
     );
-    return name;
+  // A browser the CLI lists as a participant's own, holding these cookies
+  const browser = async (session: string, value: string) => {
+    const env = jobShellEnv(session);
+    await writeFile(
+      join(home, "browsers.json"),
+      JSON.stringify({
+        browsers: [{ name: env.PLAYWRIGHT_CLI_SESSION, headed: false }],
+      }),
+    );
+    await holds(value);
+    return env;
   };
 
   try {
@@ -3324,26 +3349,155 @@ test("a kept sign-in is renewed only from a browser holding it for a bot allowed
     assert.equal(await stored("Keeper"), "signed-in");
 
     // One holding it for a bot the user has not let in renews nothing either
-    holdSignIn(
+    await holdSignIn(
+      sandbox,
       await browser("job-visitor", "anonymous"),
       "Visitor",
       "shop.example",
+      "loaded",
     );
     await renewSignIns("job-visitor");
     assert.equal(await stored("Keeper"), "signed-in");
 
     // The browser it was lent to, for the bot allowed it, renews it
-    holdSignIn(
-      await browser("job-keeper", "rotated"),
-      "Keeper",
-      "shop.example",
-    );
+    const keeper = await browser("job-keeper", "signed-in");
+    await holdSignIn(sandbox, keeper, "Keeper", "shop.example", "loaded");
+    await holds("rotated");
+    await renewSignIns("job-keeper");
+    assert.equal(await stored("Keeper"), "rotated");
+
+    // `open` in that session starts another browser under the same name: the visitor's
+    // cookie it gets is not the lent one's
+    await sandbox.exec("playwright-cli open", { env: keeper });
+    await holds("anonymous");
     await renewSignIns("job-keeper");
     assert.equal(await stored("Keeper"), "rotated");
   } finally {
     await removeSignIn("shop.example");
     await rm(join(home, "browsers.json"), { force: true });
     await rm(join(home, "state.json"), { force: true });
+    await rm(join(home, "marks"), { recursive: true, force: true });
+  }
+});
+
+test("a browser holds the sign-in loaded into it last, gives back the one before first, and one made in it anew is not the lent one", async () => {
+  const {
+    keepSignIn,
+    holdSignIn,
+    releaseSignIn,
+    renewSignIns,
+    borrowSignIn,
+    removeSignIn,
+  } = await import("../features/signins/signins.query.ts");
+  const { createSignInTools } = await import(
+    "../features/ai/tools/signin.tool.ts"
+  );
+  const { jobShellEnv, openWorkspace } = await import(
+    "../features/workspace/workspace.ts"
+  );
+  const sandbox = await openWorkspace();
+  const env = jobShellEnv("job-lend");
+  const sid = (domain: string, value: string) => ({
+    name: "sid",
+    domain,
+    path: "/",
+    value,
+  });
+  const holds = (...cookies: ReturnType<typeof sid>[]) =>
+    writeFile(join(home, "state.json"), JSON.stringify({ cookies }));
+  const stored = async (site: string) => {
+    const got = await borrowSignIn(site, "Keeper");
+    assert.equal(got.kind, "state");
+    const { cookies } = (
+      got as { state: { cookies: ReturnType<typeof sid>[] } }
+    ).state;
+    return cookies.find((one) => one.domain === site)?.value;
+  };
+  const tools = createSignInTools(sandbox, "Keeper", env);
+  const use = (site: string) =>
+    tools[T.sign_in_use].execute!(
+      { site },
+      { toolCallId: `use-${site}`, messages: [], context: {} },
+    ) as Promise<string>;
+
+  await writeFile(
+    join(home, "browsers.json"),
+    JSON.stringify({
+      browsers: [{ name: env.PLAYWRIGHT_CLI_SESSION, headed: false }],
+    }),
+  );
+  try {
+    await keepSignIn({
+      site: "shop.example",
+      account: "a",
+      bot: "Keeper",
+      state: { cookies: [sid("shop.example", "shop-1")] },
+    });
+    // Kept from a browser that held the shop, so it carries an old copy of the shop's cookie
+    await keepSignIn({
+      site: "mail.example",
+      account: "a",
+      bot: "Keeper",
+      state: {
+        cookies: [sid("mail.example", "mail-1"), sid("shop.example", "shop-0")],
+      },
+    });
+
+    assert.match(await use("shop.example"), /^Signed in to shop\.example/);
+    // The site renews its cookie while the bot works; lending the mail clears the browser,
+    // so the shop's goes back first
+    await holds(sid("shop.example", "shop-2"));
+    assert.match(await use("mail.example"), /^Signed in to mail\.example/);
+    assert.equal(await stored("shop.example"), "shop-2");
+
+    // The browser holds the mail's state alone now, its old copy of the shop's included
+    await holds(sid("mail.example", "mail-2"), sid("shop.example", "shop-0"));
+    await renewSignIns("job-lend");
+    assert.equal(await stored("mail.example"), "mail-2");
+    assert.equal(await stored("shop.example"), "shop-2");
+
+    // Someone signs in to the mail anew in that browser: that sign-in is not the lent one
+    releaseSignIn(env, "mail.example");
+    await holds(sid("mail.example", "someone-else"));
+    await renewSignIns("job-lend");
+    assert.equal(await stored("mail.example"), "mail-2");
+
+    // One kept from a browser the app lent the shop to: the browser holds both
+    await use("shop.example");
+    await holdSignIn(sandbox, env, "Keeper", "mail.example", "kept");
+    await holds(sid("shop.example", "shop-3"), sid("mail.example", "mail-3"));
+    await renewSignIns("job-lend");
+    assert.equal(await stored("shop.example"), "shop-3");
+    assert.equal(await stored("mail.example"), "mail-3");
+
+    // Kept in a window, which closes and opens again with the same storage loaded back:
+    // still the browser that holds both
+    await writeFile(
+      join(home, "browsers.json"),
+      JSON.stringify({
+        browsers: [{ name: env.PLAYWRIGHT_CLI_SESSION, headed: true }],
+      }),
+    );
+    await holds(sid("shop.example", "shop-4"), sid("mail.example", "mail-3"));
+    const kept = (await tools[T.sign_in_keep].execute!(
+      { site: "shop.example", account: "a" },
+      { toolCallId: "keep-shop", messages: [], context: {} },
+    )) as string;
+    assert.match(
+      kept,
+      /^Kept: shop\.example as a\..*window was for the sign-in/,
+    );
+    assert.equal(await stored("shop.example"), "shop-4");
+    await holds(sid("shop.example", "shop-5"), sid("mail.example", "mail-4"));
+    await renewSignIns("job-lend");
+    assert.equal(await stored("shop.example"), "shop-5");
+    assert.equal(await stored("mail.example"), "mail-4");
+  } finally {
+    await removeSignIn("shop.example");
+    await removeSignIn("mail.example");
+    await rm(join(home, "browsers.json"), { force: true });
+    await rm(join(home, "state.json"), { force: true });
+    await rm(join(home, "marks"), { recursive: true, force: true });
   }
 });
 
