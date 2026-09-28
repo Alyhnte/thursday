@@ -6,11 +6,13 @@ yet: the work so far is a design canvas, https://claude.ai/artifact/CMHZ6oW7wYJ2
 ## Here: where you are and the sky over it
 
 - Runs once a day, for users who have given their location.
-- She turns into a globe (land as trees, sea as water; the night side dark, with lights), spins to
-  the user's location, then dives until their country fits and widens past her circle into a 2:1
+- She turns into a globe (land as trees, sea as water, the same by day and by night), spins to the
+  user's location, then dives until their country fits and widens past her circle into a 2:1
   field. On the way in everything else falls away: only their country is left, low in the frame.
-- At night the field is a dark night sky: the land darkens, its lights come on, stars come out.
-  Dusk is in between.
+- At night their country's land turns to dark emoji, cell by cell, and then its ten largest
+  cities light up in bright emoji, the biggest first, each glow as wide as the city is big. No
+  backdrop: the page stays as it is. Cities from GeoNames (cities over 15,000; CC BY 4.0, which
+  needs attribution in the app), tested against the country outlines.
 - Country outlines from Natural Earth 50m (world-atlas `countries-50m`, simplified to ~240 KB).
 - A pin at the location. In the sky above, the sun as a small living cluster of emoji, where it
   really is now (suncalc's formulas): up left in the morning, high at noon, down right toward
