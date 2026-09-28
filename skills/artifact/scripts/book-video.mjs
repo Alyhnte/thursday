@@ -4,7 +4,6 @@
 import { spawnSync } from "node:child_process";
 import {
   existsSync,
-  mkdirSync,
   mkdtempSync,
   readdirSync,
   renameSync,
@@ -12,6 +11,7 @@ import {
   statSync,
 } from "node:fs";
 import { basename, dirname, extname, join } from "node:path";
+import { duration, findFfmpeg } from "./media.mjs";
 
 // The artifact skill's camera, reached the way every kit script reaches it
 const RENDER = join(
@@ -23,51 +23,6 @@ const RENDER = join(
 // Silence after each page's voice before the next page turns
 const PAUSE_S = 0.6;
 const FPS = 30;
-
-/** ffmpeg on the machine, or a portable build installed once into the workspace. */
-function findFfmpeg(workspace, Stop) {
-  if (spawnSync("ffmpeg", ["-version"]).status === 0) return "ffmpeg";
-  const dir = join(workspace, "projects", ".ffmpeg");
-  const bin = join(
-    dir,
-    "node_modules",
-    "ffmpeg-static",
-    process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg",
-  );
-  if (existsSync(bin)) return bin;
-  console.error(
-    "No ffmpeg on this machine: installing a portable one into projects/.ffmpeg, once…",
-  );
-  mkdirSync(dir, { recursive: true });
-  spawnSync(
-    "npm",
-    [
-      "install",
-      "--prefix",
-      dir,
-      "ffmpeg-static",
-      "--no-audit",
-      "--no-fund",
-      "--loglevel=error",
-    ],
-    { stdio: "inherit", shell: process.platform === "win32" },
-  );
-  if (!existsSync(bin))
-    throw new Stop(
-      "Installing a portable ffmpeg failed; npm's output above says why.",
-    );
-  return bin;
-}
-
-/** Seconds, read off the file itself: a scene's length is never guessed. */
-function duration(ffmpeg, file, Stop) {
-  const probe = spawnSync(ffmpeg, ["-hide_banner", "-i", file], {
-    encoding: "utf8",
-  });
-  const hms = /Duration: (\d+):(\d+):(\d+(?:\.\d+)?)/.exec(probe.stderr ?? "");
-  if (!hms) throw new Stop(`${file} is not audio ffmpeg can read.`);
-  return Number(hms[1]) * 3600 + Number(hms[2]) * 60 + Number(hms[3]);
-}
 
 /**
  * Renders `book` (an .html picture book) at `size` and joins its pages with

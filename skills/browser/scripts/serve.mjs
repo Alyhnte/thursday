@@ -8,10 +8,17 @@
  * A script imports `serveFolder(dir)` instead: it resolves to the port, the address of a
  * file in the folder, and a close. `{ instead: { [path]: text } }` serves that text in place
  * of the file on disk, which is how render.mjs shows a page in its shot mode without a copy.
+ * `{ take: <dir> }` lets the page hand files back: a POST to `/__take/<name>` writes its body
+ * to `<dir>/<name>`, which is how motion.mjs takes a film's frames faster than screenshots.
  */
-import { createReadStream, existsSync, statSync } from "node:fs";
+import {
+  createReadStream,
+  createWriteStream,
+  existsSync,
+  statSync,
+} from "node:fs";
 import { createServer } from "node:http";
-import { extname, relative, resolve, sep } from "node:path";
+import { basename, extname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const TYPES = {
@@ -36,12 +43,28 @@ const TYPES = {
 };
 
 /** Serves `dir` on 127.0.0.1; nothing outside it is ever answered. */
-export async function serveFolder(dir, { instead = {} } = {}) {
+export async function serveFolder(dir, { instead = {}, take = null } = {}) {
   const root = resolve(dir);
   const given = new Map(
     Object.entries(instead).map(([path, text]) => [resolve(root, path), text]),
   );
   const server = createServer((req, res) => {
+    if (take && req.method === "POST" && req.url.startsWith("/__take/")) {
+      // A name alone, never a path: nothing is written outside `take`
+      let name = "";
+      try {
+        name = basename(decodeURIComponent(req.url.slice(8)));
+      } catch {}
+      if (!/^[\w.-]+$/.test(name) || /^\.+$/.test(name)) {
+        res.writeHead(400).end();
+        return;
+      }
+      const out = createWriteStream(join(take, name));
+      req.pipe(out);
+      out.on("finish", () => res.writeHead(204).end());
+      out.on("error", () => res.writeHead(500).end());
+      return;
+    }
     let path;
     try {
       path = resolve(
