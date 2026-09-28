@@ -47,8 +47,9 @@ import { clip } from "@/lib/utils";
 /**
  * Which tools each runtime is handed; what it is told about them is the prompt's job.
  * Every tool runs on the server, including calls made during a voice session, except the page's
- * own: `end_call`, `emote`, `look_at_screen` and a spoken call's `look_at` have no execute (the
- * page hangs up, draws the word, takes the picture of the screen shared with it or of a file). The
+ * own: `end_call`, `emote`, `draw`, `look_at_screen` and a spoken call's `look_at` have no
+ * execute (the page hangs up, draws the word or the drawing, takes the picture of the screen
+ * shared with it or of a file). The
  * split is by time, not capability: anything that
  * presupposes waiting (MCP, studio, browser) belongs to the bot. Only the call and an edit on
  * the memory screen write to memory: revising, carrying and naming need the user there. A bot reads it.

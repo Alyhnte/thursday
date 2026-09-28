@@ -14,7 +14,7 @@ import {
   smoothstep as ss,
 } from "../ascii.const";
 import { faceGlyphs } from "../face-glyphs";
-import { buildGrid, type Grid, MOMENT_FIELD } from "../face-grid";
+import { bodyAt, buildGrid, type Grid, MOMENT_FIELD } from "../face-grid";
 import type { MomentPhase } from "../face-moment";
 import { fbm, ihash } from "../field";
 import {
@@ -860,24 +860,7 @@ class Globe {
 
   /** A small living cluster of glyphs, the way her body is: the sun and the moon are drawn so. */
   body(i: number, R: number, cx: number, cy: number, t: number) {
-    const g = this.grid;
-    if (R <= 0) return 0;
-    const dx = g.dx[i] - cx;
-    const dy = g.dy[i] - cy;
-    const d = Math.hypot(dx, dy);
-    if (d > R * 1.6) return 0;
-    const nz = fbm(dx * 0.0085 + 3.1, dy * 0.0085, t * 0.32, 3);
-    const edge = R * (0.86 + 0.34 * nz);
-    let v = ss(edge, edge * 0.45, d);
-    if (v < 0.25 && g.seed[i] < 0.3) {
-      const halo = ss(edge * 1.4, edge, d);
-      if (halo > 0)
-        v = Math.max(
-          v,
-          halo * 0.35 * (0.5 + 0.5 * Math.sin(t * 1.7 + g.seed[i] * 40)),
-        );
-    }
-    return v * (0.78 + 0.22 * g.grain[i]);
+    return bodyAt(this.grid, i, R, cx, cy, t);
   }
 
   /** Whether a front from the middle out has reached a cell: how she turns into the world, and back. */

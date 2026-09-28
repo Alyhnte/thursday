@@ -73,6 +73,10 @@ as on a spoken call, with no voice and no per-minute billing.
 - **Files**: the paperclip, a paste, or a drop anywhere on the window — at most 8 at a time, 25 MB
   each. She can look at a picture herself, so "what does this say?" is answered on the spot. The
   first picture sent to her is drawn over her face in her own emoji for about ten seconds (below).
+- **Drawing**: the brush beside the paperclip opens a drawing pad: pick a colour, draw, and
+  **Add to the message** puts the drawing on the line as a picture (on a spoken call the button
+  reads **Show Thursday**, and she is shown it at once). **Clear** starts over; closing the pad
+  keeps what is drawn for next time.
 - **Who it goes to**: the chip at the left of the line, or `@` and a name at the start. A bot picked
   there gets that one message, then the line goes back to her; **Esc** with a bot picked also goes
   back to her.
@@ -105,6 +109,10 @@ a few seconds, and go, and she is back after about ten seconds; tapping it bring
 and does not hang up. Of several pictures at once, the first is drawn. Nothing is drawn while the
 globe or another picture is over her face, when the system is set to reduce motion, or when the
 app's page is not the one in front.
+
+On a spoken call she can draw on her own face too, when asked for a drawing or when one says it
+better — a heart, a star, a check: she shrinks into a pen, draws it in her emoji of one colour,
+and is herself again after about ten seconds. Tapping it brings her back sooner.
 
 ## Seeing the words
 

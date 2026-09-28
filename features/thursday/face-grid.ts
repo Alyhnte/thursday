@@ -1,11 +1,11 @@
-import { hash } from "./ascii.const";
+import { hash, smoothstep as ss } from "./ascii.const";
 import { CELL_H, CELL_W, DESIGN } from "./components/ascii-orb";
-import { vnoise } from "./field";
+import { fbm, vnoise } from "./field";
 
 /**
  * Her grid carried out to a field wider than her canvas, for what stands over her face
- * (face-moment): the globe (here-globe) and a picture (seeing) are drawn cell for cell where
- * her own glyphs are, so the two meet without a seam.
+ * (face-moment): the globe (here-globe), a picture (seeing) and her drawing (her-drawing) are
+ * drawn cell for cell where her own glyphs are, so they meet her without a seam.
  */
 
 /**
@@ -110,4 +110,35 @@ export function buildGrid(width: number, height: number): Grid {
           : 0;
     }
   return grid;
+}
+
+/**
+ * A small living cluster of glyphs round (cx, cy), `R` in radius, the way her body is: how much
+ * of one a cell is, 0 to 1. The globe's sun and moon are drawn so, and so is her pen (her-drawing).
+ */
+export function bodyAt(
+  g: Grid,
+  i: number,
+  R: number,
+  cx: number,
+  cy: number,
+  t: number,
+) {
+  if (R <= 0) return 0;
+  const dx = g.dx[i] - cx;
+  const dy = g.dy[i] - cy;
+  const d = Math.hypot(dx, dy);
+  if (d > R * 1.6) return 0;
+  const nz = fbm(dx * 0.0085 + 3.1, dy * 0.0085, t * 0.32, 3);
+  const edge = R * (0.86 + 0.34 * nz);
+  let v = ss(edge, edge * 0.45, d);
+  if (v < 0.25 && g.seed[i] < 0.3) {
+    const halo = ss(edge * 1.4, edge, d);
+    if (halo > 0)
+      v = Math.max(
+        v,
+        halo * 0.35 * (0.5 + 0.5 * Math.sin(t * 1.7 + g.seed[i] * 40)),
+      );
+  }
+  return v * (0.78 + 0.22 * g.grain[i]);
 }

@@ -3,6 +3,7 @@
 import {
   ArrowDownToLine,
   ArrowUp,
+  Brush,
   ChevronDown,
   Paperclip,
   RotateCw,
@@ -48,6 +49,7 @@ import { composing, useEscape, windowKey } from "@/hooks/use-hotkey";
 import { useServerAction } from "@/lib/protocol/use-server-action";
 import { revalidate, useServerRoute } from "@/lib/protocol/use-server-route";
 import { cn } from "@/lib/utils";
+import { DrawPad } from "./draw-pad";
 import { ThursdayMark } from "./thursday-mark";
 
 /**
@@ -119,6 +121,8 @@ export function WriteLine({
 
   const [open, setOpen] = useState(false);
   const [picking, setPicking] = useState(false);
+  /** The drawing pad is open over the screen (draw-pad). */
+  const [drawing, setDrawing] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [draft, setDraft] = useState("");
   const spoken = useRef(onCall);
@@ -539,6 +543,14 @@ export function WriteLine({
               />
               <button
                 type="button"
+                aria-label="Draw"
+                onClick={() => setDrawing(true)}
+                className="grid size-9 shrink-0 place-items-center rounded-full text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
+              >
+                <Brush className="size-4" />
+              </button>
+              <button
+                type="button"
                 aria-label="Add files"
                 onClick={() => picker.current?.click()}
                 className="grid size-9 shrink-0 place-items-center rounded-full text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
@@ -636,6 +648,17 @@ export function WriteLine({
           </p>
         </div>
       </div>
+      <DrawPad
+        open={drawing}
+        onClose={() => setDrawing(false)}
+        onDone={(file) => {
+          setDrawing(false);
+          take([file]);
+          requestAnimationFrame(() => field.current?.focus());
+        }}
+        // on a spoken call she is shown it the moment it lands; otherwise it goes with the words
+        action={onCall ? "Show Thursday" : "Add to the message"}
+      />
     </>
   );
 }

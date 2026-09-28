@@ -801,6 +801,26 @@ export const HERE = {
 export const SEE = { holdMs: 3_600, fps: 24 };
 
 /**
+ * A drawing she makes on her face (`draw`, features/thursday/components/her-drawing), her body
+ * the pen that draws it.
+ * - `holdMs`  how long the finished drawing stays, her pen resting at its end (about 5.6 s after
+ *   she starts), before it fades and she is herself again. Longer leaves it to be looked at
+ *   longer, and her face off the screen as long.
+ * - `fps`  frames a second it draws. More costs a slow machine its smoothness everywhere else
+ *   on the screen.
+ */
+export const DRAW = { holdMs: 2_000, fps: 24 };
+
+/**
+ * The drawing pad on the write line (features/thursday/components/draw-pad), whose drawing is
+ * handed over as a picture.
+ * - `longestSide`  the longest side, in pixels, a drawing is kept at, cropped to what was drawn.
+ *   Larger keeps thin strokes and writing readable to the model that looks at it, in a heavier
+ *   file; it is never kept larger than it was drawn.
+ */
+export const DRAW_PAD = { longestSide: 1024 };
+
+/**
  * How much of the previous call the prompt carries verbatim: `rows` turns are
  * fetched, then filled newest-first until `tokens` is spent.
  */

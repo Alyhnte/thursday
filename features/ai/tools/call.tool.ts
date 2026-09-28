@@ -3,6 +3,7 @@ import * as z from "zod";
 import { lookAtSpec } from "@/features/ai/tools/look.tool";
 import { TOOL_NAMES } from "@/features/ai/tools/tool-name";
 import {
+  DRAW_COLOR_NAMES,
   FACE_WORD_MARKS,
   FACE_WORD_MAX,
 } from "@/features/thursday/ascii.const";
@@ -42,6 +43,27 @@ const emoteTool = tool({
   inputSchema: emoteSpec.parameters,
 });
 
+const drawSpec = {
+  description:
+    "Draw a small picture on your face for a few seconds, as one line in one colour.",
+  parameters: z.object({
+    path: z
+      .string()
+      .describe(
+        "One SVG path, its d attribute, in a 100 × 100 box: M, L, H, V, C, S, Q, T, A and Z.",
+      ),
+    color: z
+      .enum(DRAW_COLOR_NAMES)
+      .describe("Which of your emoji it is drawn in."),
+  }),
+};
+
+/** Deliberately has no `execute`: the page draws it. */
+const drawTool = tool({
+  description: drawSpec.description,
+  inputSchema: drawSpec.parameters,
+});
+
 const lookAtScreenSpec = {
   description: `See the screen the user is sharing with you, as it is at this moment.
 
@@ -69,6 +91,7 @@ export function callTools() {
   return {
     [TOOL_NAMES.end_call]: endCallTool,
     [TOOL_NAMES.emote]: emoteTool,
+    [TOOL_NAMES.draw]: drawTool,
     [TOOL_NAMES.look_at_screen]: lookAtScreenTool,
     [TOOL_NAMES.look_at]: lookAtTool,
   };

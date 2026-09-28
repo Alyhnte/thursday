@@ -61,9 +61,19 @@ touch), with her glyph ramp, emoji pool, eyes and washes.
 - Files: `features/thursday/components/seeing.tsx` (loaded only when it plays),
   `face-moment.ts`, `face-grid.ts`, `live-picture.ts`.
 
-## Drawing (design only)
+## Drawing (in the app)
 
-- Hers: `emote` gains a drawing, an SVG path in a 100 × 100 box and a colour from an enum mapped
-  to `EMOJI_POOL`'s colour groups. Her body shrinks into the pen that draws it.
-- Yours: a large drawing pad, captured as a PNG and shown through Seeing; the same PNG goes to the
-  model to read.
+- Hers: a page tool `draw` beside `emote` on a spoken call (a tool the call holds does one thing
+  with its arguments required, so not a second use of `emote`): an SVG path in a 100 × 100 box
+  and a colour word. The colours are her emoji pool's bands, now named in `ascii.const`
+  (`EMOJI_POOL` is built from them in the same order, so her face is unchanged), the grey band
+  split into white and black, the many-coloured one as rainbow. `svg-path.ts` reads every path
+  command. Her face gives way to her body drawn on the grid, which shrinks into a pen, draws the
+  line (3.8 s), rests (config `DRAW.holdMs`), goes home as the line fades; about 10 s. The
+  voice's delegation list names it ("Your face: draws a small picture on it").
+- Yours: the brush on the write line opens a pad (a dialog); pens are her ink and the bot marks'
+  colours. "Show Thursday" on a spoken call, "Add to the message" otherwise, keeps the drawing
+  as a PNG cropped to it on the pad's colour (config `DRAW_PAD.longestSide`) and puts it on the
+  line as a pasted picture: from there it is a picture like any other (Seeing, `look_at`).
+- Files: `features/thursday/components/her-drawing.tsx`, `draw-pad.tsx`,
+  `features/thursday/svg-path.ts`; tests in `scripts/draw.test.mts` (in `test:live`).

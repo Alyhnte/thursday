@@ -45,7 +45,13 @@ import {
 } from "@/lib/protocol/use-server-route";
 import { createOutbox, type Outbox } from "@/lib/queue";
 import { errorToString } from "@/lib/utils";
-import { FACE_WORD_MAX, undrawable } from "./ascii.const";
+import {
+  DRAW_COLOR_NAMES,
+  DRAW_COLORS,
+  type DrawColor,
+  FACE_WORD_MAX,
+  undrawable,
+} from "./ascii.const";
 import { callSignal, useCallHeld } from "./call-signal";
 import type { HereScene } from "./components/here-globe";
 import { faceMoment, useFaceMoment } from "./face-moment";
@@ -68,6 +74,7 @@ import {
   stopSharing,
   takePicture,
 } from "./screen-share";
+import { parsePath, pathLength } from "./svg-path";
 import {
   endCallAction,
   openCallAction,
@@ -1010,11 +1017,19 @@ export function useThursday(
               leave();
               return "Ending the call.";
             }
-            // the face draws the word; nothing runs anywhere else
-            if (call.name === TOOL_NAMES.emote) {
+            // the face draws the word or the drawing; nothing runs anywhere else
+            if (
+              call.name === TOOL_NAMES.emote ||
+              call.name === TOOL_NAMES.draw
+            ) {
               const over = faceMoment.current()?.moment.kind;
               if (over)
-                return `Nothing was shown: your face is showing ${over === "here" ? "where they are" : "the picture they gave you"} for a few seconds more.`;
+                return `Nothing was shown: your face is showing ${over === "here" ? "where they are" : over === "see" ? "the picture they gave you" : "your drawing"} for a few seconds more.`;
+              if (call.name === TOOL_NAMES.draw) {
+                const { drawing, reply } = readDrawing(call.arguments);
+                if (drawing) faceMoment.show({ kind: "draw", ...drawing });
+                return reply;
+              }
               const { word, reply } = readFaceWord(call.arguments);
               if (word) setFaceWord({ text: word, at: Date.now() });
               return reply;
@@ -1404,6 +1419,36 @@ export function useThursday(
 }
 
 const EMPTY_BANDS = new Array<number>(SPECTRUM_BANDS).fill(0);
+
+/** What `draw` asked for, and the line the model reads back; `drawing` is null when nothing is drawn. */
+function readDrawing(args: string): {
+  drawing: { path: string; color: DrawColor } | null;
+  reply: string;
+} {
+  let path = "";
+  let color = "";
+  try {
+    const parsed: unknown = JSON.parse(args);
+    if (parsed && typeof parsed === "object") {
+      if ("path" in parsed) path = String(parsed.path ?? "").trim();
+      if ("color" in parsed) color = String(parsed.color ?? "").trim();
+    }
+  } catch {
+    // not JSON: it named neither, and is told so below
+  }
+  if (!(color in DRAW_COLORS))
+    return {
+      drawing: null,
+      reply: `Nothing was drawn: color is one of ${DRAW_COLOR_NAMES.join(", ")}.`,
+    };
+  if (!pathLength(parsePath(path)))
+    return {
+      drawing: null,
+      reply:
+        "Nothing was drawn: the path draws no line. Give an SVG path's d in a 100 × 100 box, such as M20 52 L40 72 L82 28.",
+    };
+  return { drawing: { path, color: color as DrawColor }, reply: "Drawn." };
+}
 
 /** The path `look_at` was asked about; empty when it named none. */
 function readPath(args: string): string {

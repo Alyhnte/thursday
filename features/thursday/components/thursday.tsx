@@ -113,6 +113,10 @@ const Seeing = dynamic(
   () => import("./seeing").then((module) => module.Seeing),
   { ssr: false },
 );
+const HerDrawing = dynamic(
+  () => import("./her-drawing").then((module) => module.HerDrawing),
+  { ssr: false },
+);
 
 type CallScreenProps = {
   status: CallStatus;
@@ -296,6 +300,14 @@ function CallScreen({
             <Seeing
               key={moment.id}
               src={moment.moment.src}
+              onPhase={(phase) => faceMoment.tell(moment.id, phase)}
+            />
+          )}
+          {moment?.moment.kind === "draw" && (
+            <HerDrawing
+              key={moment.id}
+              path={moment.moment.path}
+              color={moment.moment.color}
               onPhase={(phase) => faceMoment.tell(moment.id, phase)}
             />
           )}
