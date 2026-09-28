@@ -6,13 +6,15 @@ yet: the work so far is a design canvas, https://claude.ai/artifact/CMHZ6oW7wYJ2
 ## Here: where you are and the sky over it
 
 - She turns into a globe, spins to the user's location, then dives until their country fits and
-  widens past her circle into a 2:1 field.
+  widens past her circle into a 2:1 field. On the way in everything else falls away: only their
+  country is left, drawn in her emoji.
 - Country outlines from Natural Earth 50m (world-atlas `countries-50m`, simplified to ~240 KB).
-  Their country is drawn in her emoji, neighbours as plain ground, land borders dotted.
-- A pin at the location, the local time, and the sun or the moon on today's real arc (suncalc's
-  formulas). On the globe, the night side is dark with city lights.
-- Weather over the map: clear, partly cloudy, overcast, fog, drizzle, rain, heavy rain, snow,
-  thunderstorm, typhoon (called typhoon, hurricane or cyclone by region).
+- A pin at the location and the local time. The sun glides along today's real path to where it is
+  now (suncalc's formulas); at night the moon in its real phase, with stars. On the globe, the
+  night side is dark with city lights.
+- Weather over the country, kept light: a few clouds drifting across, rain or snow falling a
+  little way from under them. Clear, partly cloudy, overcast, fog, drizzle, rain, heavy rain,
+  snow, thunderstorm, typhoon (called typhoon, hurricane or cyclone by region).
 
 ## Seeing: a picture in emoji pixels
 
