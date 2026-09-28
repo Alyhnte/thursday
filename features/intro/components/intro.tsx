@@ -409,9 +409,7 @@ export function Intro({
                   "animate-in delay-300 duration-700 fill-mode-backwards fade-in slide-in-from-bottom-2",
               )}
             >
-              {step === "mic" && !mic.on && !mic.asking && (
-                <Mic className="fill-current" />
-              )}
+              {step === "mic" && !mic.on && !mic.asking && <Mic />}
               {step === "hello"
                 ? "Start"
                 : step === "mic" && !mic.on
