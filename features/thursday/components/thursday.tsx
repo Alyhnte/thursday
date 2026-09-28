@@ -87,6 +87,7 @@ import { cn, errorToString, plainText } from "@/lib/utils";
 import { CaptionWords } from "./caption-words";
 import { ConnectWave } from "./connect-wave";
 import { Face } from "./face";
+import { HereGlobe, type HerePhase, type HereScene } from "./here-globe";
 import {
   SideCaptions,
   type Turn,
@@ -117,6 +118,11 @@ type CallScreenProps = {
   ended?: CallEnd | null;
   /** The word `emote` last put on the face. */
   faceWord?: FaceWord | null;
+  /** The globe the day's first call opens with (here-globe), drawn over her face while it is up. */
+  here?: HereScene | null;
+  /** How far it has got: once it covers her, her face is not drawn under it. */
+  herePhase?: HerePhase | null;
+  onHere?: (phase: HerePhase) => void;
   onTap: () => void;
   /** A call-back ringing; the tap answers it. */
   ringing?: Ringing | null;
@@ -152,6 +158,9 @@ function CallScreen({
   thinkingTitle = null,
   ended = null,
   faceWord = null,
+  here = null,
+  herePhase = null,
+  onHere,
   onTap,
   ringing = null,
   onDecline,
@@ -180,7 +189,9 @@ function CallScreen({
   // captions are where they were when it closes. A window too narrow for three columns
   // draws her last line instead, whatever the setting.
   const wide = useWide(SIDES_MIN_WIDTH);
-  const sided = captionView === "sides" && status !== "idle" && wide;
+  // While the globe spreads past her on either side, her words stand under her face
+  const sided =
+    captionView === "sides" && status !== "idle" && wide && here === null;
   const talk = useMemo(() => turnsOf(messages), [messages]);
   const turns = useTurnFocus(talk, sided);
   const lastRole = talk.at(-1)?.role;
@@ -261,12 +272,13 @@ function CallScreen({
                 failed={failed}
                 word={ringWord ?? faceWord}
                 getSpectrum={getSpectrum}
-                covered={covered}
+                covered={covered || herePhase === "world"}
                 className="-m-(--face-bleed) w-[calc(100%+2*var(--face-bleed))] max-w-none"
               />
             </span>
           </button>
           <ConnectWave status={status} />
+          {here && onHere && <HereGlobe scene={here} onPhase={onHere} />}
 
           {sided && (
             <SideCaptions
@@ -1817,6 +1829,9 @@ export function Thursday({
     thinkingTitle,
     ended,
     faceWord,
+    here,
+    herePhase,
+    onHere,
     idleLeft,
     since,
     call,
@@ -1907,6 +1922,9 @@ export function Thursday({
         thinkingTitle={writing ? text.thinkingTitle : thinkingTitle}
         ended={ended}
         faceWord={faceWord}
+        here={here}
+        herePhase={herePhase}
+        onHere={onHere}
         onTap={call}
         // without a key the face asks for one, so nothing can answer
         ringing={callable ? ringing : null}

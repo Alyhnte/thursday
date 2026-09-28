@@ -1,0 +1,22 @@
+world.json is the globe's map (features/thursday/here-map.ts): Natural Earth's 1:50m Admin 0
+countries, version 4.1.0, as world-atlas 2.0.2 redistributes them in TopoJSON, simplified and
+packed by scripts/here-map.mts.
+
+Natural Earth, https://www.naturalearthdata.com/: "All versions of Natural Earth raster + vector
+map data found on this website are in the public domain."
+
+world-atlas, https://github.com/topojson/world-atlas, under the ISC license:
+
+  Copyright 2013-2019 Michael Bostock
+
+  Permission to use, copy, modify, and/or distribute this software for any purpose
+  with or without fee is hereby granted, provided that the above copyright notice
+  and this permission notice appear in all copies.
+
+  THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+  REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND
+  FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+  INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS
+  OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+  TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
+  THIS SOFTWARE.

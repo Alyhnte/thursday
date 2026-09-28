@@ -27,6 +27,15 @@ known within three seconds, the call goes on without it and nothing is sent. The
 the answer; it is changed in the browser's site settings for this app (the icon left of the
 address). A phone chat has no browser, so she does not know it there.
 
+Once a day, with the location allowed, the first spoken call placed from this browser opens
+with her turning into a globe: it spins to where they are, dives until their country fills the
+screen, and shows the sky over it as it is there now — the sun or the moon where it really is,
+and the weather, lightly — while she greets them with that weather. At night the country is
+dark. After about eleven seconds she is back; tapping the globe brings her back sooner and does
+not hang up. It waits for the next call on a call she placed herself and on the very first
+call, and the day is counted in this browser only. The map is drawn in the browser, so the
+position still goes nowhere.
+
 ## What she does on the line, and what goes to a bot
 
 She answers from what she knows about them, searches the web, runs a single command on their

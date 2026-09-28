@@ -46,7 +46,13 @@ import { createOutbox, type Outbox } from "@/lib/queue";
 import { errorToString } from "@/lib/utils";
 import { FACE_WORD_MAX, undrawable } from "./ascii.const";
 import { callSignal, useCallHeld } from "./call-signal";
+import {
+  type HerePhase,
+  type HereScene,
+  loadWorld,
+} from "./components/here-globe";
 import { finished, goodbye } from "./face-words";
+import { hereDue, hereShown } from "./here-day";
 import {
   openWork,
   startedLine,
@@ -213,6 +219,24 @@ export function useThursday(
   const [thinkingTitle, setThinkingTitle] = useState<string | null>(null);
   /** The word `emote` last put on the face. */
   const [faceWord, setFaceWord] = useState<FaceWord | null>(null);
+  /**
+   * The globe the day's first call opens with (here-globe), and how far it has got; null while
+   * none is up. `emote` shows nothing from its start to its end (`hereUp`), so no word is
+   * drawn under it or cuts it short.
+   */
+  const [here, setHere] = useState<{
+    scene: HereScene;
+    phase: HerePhase | null;
+  } | null>(null);
+  const hereUp = useRef(false);
+  const herePhase = useCallback((phase: HerePhase) => {
+    if (phase === "done") {
+      hereUp.current = false;
+      setHere(null);
+      return;
+    }
+    setHere((up) => (up && up.phase !== phase ? { ...up, phase } : up));
+  }, []);
   /** The same value where callbacks can read it, and the timer that ends it. */
   const thinking = useRef<number | null>(null);
   const thinkTail = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -651,6 +675,9 @@ export function useThursday(
       // A screen is shared with a call, and goes with it; nothing about it is left to tell
       shareNews.current = null;
       stopSharing();
+      // the globe is the call's opening, and goes with it
+      hereUp.current = false;
+      setHere(null);
       rang.current = false;
       // What she did not voice goes in again next call; unsent context goes with the session
       for (const key of unvoiced.current) told.current.delete(key);
@@ -820,7 +847,20 @@ export function useThursday(
       farewell.current ??= new Audio(HUNG_UP_SOUND);
       // Asked now, from the press, so a first call's permission prompt comes with it and the
       // answer is found beside the lock and the offer
-      const where = whereNow();
+      const found = whereNow();
+      // The globe opens the first call of the day the user places (here-day), in a tab they
+      // are looking at. Its map is fetched beside the rest, and the globe is asked for only
+      // once it is here: the opening that greets them with the weather never comes without it
+      const mapped =
+        !calledBack && hereDue() && document.visibilityState === "visible"
+          ? loadWorld().then(
+              () => true,
+              (cause) => {
+                console.warn(`No globe on this call: ${errorToString(cause)}`);
+                return false;
+              },
+            )
+          : null;
       // After the audio, which has to be opened inside the click
       const release = await takeCallLock();
       if (!release)
@@ -837,6 +877,8 @@ export function useThursday(
       const line = {
         callId: "",
         opening: null as string | null,
+        /** What the globe shows as the line opens; null when this call opens without it. */
+        here: null as HereScene | null,
         standing: null as string | null,
         /** The set this call's manifest was built from (thursday.schema `opened`). */
         opened: {
@@ -901,8 +943,16 @@ export function useThursday(
 
       const live = await openLiveSession({
         initialize: async (sdp) => {
+          const place = await found;
+          const sky = place?.where.weather;
+          const showing = Boolean(sky && mapped && (await mapped));
           const handshake = unwrapResult(
-            await openCallAction(sdp, calledBack, await where),
+            await openCallAction(
+              sdp,
+              calledBack,
+              place?.where ?? null,
+              showing,
+            ),
           );
           if (!current()) {
             void endCallAction(handshake.callId);
@@ -911,6 +961,11 @@ export function useThursday(
           callId.current = handshake.callId;
           line.callId = handshake.callId;
           line.opening = handshake.opening;
+          // the server grants it where the call opens on nothing else (live.prompt)
+          line.here =
+            handshake.here && place && sky
+              ? { ...place.position, weather: sky }
+              : null;
           line.standing = handshake.standing;
           line.opened = handshake.opened;
           return handshake.sdp;
@@ -927,6 +982,8 @@ export function useThursday(
             }
             // the face draws the word; nothing runs anywhere else
             if (call.name === TOOL_NAMES.emote) {
+              if (hereUp.current)
+                return "Nothing was shown: their screen is showing where they are for a few seconds more.";
               const { word, reply } = readFaceWord(call.arguments);
               if (word) setFaceWord({ text: word, at: Date.now() });
               return reply;
@@ -1168,6 +1225,13 @@ export function useThursday(
       // The quiet clock starts with the line, so nothing is put to her the moment it opens
       heard.current = Date.now();
 
+      // The globe comes up as she starts to greet them with the weather it shows; the day is
+      // spent only now, so a call that never opened leaves it for the next
+      if (line.here) {
+        hereShown();
+        hereUp.current = true;
+        setHere({ scene: line.here, phase: null });
+      }
       if (line.opening) {
         // The greeting goes first; open work waits until she has said it. The room is kept
         // from her until she starts it, or she waits on it (config LIVE_CALL.openingHoldMs)
@@ -1287,6 +1351,12 @@ export function useThursday(
     thinkingTitle,
     /** The word `emote` last put on the face; null before one. */
     faceWord,
+    /** The globe the day's first call opens with (here-globe); null while none is up. */
+    here: here?.scene ?? null,
+    /** How far it has got, as it last said; null before it has started drawing. */
+    herePhase: here?.phase ?? null,
+    /** What the globe says of itself as it goes. */
+    onHere: herePhase,
     /** Seconds until idle hang-up; null outside the warning window. */
     idleLeft,
     /** When the line opened (ms); null without a call. */

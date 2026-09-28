@@ -7,8 +7,17 @@ import type { Where } from "./thursday.schema";
 // asks for exactly this — calls from the browser, with the device's current position from
 // the Geolocation API — so a server anywhere, local or not, never sees the position.
 
+/**
+ * What the page found: `where` goes to the server for her prompts; `position` stays on this
+ * page, where the globe is drawn (here-globe), and is never sent anywhere.
+ */
+export type Found = {
+  where: Where;
+  position: { lat: number; lon: number };
+};
+
 /** What was found last, and when: used again for `HERE.keptMs`. */
-let kept: { where: Where; at: number } | null = null;
+let kept: { found: Found; at: number } | null = null;
 
 function position(): Promise<GeolocationCoordinates> {
   return new Promise((resolve, reject) =>
@@ -59,7 +68,7 @@ async function weatherAt(
     `https://api.open-meteo.com/v1/forecast?${new URLSearchParams({
       latitude: round(at.latitude),
       longitude: round(at.longitude),
-      current: "temperature_2m,weather_code",
+      current: "temperature_2m,weather_code,wind_gusts_10m",
       daily: "temperature_2m_max,temperature_2m_min,sunrise,sunset",
       // Sunrise and sunset in the place's own time
       timezone: "auto",
@@ -67,7 +76,11 @@ async function weatherAt(
     })}`,
     signal,
   )) as {
-    current: { temperature_2m: number; weather_code: number };
+    current: {
+      temperature_2m: number;
+      weather_code: number;
+      wind_gusts_10m?: number | null;
+    };
     daily: {
       temperature_2m_max: number[];
       temperature_2m_min: number[];
@@ -77,6 +90,7 @@ async function weatherAt(
   };
   // `2026-09-27T07:28` → `07:28`
   const clock = (iso: string) => iso.slice(11, 16);
+  const gusts = body.current.wind_gusts_10m;
   return {
     code: body.current.weather_code,
     temperature: body.current.temperature_2m,
@@ -84,10 +98,12 @@ async function weatherAt(
     high: body.daily.temperature_2m_max[0],
     sunrise: clock(body.daily.sunrise[0]),
     sunset: clock(body.daily.sunset[0]),
+    // Not every forecast model has gusts at every place; unknown is said as nothing
+    gusts: typeof gusts === "number" ? gusts : null,
   };
 }
 
-async function find(signal: AbortSignal): Promise<Where | null> {
+async function find(signal: AbortSignal): Promise<Found | null> {
   const at = await position();
   const [place, weather] = await Promise.allSettled([
     placeOf(at, signal),
@@ -104,7 +120,9 @@ async function find(signal: AbortSignal): Promise<Where | null> {
     place: place.status === "fulfilled" ? place.value : null,
     weather: weather.status === "fulfilled" ? weather.value : null,
   };
-  return where.place || where.weather ? where : null;
+  return where.place || where.weather
+    ? { where, position: { lat: at.latitude, lon: at.longitude } }
+    : null;
 }
 
 /**
@@ -113,20 +131,20 @@ async function find(signal: AbortSignal): Promise<Where | null> {
  * browser's permission prompt comes with something the user did; the browser remembers the
  * answer. A refusal is theirs to make and is not logged.
  */
-export async function whereNow(): Promise<Where | null> {
-  if (kept && Date.now() - kept.at < HERE.keptMs) return kept.where;
+export async function whereNow(): Promise<Found | null> {
+  if (kept && Date.now() - kept.at < HERE.keptMs) return kept.found;
   if (!navigator.geolocation) return null;
   const deadline = new AbortController();
   const late = setTimeout(() => deadline.abort(), HERE.waitMs);
   try {
-    const where = await Promise.race([
+    const found = await Promise.race([
       find(deadline.signal),
       new Promise<null>((resolve) =>
         deadline.signal.addEventListener("abort", () => resolve(null)),
       ),
     ]);
-    if (where) kept = { where, at: Date.now() };
-    return where;
+    if (found) kept = { found, at: Date.now() };
+    return found;
   } catch (cause) {
     // 1 is PERMISSION_DENIED in the spec, read as a number: a browser without the
     // GeolocationPositionError global would throw here and fail the call it only adds to

@@ -767,8 +767,22 @@ export const HISTORY_KEEP = {
  *   outwaits the prompt goes without while the next has it.
  * - `keptMs`  how long what was found is used before it is found again. Longer asks the
  *   device and the services less often and may name a place they have left.
+ * - `globeMs`  how long the globe (features/thursday/components/here-globe), shown as the
+ *   day's first call opens, stays before she comes back. Longer leaves their sky and weather up
+ *   longer, and her face and the words beside it off the screen as long.
+ * - `globeFps`  frames a second the globe draws. It draws two or three times her cells, so
+ *   more costs a slow machine its smoothness everywhere else on the screen.
+ * - `windyKmh`, `stormKmh`  gusts past which the globe draws wind blowing across it, and a
+ *   storm turning over it as well. Lower draws them on more ordinary days.
  */
-export const HERE = { waitMs: 3_000, keptMs: 30 * 60_000 };
+export const HERE = {
+  waitMs: 3_000,
+  keptMs: 30 * 60_000,
+  globeMs: 11_000,
+  globeFps: 24,
+  windyKmh: 50,
+  stormKmh: 90,
+};
 
 /**
  * How much of the previous call the prompt carries verbatim: `rows` turns are

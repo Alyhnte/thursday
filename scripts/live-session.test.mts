@@ -1231,6 +1231,30 @@ test("both call prompts open as one Thursday: the voice gets the guide's delegat
       /\*\*Now\*\*: [^\n]+\n\*\*Where they are\*\*: Lisbon, Portugal — overcast, 22°C \(today 21–28°C\), sunrise 07:28, sunset 19:25\n\nWhat they tell you is kept/;
     assert.match(placed.text, whereAt);
     assert.equal(placed.opening.includes("Lisbon"), false);
+    assert.equal(placed.here, false);
+    // Once a day the page shows where they are as the call opens (here-globe): asked for,
+    // the greeting is the weather it shows, which the prompt already holds
+    const shown = await loadLivePrompt({ where: lisbon, here: true });
+    assert.equal(shown.here, true);
+    assert.match(
+      shown.opening,
+      /^The call has just started\. It is [^\n]+ for them, and their screen is showing where they are with the sky over it now\. Speak first: greet the user in one line, with the weather there\.$/,
+    );
+    assert.equal(shown.opening.includes("Lisbon"), false);
+    // Never without the weather to greet them with, and never over a call-back's reason
+    const noSky = await loadLivePrompt({
+      where: { place: "Lisbon, Portugal", weather: null },
+      here: true,
+    });
+    assert.equal(noSky.here, false);
+    assert.match(noSky.opening, /You may pick up one thing/);
+    const rungHere = await loadLivePrompt({
+      where: lisbon,
+      here: true,
+      calledBack: true,
+    });
+    assert.equal(rungHere.here, false);
+    assert.match(rungHere.opening, /You placed this call/);
     assert.match(await loadThursdayPrompt({ where: lisbon }), whereAt);
     assert.equal(on.text.includes("Where they are"), false);
     // Found nothing is no line, not an empty one
@@ -1334,6 +1358,23 @@ test("both call prompts open as one Thursday: the voice gets the guide's delegat
       /Speak first: greet the user in one line, say you are Thursday/,
     );
     assert.match(first.opening ?? "", /ask what to call them/);
+    // The call that introduces her opens on that alone: the globe waits for the next one
+    const firstHere = await loadLivePrompt({
+      where: {
+        place: "Lisbon, Portugal",
+        weather: {
+          code: 3,
+          temperature: 22.4,
+          low: 20.6,
+          high: 27.9,
+          sunrise: "07:28",
+          sunset: "19:25",
+        },
+      },
+      here: true,
+    });
+    assert.equal(firstHere.here, false);
+    assert.match(firstHere.opening, /say you are Thursday/);
     assert.match(
       first.text,
       /what they do, where they live, and whatever else they offer/,
@@ -1579,6 +1620,17 @@ test("where they are is written from what the page found, half of it when half w
     whereLine({ place: null, weather: { ...weather, code: 42 } }),
     /weather code 42/,
   );
+  // Gusts, when the forecast has them: what the globe draws a storm from, so she knows it too
+  assert.equal(
+    whereLine({ place: "Oslo, Norway", weather: { ...weather, gusts: 88.6 } }),
+    "**Where they are**: Oslo, Norway — slight snow fall, -3°C (today -6–0°C), sunrise 07:02, sunset 16:48, gusts 89 km/h",
+  );
+  assert.equal(
+    whereLine({ place: null, weather: { ...weather, gusts: null } }).includes(
+      "gusts",
+    ),
+    false,
+  );
   // What a page sends is fields: a place that would break the prompt's line is refused
   const { WhereSchema } = await import(
     "../features/thursday/thursday.schema.ts"
@@ -1627,7 +1679,7 @@ test("the page finds where they are from the browser's position, and goes on wit
     });
   let weather = () =>
     Response.json({
-      current: { temperature_2m: 22.4, weather_code: 3 },
+      current: { temperature_2m: 22.4, weather_code: 3, wind_gusts_10m: 31.3 },
       daily: {
         temperature_2m_max: [27.9],
         temperature_2m_min: [20.6],
@@ -1644,28 +1696,35 @@ test("the page finds where they are from the browser's position, and goes on wit
   // One module throughout: on Node 22 tsx loads it as CommonJS, cached by path, so a query
   // on the import brings back the same one. What it keeps runs out on the mocked clock.
   const { whereNow } = await import("../features/thursday/where.ts");
+  // What goes to the server is `where`; the position is the page's own, for the globe
+  const position = { lat: 38.7223, lon: -9.1393 };
   assert.deepEqual(await whereNow(), {
-    place: "Lisbon, Portugal",
-    weather: {
-      code: 3,
-      temperature: 22.4,
-      low: 20.6,
-      high: 27.9,
-      sunrise: "07:28",
-      sunset: "19:25",
+    where: {
+      place: "Lisbon, Portugal",
+      weather: {
+        code: 3,
+        temperature: 22.4,
+        low: 20.6,
+        high: 27.9,
+        sunrise: "07:28",
+        sunset: "19:25",
+        gusts: 31.3,
+      },
     },
+    position,
   });
   // The place service gets the device's own position; the forecast, a kilometre's worth
   assert.equal(urls[0]?.searchParams.get("latitude"), "38.7223");
   assert.equal(urls[1]?.searchParams.get("latitude"), "38.72");
+  assert.match(urls[1]?.searchParams.get("current") ?? "", /wind_gusts_10m/);
   // Found once, kept for a while: neither the device nor the services are asked again
   await whereNow();
   assert.equal(asked, 1);
   context.mock.timers.tick(HERE.keptMs);
   weather = () => new Response("down", { status: 503 });
   assert.deepEqual(await whereNow(), {
-    place: "Lisbon, Portugal",
-    weather: null,
+    where: { place: "Lisbon, Portugal", weather: null },
+    position,
   });
   assert.equal(asked, 2);
 

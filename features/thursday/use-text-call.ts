@@ -265,8 +265,8 @@ export function useTextCall(): TextCall {
         // the hook has already said why when this throws
         // Asked from the send that opens the call, so a first call's permission prompt
         // comes with it
-        const [opened, where] = await Promise.all([open(runsOn()), whereNow()]);
-        to = { ...opened, at: Date.now(), where };
+        const [opened, found] = await Promise.all([open(runsOn()), whereNow()]);
+        to = { ...opened, at: Date.now(), where: found?.where ?? null };
         held.current = to;
         stood.current = stoodBefore(inbox.current ?? []);
         setLine(to);
