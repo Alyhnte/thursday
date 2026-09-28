@@ -47,8 +47,9 @@ import { clip } from "@/lib/utils";
 /**
  * Which tools each runtime is handed; what it is told about them is the prompt's job.
  * Every tool runs on the server, including calls made during a voice session, except the page's
- * own: `end_call`, `emote` and `look_at_shared` have no execute (the page hangs up, draws the word,
- * takes the picture of the screen or camera shown to it). The
+ * own: `end_call`, `emote`, `draw`, `look_at_shared` and a spoken call's `look_at` have no
+ * execute (the page hangs up, draws the word or the drawing, takes the picture of the screen or
+ * camera shown to it, or of a file). The
  * split is by time, not capability: anything that
  * presupposes waiting (MCP, studio, browser) belongs to the bot. Only the call and an edit on
  * the memory screen write to memory: revising, carrying and naming need the user there. A bot reads it.
@@ -418,7 +419,8 @@ async function buildTools(run: ToolRun): Promise<ToolSet> {
       : {};
     // A picture handed over in writing is one she can see where her model carries an image
     // in a tool result; a spoken call answers the backend through the page, in text but for
-    // what they show (look_at_shared), which goes in after its answer as an image
+    // a picture — what they show (look_at_shared), or a file (callTools) — which goes in after
+    // its answer as an image
     const sees = Boolean(run.written && run.model && seesToolImages(run.model));
 
     return {

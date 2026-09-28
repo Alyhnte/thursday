@@ -122,13 +122,14 @@ const WEATHER: Record<number, string> = {
 
 /**
  * `**Where they are**: Lisbon, Portugal — overcast, 22°C (today 21–28°C), sunrise 07:28,
- * sunset 19:25`: what the browser found (thursday/where), or nothing when it found none.
+ * sunset 19:25, gusts 31 km/h`: what the browser found (thursday/where), or nothing when it
+ * found none. The gusts are what the globe draws a storm from (here-sky), so she knows of it.
  */
 export function whereLine(where?: Where | null): string {
   if (!where) return "";
   const sky = where.weather;
   const weather = sky
-    ? `${WEATHER[sky.code] ?? `weather code ${sky.code}`}, ${Math.round(sky.temperature)}°C (today ${Math.round(sky.low)}–${Math.round(sky.high)}°C), sunrise ${sky.sunrise}, sunset ${sky.sunset}`
+    ? `${WEATHER[sky.code] ?? `weather code ${sky.code}`}, ${Math.round(sky.temperature)}°C (today ${Math.round(sky.low)}–${Math.round(sky.high)}°C), sunrise ${sky.sunrise}, sunset ${sky.sunset}${sky.gusts == null ? "" : `, gusts ${Math.round(sky.gusts)} km/h`}`
     : "";
   if (where.place)
     return `**Where they are**: ${where.place}${weather ? ` — ${weather}` : ""}`;

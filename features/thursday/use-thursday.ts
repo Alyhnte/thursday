@@ -11,6 +11,7 @@ import {
   CALL_LINE,
   CALL_PAGE,
   CALL_RELAY,
+  HERE,
   INBOX_POLL_MS,
   LIVE_CALL,
 } from "@/config";
@@ -49,9 +50,20 @@ import {
 } from "@/lib/protocol/use-server-route";
 import { createOutbox, type Outbox } from "@/lib/queue";
 import { errorToString } from "@/lib/utils";
-import { FACE_WORD_MAX, undrawable } from "./ascii.const";
+import {
+  DRAW_COLOR_NAMES,
+  DRAW_COLORS,
+  type DrawColor,
+  FACE_WORD_MAX,
+  undrawable,
+} from "./ascii.const";
 import { callSignal, useCallHeld } from "./call-signal";
+import type { HereScene } from "./components/here-globe";
+import { faceMoment, useFaceMoment } from "./face-moment";
 import { finished, goodbye } from "./face-words";
+import { hereDue, hereShown } from "./here-day";
+import { loadWorld } from "./here-map";
+import { pictureOf } from "./live-picture";
 import {
   openWork,
   startedLine,
@@ -67,6 +79,7 @@ import {
   stopShowing,
   takePicture,
 } from "./show";
+import { parsePath, pathLength } from "./svg-path";
 import {
   endCallAction,
   openCallAction,
@@ -133,13 +146,7 @@ const PICTURE_ENVELOPE_BYTES = 1_024;
 
 /** What is shown as it is now, made to fit one message of a connection whose limit is `limit`. */
 function pictureFor(limit: number | null | undefined) {
-  // A limit no picture can be held to — none yet, 0, or none at all (Infinity) — is taken as
-  // the smallest one every end takes
-  const bytes =
-    limit && Number.isFinite(limit) && limit > PICTURE_ENVELOPE_BYTES * 2
-      ? limit
-      : SCTP_DEFAULT_BYTES;
-  return takePicture(bytes - PICTURE_ENVELOPE_BYTES);
+  return takePicture(pictureBytes(limit));
 }
 
 /** What she reads when she looks and nothing is shown: how they can show her, as far as this browser can. */
@@ -151,6 +158,19 @@ function nothingShown(): string {
   return ways.length
     ? `Nothing is being shown. They can show you ${ways.join(", or ")}, on the line under your face.`
     : "Nothing is being shown, and this browser can show you neither a screen nor a camera.";
+}
+
+/**
+ * What one picture for the backend may take of one message of the connection: what is shown,
+ * or a picture they gave her (`look_at`). A limit no picture can be held to — none yet, 0, or
+ * none at all (Infinity) — is taken as the smallest one every end takes.
+ */
+function pictureBytes(limit: number | null | undefined): number {
+  return (
+    (limit && Number.isFinite(limit) && limit > PICTURE_ENVELOPE_BYTES * 2
+      ? limit
+      : SCTP_DEFAULT_BYTES) - PICTURE_ENVELOPE_BYTES
+  );
 }
 
 /**
@@ -261,6 +281,13 @@ export function useThursday(
   const [thinkingTitle, setThinkingTitle] = useState<string | null>(null);
   /** The word `emote` last put on the face. */
   const [faceWord, setFaceWord] = useState<FaceWord | null>(null);
+  // The globe spends the day on its first frame, not before: one never seen leaves it for the
+  // next call (here-day)
+  const moment = useFaceMoment();
+  const globeDrawn = moment?.moment.kind === "here" && moment.phase !== null;
+  useEffect(() => {
+    if (globeDrawn) hereShown();
+  }, [globeDrawn]);
   /** The same value where callbacks can read it, and the timer that ends it. */
   const thinking = useRef<number | null>(null);
   const thinkTail = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -512,8 +539,10 @@ export function useThursday(
       told.current.add(item.key);
       unvoiced.current.add(item.key);
     }
-    // Finished work is good news before she says it (an item's key opens with what it is)
-    if (first.key.startsWith("done:")) setFaceWord(finished());
+    // Finished work is good news before she says it (an item's key opens with what it is).
+    // A moment over her face owns it while it is up: the word would be drawn under it (face-moment)
+    if (first.key.startsWith("done:") && !faceMoment.current())
+      setFaceWord(finished());
     readAloud();
     onLine.current = due.map((item) => item.key);
     onLineRows.current = due.flatMap((item) => item.relayIds);
@@ -700,6 +729,8 @@ export function useThursday(
       // What is shown is shown to a call, and goes with it; nothing about it is left to tell
       shareNews.current = null;
       stopShowing();
+      // what stands over her face came with the call, and goes with it
+      faceMoment.clear();
       rang.current = false;
       // What she did not voice goes in again next call; unsent context goes with the session
       for (const key of unvoiced.current) told.current.delete(key);
@@ -789,6 +820,7 @@ export function useThursday(
       if (leaving.current) clearInterval(leaving.current);
       // Held for the page, not this screen: left on, it would go on with no Stop in sight
       stopShowing();
+      faceMoment.clear();
     };
   }, []);
 
@@ -873,7 +905,40 @@ export function useThursday(
       farewell.current ??= new Audio(HUNG_UP_SOUND);
       // Asked now, from the press, so a first call's permission prompt comes with it and the
       // answer is found beside the lock and the offer
-      const where = whereNow();
+      const found = whereNow();
+      // The globe opens the first call of the day the user places (here-day), in a tab they are
+      // looking at, unless the system asks for less motion. Its map is fetched once there is a
+      // forecast to put over it, and the globe is asked for only if the map is in by the time
+      // the place is (HERE.waitMs from the press): the opening that greets them with the
+      // weather never comes without it, and a slow map never holds the call up
+      const mapped =
+        !calledBack &&
+        hereDue() &&
+        document.visibilityState === "visible" &&
+        !window.matchMedia("(prefers-reduced-motion: reduce)").matches
+          ? Promise.race([
+              found.then((place) =>
+                place?.where.weather
+                  ? Promise.all([
+                      loadWorld(),
+                      // its code too, which the screen loads only for it
+                      import("./components/here-globe"),
+                    ]).then(
+                      () => true,
+                      (cause) => {
+                        console.warn(
+                          `No globe on this call: ${errorToString(cause)}`,
+                        );
+                        return false;
+                      },
+                    )
+                  : false,
+              ),
+              new Promise<false>((resolve) =>
+                setTimeout(() => resolve(false), HERE.waitMs),
+              ),
+            ])
+          : null;
       // After the audio, which has to be opened inside the click
       const release = await takeCallLock();
       if (!release)
@@ -890,6 +955,8 @@ export function useThursday(
       const line = {
         callId: "",
         opening: null as string | null,
+        /** What the globe shows as the line opens; null when this call opens without it. */
+        here: null as HereScene | null,
         standing: null as string | null,
         /** The set this call's manifest was built from (thursday.schema `opened`). */
         opened: {
@@ -954,9 +1021,22 @@ export function useThursday(
 
       const live = await openLiveSession({
         initialize: async (sdp) => {
+          const place = await found;
+          const sky = place?.where.weather;
+          const showing = Boolean(
+            sky &&
+              mapped &&
+              (await mapped) &&
+              document.visibilityState === "visible",
+          );
           reached.server = true;
           const handshake = unwrapResult(
-            await openCallAction(sdp, calledBack, await where),
+            await openCallAction(
+              sdp,
+              calledBack,
+              place?.where ?? null,
+              showing,
+            ),
           );
           if (!current()) {
             void endCallAction(handshake.callId);
@@ -965,6 +1045,11 @@ export function useThursday(
           callId.current = handshake.callId;
           line.callId = handshake.callId;
           line.opening = handshake.opening;
+          // the server grants it where the call opens on nothing else (live.prompt)
+          line.here =
+            handshake.here && place && sky
+              ? { ...place.position, code: place.country, weather: sky }
+              : null;
           line.standing = handshake.standing;
           line.opened = handshake.opened;
           // On the GPT subscription's line the server relays the call's events (thursday.plan)
@@ -982,8 +1067,22 @@ export function useThursday(
               leave();
               return "Ending the call.";
             }
-            // the face draws the word; nothing runs anywhere else
-            if (call.name === TOOL_NAMES.emote) {
+            // the face draws the word or the drawing; nothing runs anywhere else
+            if (
+              call.name === TOOL_NAMES.emote ||
+              call.name === TOOL_NAMES.draw
+            ) {
+              const over = faceMoment.current()?.moment.kind;
+              if (over)
+                return `Nothing was shown: your face is showing ${over === "here" ? "where they are" : over === "see" ? "the picture they gave you" : "your drawing"} for a few seconds more.`;
+              if (call.name === TOOL_NAMES.draw) {
+                const { drawing, reply } = readDrawing(call.arguments);
+                if (!drawing) return reply;
+                // the page draws only while it is looked at, and not for someone who asked for less motion
+                return faceMoment.show({ kind: "draw", ...drawing })
+                  ? reply
+                  : "Nothing was drawn: their screen is not showing your face now, or it is set to show less motion.";
+              }
               const { word, reply } = readFaceWord(call.arguments);
               if (word) setFaceWord({ text: word, at: Date.now() });
               return reply;
@@ -996,6 +1095,22 @@ export function useThursday(
               if ("failed" in taken) return taken.failed;
               return {
                 output: `Their ${taken.kind} as it is now follows, as a picture.`,
+                image: taken.url,
+              };
+            }
+            // A picture in the workspace — one they gave her — goes in the same way: the backend
+            // answers through the page, where a tool's result can carry no picture of its own
+            if (call.name === TOOL_NAMES.look_at) {
+              const path = readPath(call.arguments);
+              if (!path)
+                return "Nothing was looked at: path is empty. Give the path from the workspace root.";
+              const taken = await pictureOf(
+                path,
+                pictureBytes(session.current?.messageLimit()),
+              );
+              if ("failed" in taken) return taken.failed;
+              return {
+                output: `${path} follows, as a picture.`,
                 image: taken.url,
               };
             }
@@ -1217,6 +1332,9 @@ export function useThursday(
       // The quiet clock starts with the line, so nothing is put to her the moment it opens
       heard.current = Date.now();
 
+      // The globe comes up as she starts to greet them with the weather it shows, if they are
+      // still looking: a hidden page draws nothing, and it would come up late, over the talk
+      if (line.here) faceMoment.show({ kind: "here", scene: line.here });
       if (line.opening) {
         // The greeting goes first; open work waits until she has said it. The room is kept
         // from her until she starts it, or she waits on it (config LIVE_CALL.openingHoldMs)
@@ -1358,6 +1476,48 @@ export function useThursday(
 }
 
 const EMPTY_BANDS = new Array<number>(SPECTRUM_BANDS).fill(0);
+
+/** What `draw` asked for, and the line the model reads back; `drawing` is null when nothing is drawn. */
+function readDrawing(args: string): {
+  drawing: { path: string; color: DrawColor } | null;
+  reply: string;
+} {
+  let path = "";
+  let color = "";
+  try {
+    const parsed: unknown = JSON.parse(args);
+    if (parsed && typeof parsed === "object") {
+      if ("path" in parsed) path = String(parsed.path ?? "").trim();
+      if ("color" in parsed) color = String(parsed.color ?? "").trim();
+    }
+  } catch {
+    // not JSON: it named neither, and is told so below
+  }
+  if (!Object.hasOwn(DRAW_COLORS, color))
+    return {
+      drawing: null,
+      reply: `Nothing was drawn: color is one of ${DRAW_COLOR_NAMES.join(", ")}.`,
+    };
+  if (!pathLength(parsePath(path)))
+    return {
+      drawing: null,
+      reply:
+        "Nothing was drawn: the path draws no line. Give an SVG path's d in a 100 × 100 box, such as M20 52 L40 72 L82 28.",
+    };
+  return { drawing: { path, color: color as DrawColor }, reply: "Drawn." };
+}
+
+/** The path `look_at` was asked about; empty when it named none. */
+function readPath(args: string): string {
+  try {
+    const parsed: unknown = JSON.parse(args);
+    if (parsed && typeof parsed === "object" && "path" in parsed)
+      return String(parsed.path ?? "").trim();
+  } catch {
+    // not JSON: it named no path, and is told so
+  }
+  return "";
+}
 
 /** What `emote` asked the face to show, and the line the model reads back; `word` is null when nothing is shown. */
 function readFaceWord(args: string): { word: string | null; reply: string } {

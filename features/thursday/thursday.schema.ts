@@ -39,6 +39,8 @@ export const WhereSchema = z.object({
       /** `07:28`, the place's own time. */
       sunrise: z.string().regex(/^\d{2}:\d{2}$/),
       sunset: z.string().regex(/^\d{2}:\d{2}$/),
+      /** km/h, now; null where the forecast has none. What draws a storm on the globe (here-sky). */
+      gusts: z.number().min(0).nullish(),
     })
     .nullable(),
 });
@@ -51,6 +53,12 @@ export type CallHandshake = {
   sdp: string;
   /** Trusted instructions sent after session.started, so she speaks first. */
   opening: string;
+  /**
+   * The opening greets them with the weather, because the page asked to show where they are
+   * as the call opens (here-globe): the page draws it only then, so what she says and what
+   * is on the screen are the same.
+   */
+  here: boolean;
   /**
    * The jobs open as the call started (ai/prompts/call-standing), queued for the backend
    * alone once the line is up. Null when nothing has been handed over yet.
