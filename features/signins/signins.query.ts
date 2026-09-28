@@ -1,14 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
-import {
-  mkdir,
-  readdir,
-  readFile,
-  rename,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
+import { z } from "zod";
 import { appEvents } from "@/app/api/events/app-event.server";
 import { BROWSER_CLI, DATA_DIR, PATHS } from "@/config";
 import {
@@ -21,6 +14,7 @@ import {
   WORKSPACE,
 } from "@/features/workspace/workspace";
 import { logger } from "@/lib/logger";
+import { createKeyedLock } from "@/lib/queue";
 import type { Sandbox } from "@/lib/sandbox";
 import { type SignIn, siteOf } from "./signins.schema";
 
@@ -29,12 +23,22 @@ import { type SignIn, siteOf } from "./signins.schema";
  * bots work in, so no bot comes across another's session among its files. It is a place, not
  * a lock — a bot's shell is not confined — and what it buys is that a session reaches a
  * browser only through the app, which asks the list below first. A file holds the record and
- * the browser's storage state together, so signing out of one account is removing one file.
+ * the browser's storage state together, so signing out of one account is removing its file.
  */
 // Dot-prefixed like the workspace, so in a checkout it never reads as part of the app
 const VAULT = join(DATA_DIR, PATHS.signIns);
 
-type Kept = SignIn & { state: unknown };
+/** What a file holds, as every build since the vault began writes it; anything else is not read. */
+const KeptFile = z.object({
+  site: z.string().min(1),
+  account: z.string().min(1),
+  bots: z.array(z.string()),
+  asking: z.array(z.string()),
+  keptAt: z.string(),
+  usedAt: z.string().nullable(),
+  state: z.unknown(),
+});
+type Kept = z.infer<typeof KeptFile>;
 
 /**
  * A sign-in's file: the site as it reads, and the account hashed, so any name the site shows
@@ -47,39 +51,107 @@ const fileOf = (site: string, account: string) =>
     `${encodeURIComponent(siteOf(site))}@${createHash("sha256").update(account).digest("hex").slice(0, 16)}.json`,
   );
 
-const changed = () => appEvents.emit({ type: "signins" });
+/**
+ * Where a build from before accounts kept a site's one sign-in. It is read where it is, and
+ * moves to its account's file the first time that sign-in is written (`write`): nothing is
+ * moved in bulk, so nothing can be left half moved.
+ */
+const olderFileOf = (site: string) =>
+  join(VAULT, `${encodeURIComponent(siteOf(site))}.json`);
 
-async function readKept(path: string): Promise<Kept | null> {
+/** The site a vault file is for, from its name alone; null for a file that is no sign-in. */
+function siteOfName(name: string): string | null {
+  const [, site] = /^([^@]+)(?:@[0-9a-f]{16})?\.json$/.exec(name) ?? [];
+  if (!site) return null;
   try {
-    const kept = JSON.parse(await readFile(path, "utf8")) as Kept;
-    return typeof kept.site === "string" && typeof kept.account === "string"
-      ? kept
-      : null;
+    return decodeURIComponent(site);
   } catch {
     return null;
   }
 }
 
-const read = (site: string, account: string) => readKept(fileOf(site, account));
+const changed = () => appEvents.emit({ type: "signins" });
+
+async function readKept(path: string): Promise<Kept | null> {
+  try {
+    const kept = KeptFile.safeParse(JSON.parse(await readFile(path, "utf8")));
+    return kept.success ? kept.data : null;
+  } catch {
+    return null;
+  }
+}
+
+/** One account's sign-in, in its own file or still in the site's older one. */
+async function read(site: string, account: string): Promise<Kept | null> {
+  const own = await readKept(fileOf(site, account));
+  if (own) return own;
+  const older = await readKept(olderFileOf(site));
+  return older?.site === siteOf(site) && older.account === account
+    ? older
+    : null;
+}
+
+/** An older file that holds this account goes: its sign-in is in the account's own file now, or signed out. */
+async function dropOlder(site: string, account: string) {
+  const path = olderFileOf(site);
+  const older = await readKept(path);
+  if (older?.site === siteOf(site) && older.account === account)
+    await rm(path, { force: true });
+}
+
+async function write(kept: Kept) {
+  await mkdir(VAULT, { recursive: true });
+  // Owner-only: the session signs in as them
+  await writeFile(fileOf(kept.site, kept.account), JSON.stringify(kept), {
+    mode: 0o600,
+  });
+  await dropOlder(kept.site, kept.account);
+  changed();
+}
 
 /**
- * Every sign-in kept, by site, then account. Only files where their own site and account put
- * them: one left under an older name (settleVault) is not a second copy of anything.
+ * Every write to the vault reads, decides and writes in one lane, so two of them — a bot's
+ * turn renewing a sign-in while the user lets another bot use it — never write over each
+ * other. Pinned to globalThis: a route and an action a dev reload loads apart share it.
  */
-async function listKept(): Promise<Kept[]> {
-  await settled();
+const vaultLane = ((
+  globalThis as typeof globalThis & {
+    __signInsVault?: ReturnType<typeof createKeyedLock>;
+  }
+).__signInsVault ??= createKeyedLock());
+const inVault = <T>(work: () => Promise<T>) => vaultLane("vault", work);
+
+const record = ({ state: _state, ...signIn }: Kept): SignIn => signIn;
+
+/** The sites the vault holds sign-ins for, from its file names alone. */
+async function keptSites(): Promise<string[]> {
   const names = await readdir(VAULT).catch(() => [] as string[]);
-  const all = await Promise.all(
-    names
-      .filter((name) => name.endsWith(".json"))
-      .map(async (name) => {
-        const kept = await readKept(join(VAULT, name));
-        return kept && basename(fileOf(kept.site, kept.account)) === name
-          ? kept
-          : null;
-      }),
+  return [...new Set(names.flatMap((name) => siteOfName(name) ?? []))].sort();
+}
+
+/**
+ * The sign-ins kept, by site, then account; `only` names the sites to read, so a lookup opens
+ * that site's files alone. A site's older file counts until its account has a file of its own.
+ */
+async function listKept(only?: (site: string) => boolean): Promise<Kept[]> {
+  const names = (await readdir(VAULT).catch(() => [] as string[])).filter(
+    (name) => {
+      const site = siteOfName(name);
+      return site !== null && (!only || only(site));
+    },
   );
-  return all
+  const found = await Promise.all(
+    names.map(async (name) => {
+      const kept = await readKept(join(VAULT, name));
+      if (!kept) return null;
+      const own = basename(fileOf(kept.site, kept.account));
+      if (name === own) return kept;
+      return name === basename(olderFileOf(kept.site)) && !names.includes(own)
+        ? kept
+        : null;
+    }),
+  );
+  return found
     .flatMap((kept) => (kept ? [kept] : []))
     .sort(
       (a, b) =>
@@ -94,26 +166,14 @@ async function listKept(): Promise<Kept[]> {
  */
 async function keptFor(site: string): Promise<Kept[]> {
   const asked = siteOf(site);
-  const all = await listKept();
-  const own = all.filter((one) => one.site === asked);
-  if (own.length) return own;
-  const over = all
-    .map((one) => one.site)
-    .filter((kept) => asked.endsWith(`.${kept}`))
-    .sort((a, b) => b.length - a.length)[0];
-  return over ? all.filter((one) => one.site === over) : [];
+  const sites = await keptSites();
+  const at = sites.includes(asked)
+    ? asked
+    : sites
+        .filter((kept) => asked.endsWith(`.${kept}`))
+        .sort((a, b) => b.length - a.length)[0];
+  return at ? listKept((one) => one === at) : [];
 }
-
-async function write(kept: Kept) {
-  await mkdir(VAULT, { recursive: true });
-  // Owner-only: the session signs in as them
-  await writeFile(fileOf(kept.site, kept.account), JSON.stringify(kept), {
-    mode: 0o600,
-  });
-  changed();
-}
-
-const record = ({ state: _state, ...signIn }: Kept): SignIn => signIn;
 
 export async function listSignIns(): Promise<SignIn[]> {
   return (await listKept()).map(record);
@@ -127,46 +187,51 @@ export async function listSignIns(): Promise<SignIn[]> {
  * the user — it goes on the asking list instead, as `borrowSignIn` does. The account is the
  * name the bot read off the page, which the app cannot check, so a name that matches none the
  * site keeps is kept beside them only when the bot says it is `another` account: the same
- * account written two ways is caught before it is two rows.
+ * account written two ways is caught before it is two rows. And a name the site keeps
+ * already is never `another` account: on a site that shows no name both would be the site's
+ * own, and the second would be kept over the first — it needs a name that tells it apart.
  */
-export async function keepSignIn(input: {
+export function keepSignIn(input: {
   site: string;
   account: string;
   bot: string;
   state: unknown;
   another?: boolean | null;
 }): Promise<
-  | { kind: "kept" | "taken"; signIn: SignIn }
+  | { kind: "kept"; signIn: SignIn; replaced: boolean }
+  | { kind: "taken"; signIn: SignIn }
   | { kind: "unlisted"; site: string; accounts: string[] }
+  | { kind: "clash"; site: string; accounts: string[] }
 > {
-  const kept = await keptFor(input.site);
-  const site = kept[0]?.site ?? siteOf(input.site);
-  const account = input.account.trim() || site;
-  const before = kept.find((one) => one.account === account);
-  if (before && !before.bots.includes(input.bot)) {
-    const asked = before.asking.includes(input.bot)
-      ? before
-      : { ...before, asking: [...before.asking, input.bot] };
-    if (asked !== before) await write(asked);
-    return { kind: "taken", signIn: record(asked) };
-  }
-  if (!before && kept.length && !input.another)
-    return {
-      kind: "unlisted",
+  return inVault(async () => {
+    const kept = await keptFor(input.site);
+    const site = kept[0]?.site ?? siteOf(input.site);
+    const account = input.account.trim() || site;
+    const accounts = kept.map((one) => one.account);
+    const before = kept.find((one) => one.account === account);
+    if (before && input.another)
+      return { kind: "clash" as const, site, accounts };
+    if (before && !before.bots.includes(input.bot)) {
+      const asked = before.asking.includes(input.bot)
+        ? before
+        : { ...before, asking: [...before.asking, input.bot] };
+      if (asked !== before) await write(asked);
+      return { kind: "taken" as const, signIn: record(asked) };
+    }
+    if (!before && kept.length && !input.another)
+      return { kind: "unlisted" as const, site, accounts };
+    const next: Kept = {
       site,
-      accounts: kept.map((one) => one.account),
+      account,
+      bots: [...new Set([...(before?.bots ?? []), input.bot])],
+      asking: (before?.asking ?? []).filter((bot) => bot !== input.bot),
+      keptAt: new Date().toISOString(),
+      usedAt: before?.usedAt ?? null,
+      state: input.state,
     };
-  const next: Kept = {
-    site,
-    account,
-    bots: [...new Set([...(before?.bots ?? []), input.bot])],
-    asking: (before?.asking ?? []).filter((bot) => bot !== input.bot),
-    keptAt: new Date().toISOString(),
-    usedAt: before?.usedAt ?? null,
-    state: input.state,
-  };
-  await write(next);
-  return { kind: "kept", signIn: record(next) };
+    await write(next);
+    return { kind: "kept" as const, signIn: record(next), replaced: !!before };
+  });
 }
 
 /**
@@ -176,7 +241,7 @@ export async function keepSignIn(input: {
  * tap. Which account the work is for is the bot's to say, or the user's: with more than one
  * kept, none is picked for it.
  */
-export async function borrowSignIn(
+export function borrowSignIn(
   site: string,
   bot: string,
   account?: string | null,
@@ -186,32 +251,30 @@ export async function borrowSignIn(
   | { kind: "pick"; site: string; accounts: string[] }
   | { kind: "ask"; signIn: SignIn }
 > {
-  const kept = await keptFor(site);
-  if (!kept.length)
-    return {
-      kind: "none",
-      kept: [...new Set((await listKept()).map((one) => one.site))],
-    };
-  const named = account?.trim();
-  const one = named
-    ? kept.find((each) => each.account === named)
-    : kept.length === 1
-      ? kept[0]
-      : undefined;
-  if (!one)
-    return {
-      kind: "pick",
-      site: kept[0].site,
-      accounts: kept.map((each) => each.account),
-    };
-  if (!one.bots.includes(bot)) {
-    if (!one.asking.includes(bot))
-      await write({ ...one, asking: [...one.asking, bot] });
-    return { kind: "ask", signIn: record(one) };
-  }
-  const used = { ...one, usedAt: new Date().toISOString() };
-  await write(used);
-  return { kind: "state", signIn: record(used), state: one.state };
+  return inVault(async () => {
+    const kept = await keptFor(site);
+    if (!kept.length) return { kind: "none" as const, kept: await keptSites() };
+    const named = account?.trim();
+    const one = named
+      ? kept.find((each) => each.account === named)
+      : kept.length === 1
+        ? kept[0]
+        : undefined;
+    if (!one)
+      return {
+        kind: "pick" as const,
+        site: kept[0].site,
+        accounts: kept.map((each) => each.account),
+      };
+    if (!one.bots.includes(bot)) {
+      if (!one.asking.includes(bot))
+        await write({ ...one, asking: [...one.asking, bot] });
+      return { kind: "ask" as const, signIn: record(one) };
+    }
+    const used = { ...one, usedAt: new Date().toISOString() };
+    await write(used);
+    return { kind: "state" as const, signIn: record(used), state: one.state };
+  });
 }
 
 /** A participant's session as the browser CLI lists it, or null when it has none open. */
@@ -244,6 +307,24 @@ export async function sessionWindow(
   const open = await listedBrowser(sandbox, env);
   return !!open && !open.attached && open.headed === true;
 }
+
+/**
+ * What the app does to one participant's browser — lend a sign-in, keep one, renew what it
+ * holds — runs one at a time. Two at once, a turn's renewal still running as the next turn
+ * lends, or two sign-ins lent in one step, would read one sign-in's cookies while the
+ * browser already holds the other's, and write them into the wrong file. A bot's own
+ * commands are not in the lane; the mark is what catches those (renewHeld).
+ */
+const browserLane = ((
+  globalThis as typeof globalThis & {
+    __signInsBrowser?: ReturnType<typeof createKeyedLock>;
+  }
+).__signInsBrowser ??= createKeyedLock());
+
+export const inBrowser = <T>(
+  env: Record<string, string>,
+  work: () => Promise<T>,
+) => browserLane(env.PLAYWRIGHT_CLI_SESSION ?? "", work);
 
 /**
  * The kept sign-ins each browser holds because the app put them there (`sign_in_use`) or took
@@ -288,6 +369,13 @@ async function readMark(
   }
 }
 
+/**
+ * Whether this process has seen a mark set in one command read back in the next: a CLI that
+ * stopped keeping one context between commands would lose every mark, and every renewal after
+ * would be skipped without a word. Once seen, a set that succeeds is taken at its word.
+ */
+let marksLast = false;
+
 async function setMark(
   sandbox: Sandbox,
   env: Record<string, string>,
@@ -297,9 +385,10 @@ async function setMark(
     `playwright-cli --raw run-code "async page => { page.context().${MARK} = '${mark}'; return true; }"`,
     { env, timeoutMs: BROWSER_CLI.readMs },
   );
-  // Read back: a CLI that stopped keeping one context between commands would lose it, and
-  // every renewal after would be skipped without a word
-  return set.exitCode === 0 && (await readMark(sandbox, env)) === mark;
+  if (set.exitCode !== 0) return false;
+  if (marksLast) return true;
+  marksLast = (await readMark(sandbox, env)) === mark;
+  return marksLast;
 }
 
 /**
@@ -385,8 +474,9 @@ const cookieKey = (cookie: Cookie) =>
  * participant's browser's cookies go back into the kept sign-ins it holds (`holdSignIn`) and
  * its bot may still use — only the cookies a sign-in already holds (same name, domain and
  * path), so a browser that signed out changes nothing, and only from the browser the app
- * marked. Run after every turn (renewSignIns) and before a load clears what the browser holds
- * (ai/tools/signin.tool). One attached to the user's own Chrome is theirs and is not read.
+ * marked, read before the cookies are taken and again after. Run after every turn
+ * (renewSignIns) and before a sign-in is lent (ai/tools/signin.tool), always inside
+ * `inBrowser`. One attached to the user's own Chrome is theirs and is not read.
  */
 export async function renewHeld(
   sandbox: Sandbox,
@@ -400,14 +490,15 @@ export async function renewHeld(
     holding.delete(key);
     return;
   }
-  const mark = await readMark(sandbox, env);
-  // Unreadable: nothing is copied from a browser the app cannot tell, and it is asked again next time
-  if (mark === undefined) return;
-  if (mark !== held.mark) {
-    // Another browser under the same session, started by `open`: it was never lent anything
-    holding.delete(key);
-    return;
-  }
+  // Unreadable: nothing is copied from a browser the app cannot tell, and it is asked again
+  // next time. Another mark, or none: another browser under the same session, started by
+  // `open`, which was never lent anything
+  const marked = async () => {
+    const mark = await readMark(sandbox, env);
+    if (mark !== undefined && mark !== held.mark) holding.delete(key);
+    return mark === held.mark;
+  };
+  if (!(await marked())) return;
 
   const path = browserStateFile();
   let now: Map<string, Cookie>;
@@ -422,96 +513,65 @@ export async function renewHeld(
   } finally {
     await sandbox.exec(`rm -f ${path}`);
   }
+  // A bot's own `open` between the two reads started another browser: what was taken is its
+  if (holding.get(key) !== held || !(await marked())) return;
 
-  for (const [site, account] of held.sites) {
-    const kept = await read(site, account);
-    const state = kept?.state as State | undefined;
-    if (!kept || !state?.cookies || !kept.bots.includes(held.bot)) continue;
-    let renewed = false;
-    const cookies = state.cookies.map((cookie) => {
-      const fresh = now.get(cookieKey(cookie));
-      if (!fresh || JSON.stringify(fresh) === JSON.stringify(cookie))
-        return cookie;
-      renewed = true;
-      return fresh;
+  for (const [site, account] of held.sites)
+    await inVault(async () => {
+      const kept = await read(site, account);
+      const state = kept?.state as State | undefined;
+      if (!kept || !state?.cookies || !kept.bots.includes(held.bot)) return;
+      let renewed = false;
+      const cookies = state.cookies.map((cookie) => {
+        const fresh = now.get(cookieKey(cookie));
+        if (!fresh || JSON.stringify(fresh) === JSON.stringify(cookie))
+          return cookie;
+        renewed = true;
+        return fresh;
+      });
+      if (renewed) await write({ ...kept, state: { ...state, cookies } });
     });
-    if (renewed) await write({ ...kept, state: { ...state, cookies } });
-  }
 }
 
 /** After a bot's turn: `session` is the participant's (workspace botBrowserSession). */
 export async function renewSignIns(session: string): Promise<void> {
   const env = jobShellEnv(session);
   if (!holding.get(env.PLAYWRIGHT_CLI_SESSION ?? "")?.sites.size) return;
-  await renewHeld(await openWorkspace(), env);
+  const sandbox = await openWorkspace();
+  await inBrowser(env, () => renewHeld(sandbox, env));
 }
 
 /** The user's say on one bot: let in, or not any more. Only the screen calls this. */
-export async function setSignInBot(
+export function setSignInBot(
   site: string,
   account: string,
   bot: string,
   on: boolean,
-) {
-  const kept = await read(site, account);
-  if (!kept) return;
-  await write({
-    ...kept,
-    bots: on
-      ? [...new Set([...kept.bots, bot])]
-      : kept.bots.filter((one) => one !== bot),
-    asking: kept.asking.filter((one) => one !== bot),
+): Promise<void> {
+  return inVault(async () => {
+    const kept = await read(site, account);
+    if (!kept) return;
+    await write({
+      ...kept,
+      bots: on
+        ? [...new Set([...kept.bots, bot])]
+        : kept.bots.filter((one) => one !== bot),
+      asking: kept.asking.filter((one) => one !== bot),
+    });
   });
 }
 
 /**
- * Signs out of one account as far as the app can: what is kept for it goes, and the site's
- * other accounts stay. The site may still list the session.
+ * Signs out of one account as far as the app can: what is kept for it goes, in its own file
+ * and in an older one still holding it, and the site's other accounts stay. The site may
+ * still list the session.
  */
-export async function removeSignIn(site: string, account: string) {
-  await rm(fileOf(site, account), { force: true });
-  changed();
-}
-
-/**
- * Sign-ins kept before a site kept one per account sat in one file a site (`<site>.json`):
- * each moves to its account's file, as it is. A file whose place is taken stays where it is,
- * and the log names it.
- */
-export async function settleVault(): Promise<void> {
-  for (const name of await readdir(VAULT).catch(() => [] as string[])) {
-    if (!name.endsWith(".json")) continue;
-    const from = join(VAULT, name);
-    const kept = await readKept(from);
-    if (!kept) continue;
-    const to = fileOf(kept.site, kept.account);
-    if (to === from) continue;
-    if (existsSync(to)) {
-      logger.warn(
-        `sign-ins: ${name} stays where it is: ${kept.site} (${kept.account}) is kept in ${basename(to)} already`,
-      );
-      continue;
-    }
-    await rename(from, to);
-    logger.info(
-      `sign-ins: ${kept.site} (${kept.account}) has its own file now`,
-    );
-  }
-}
-
-/**
- * The move runs before this process first reads the vault, not at boot: `next dev` loads new
- * code into a server that never boots again, and would read none of the older files until a
- * restart. Pinned to globalThis so a reload does not run it twice.
- */
-function settled(): Promise<void> {
-  const pinned = globalThis as typeof globalThis & {
-    __signInsSettled?: Promise<void>;
-  };
-  pinned.__signInsSettled ??= settleVault().catch((cause) =>
-    logger.error("sign-ins: the vault could not be settled", cause),
-  );
-  return pinned.__signInsSettled;
+export function removeSignIn(site: string, account: string): Promise<void> {
+  return inVault(async () => {
+    await rm(fileOf(site, account), { force: true });
+    await dropOlder(site, account);
+    changed();
+  });
 }
 
 /**
@@ -534,13 +594,11 @@ export async function adoptKeptSessions(): Promise<void> {
         const account = (
           await readFile(join(folder, "account.txt"), "utf8").catch(() => "")
         ).trim();
-        const kept = await keepSignIn({
-          site,
-          account,
-          bot,
-          state,
-          another: true,
-        });
+        let kept = await keepSignIn({ site, account, bot, state });
+        if (kept.kind === "unlisted")
+          kept = await keepSignIn({ site, account, bot, state, another: true });
+        if (kept.kind !== "kept" && kept.kind !== "taken")
+          throw new Error(`${site} (${account}) could not be told apart`);
         await rm(path);
         logger.info(
           kept.kind === "kept"

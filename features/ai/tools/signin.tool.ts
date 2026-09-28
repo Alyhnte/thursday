@@ -7,13 +7,14 @@ import {
   carryHold,
   forgetBrowser,
   holdSignIn,
+  inBrowser,
   keepSignIn,
   releaseSignIn,
   renewHeld,
   sessionBrowser,
   sessionWindow,
 } from "@/features/signins/signins.query";
-import { siteOf } from "@/features/signins/signins.schema";
+import { type SignIn, siteOf } from "@/features/signins/signins.schema";
 import {
   browserStateFile,
   saveBrowserState,
@@ -55,7 +56,10 @@ export function createSignInTools(
    * in, on the page it was on. A browser cannot turn headless, so it is closed and opened
    * again with the sign-in loaded from `state` (a state file standing at that path).
    */
-  const hideWindow = async (state: string): Promise<string> => {
+  const hideWindow = async (
+    state: string,
+    signIn: Pick<SignIn, "site" | "account">,
+  ): Promise<string> => {
     if (!(await sessionWindow(sandbox, env).catch(() => false))) return "";
     const at = await sandbox.exec(
       `playwright-cli --raw run-code "async page => page.url()"`,
@@ -77,9 +81,10 @@ export function createSignInTools(
       (/^https?:/.test(url)
         ? await cli(`playwright-cli goto '${url.replaceAll("'", "'\\''")}'`)
         : null);
+    const use = `\`${TOOL_NAMES.sign_in_use}\` with ${signIn.site} and \`account\` ${signIn.account}`;
     return failed
-      ? `The window closed, but your browser did not come back signed in: ${failed}. Open it (\`playwright-cli open\`) and call \`${TOOL_NAMES.sign_in_use}\` with the site.`
-      : `The window was for the sign-in, so it is closed: your browser goes on without one, signed in, on the same page. When what comes next is theirs to see, open it \`--headed\` and call \`${TOOL_NAMES.sign_in_use}\` again.`;
+      ? `The window closed, but your browser did not come back signed in: ${failed}. Open it (\`playwright-cli open\`) and call ${use}.`
+      : `The window was for the sign-in, so it is closed: your browser goes on without one, signed in, on the same page. When what comes next is theirs to see, open it \`--headed\` and call ${use} again.`;
   };
 
   return {
@@ -95,37 +100,39 @@ export function createSignInTools(
             "Which of the site's accounts, as the app names them, when it keeps more than one.",
           ),
       }),
-      execute: async ({ site, account }) => {
-        // A kept session loaded into their Chrome would replace the one they are signed in with
-        if ((await sessionBrowser(sandbox, env)) === "theirs")
-          return "You are working in their own Chrome: it is already signed in as them, and nothing is loaded into it. Go to the site.";
-        const found = await borrowSignIn(site, bot, account);
-        if (found.kind === "none")
-          return found.kept.length
-            ? `Nothing is kept for ${siteOf(site)}. Kept: ${found.kept.join(", ")} — call again with one of those if it is the same site. Otherwise open the site's sign-in page in a window they can see, ask them to sign in there, and call \`${TOOL_NAMES.sign_in_keep}\` once they have.`
-            : `Nothing is kept for ${siteOf(site)}. Open its sign-in page in a window they can see, ask them to sign in there, and call \`${TOOL_NAMES.sign_in_keep}\` once they have.`;
-        if (found.kind === "pick")
-          return account?.trim()
-            ? `Nothing is kept for ${found.site} as ${account.trim()}. Kept there: ${found.accounts.join(", ")} — call again with one of those as it is written. For another account, open the site's sign-in page in a new browser they can see (\`playwright-cli open <its sign-in url> --headed\`), ask them to sign in there, and call \`${TOOL_NAMES.sign_in_keep}\` once they have.`
-            : `${found.site} keeps more than one account: ${found.accounts.join(", ")}. Call again with \`account\`, the one this work is for; when the user has not said which, ask them.`;
-        if (found.kind === "ask")
-          return `The user keeps a ${found.signIn.site} sign-in (${found.signIn.account}) and has not let you use it. Ask them, as a question, whether you may; they allow it on screen. Call again once they have said yes.`;
+      execute: ({ site, account }) =>
+        inBrowser(env, async () => {
+          // A kept session loaded into their Chrome would replace the one they are signed in with
+          if ((await sessionBrowser(sandbox, env)) === "theirs")
+            return "You are working in their own Chrome: it is already signed in as them, and nothing is loaded into it. Go to the site.";
+          // What the app lent this browser goes back first: loading clears every cookie it
+          // holds, and the account asked for may be the one it holds, renewed since it was read
+          await renewHeld(sandbox, env).catch((cause) =>
+            logger.warn(`${bot}: kept sign-ins were not renewed`, cause),
+          );
+          const found = await borrowSignIn(site, bot, account);
+          if (found.kind === "none")
+            return found.kept.length
+              ? `Nothing is kept for ${siteOf(site)}. Kept: ${found.kept.join(", ")} — call again with one of those if it is the same site. Otherwise open the site's sign-in page in a window they can see, ask them to sign in there, and call \`${TOOL_NAMES.sign_in_keep}\` once they have.`
+              : `Nothing is kept for ${siteOf(site)}. Open its sign-in page in a window they can see, ask them to sign in there, and call \`${TOOL_NAMES.sign_in_keep}\` once they have.`;
+          if (found.kind === "pick")
+            return account?.trim()
+              ? `Nothing is kept for ${found.site} as ${account.trim()}. Kept there: ${found.accounts.join(", ")} — call again with one of those as it is written. For another account, open the site's sign-in page in a new browser they can see (\`playwright-cli open <its sign-in url> --headed\`), ask them to sign in there, and call \`${TOOL_NAMES.sign_in_keep}\` once they have.`
+              : `${found.site} keeps more than one account: ${found.accounts.join(", ")}. Call again with \`account\`, the one this work is for; when the user has not said which, ask them.`;
+          if (found.kind === "ask")
+            return `The user keeps a ${found.signIn.site} sign-in (${found.signIn.account}) and has not let you use it. Ask them, as a question, whether you may; they allow it on screen. Call again with \`account\` ${found.signIn.account} once they have said yes.`;
 
-        // Loading clears every cookie the browser holds: what the app lent it before goes back first
-        await renewHeld(sandbox, env).catch((cause) =>
-          logger.warn(`${bot}: kept sign-ins were not renewed`, cause),
-        );
-        const path = browserStateFile();
-        await sandbox.writeFile(path, JSON.stringify(found.state));
-        const failed = await cli(`playwright-cli state-load ${path}`).finally(
-          () => sandbox.exec(`rm -f ${path}`),
-        );
-        if (failed) forgetBrowser(env);
-        else await holdSignIn(sandbox, env, bot, found.signIn, "loaded");
-        return failed
-          ? `The sign-in could not be loaded into your browser: ${failed}. Open the browser you mean to keep (\`playwright-cli open …\`, headed if you want a window), then call this again — opening another browser after this throws the sign-in away.`
-          : `Signed in to ${found.signIn.site} as ${found.signIn.account}. Go to the site again (\`goto\`) — a page drawn before this still looks signed out. If it still shows you signed out after that, the site does not accept a sign-in carried over from another browser, and signing in again here will not last either: work in their own Chrome instead, \`playwright-cli attach --extension=chrome\`.`;
-      },
+          const path = browserStateFile();
+          await sandbox.writeFile(path, JSON.stringify(found.state));
+          const failed = await cli(`playwright-cli state-load ${path}`).finally(
+            () => sandbox.exec(`rm -f ${path}`),
+          );
+          if (failed) forgetBrowser(env);
+          else await holdSignIn(sandbox, env, bot, found.signIn, "loaded");
+          return failed
+            ? `The sign-in could not be loaded into your browser: ${failed}. Open the browser you mean to keep (\`playwright-cli open …\`, headed if you want a window), then call this again — opening another browser after this throws the sign-in away.`
+            : `Signed in to ${found.signIn.site} as ${found.signIn.account}. Go to the site again (\`goto\`) — a page drawn before this still looks signed out. If it still shows you signed out after that, the site does not accept a sign-in carried over from another browser, and signing in again here will not last either: work in their own Chrome instead, \`playwright-cli attach --extension=chrome\`.`;
+        }),
     }),
 
     [TOOL_NAMES.sign_in_keep]: tool({
@@ -148,42 +155,47 @@ export function createSignInTools(
           .boolean()
           .nullish()
           .describe(
-            "True when the app listed the accounts it keeps for the site and this is a different one.",
+            "True when this is a different account from the ones the app keeps for the site.",
           ),
       }),
-      execute: async ({ site, account, keepWindow, another }) => {
-        if ((await sessionBrowser(sandbox, env)) === "theirs")
-          return "You are working in their own Chrome: it stays signed in as them by itself, and nothing is kept from it.";
-        // They signed in to the site here, as whoever they are: what the app lent this browser for it is gone
-        releaseSignIn(env, site);
-        const path = browserStateFile();
-        const failed = await cli(saveBrowserState(path));
-        if (failed) {
-          await sandbox.exec(`rm -f ${path}`);
-          return `The browser's state could not be read: ${failed}. Nothing was kept.`;
-        }
-        try {
-          const state = JSON.parse(
-            await sandbox.readFile(path, "utf-8"),
-          ) as unknown;
-          const kept = await keepSignIn({
-            site,
-            account,
-            bot,
-            state,
-            another,
-          });
-          if (kept.kind === "unlisted")
-            return `Not kept yet: ${kept.site} keeps ${kept.accounts.join(", ")}. If they signed in again as one of those, call this again with \`account\` written as it is there; if this is a different account, call again with \`another\` set to true.`;
-          if (kept.kind === "taken")
-            return `Not kept: the user already keeps a ${kept.signIn.site} sign-in (${kept.signIn.account}) for other bots, and only they choose who uses it. This browser stays signed in for this job. Ask them, as a question, whether you may use the kept one — they allow it under Settings › Sign-ins — or, if this one should replace it, to sign out of the kept one there first; then call this again.`;
-          await holdSignIn(sandbox, env, bot, kept.signIn, "kept");
-          const said = `Kept: ${kept.signIn.site} as ${kept.signIn.account}. It is listed for them under Settings › Sign-ins, where they can sign out of it.`;
-          return keepWindow ? said : `${said} ${await hideWindow(path)}`.trim();
-        } finally {
-          await sandbox.exec(`rm -f ${path}`);
-        }
-      },
+      execute: ({ site, account, keepWindow, another }) =>
+        inBrowser(env, async () => {
+          if ((await sessionBrowser(sandbox, env)) === "theirs")
+            return "You are working in their own Chrome: it stays signed in as them by itself, and nothing is kept from it.";
+          // They signed in to the site here, as whoever they are: what the app lent this browser for it is gone
+          releaseSignIn(env, site);
+          const path = browserStateFile();
+          const failed = await cli(saveBrowserState(path));
+          if (failed) {
+            await sandbox.exec(`rm -f ${path}`);
+            return `The browser's state could not be read: ${failed}. Nothing was kept.`;
+          }
+          try {
+            const state = JSON.parse(
+              await sandbox.readFile(path, "utf-8"),
+            ) as unknown;
+            const kept = await keepSignIn({
+              site,
+              account,
+              bot,
+              state,
+              another,
+            });
+            if (kept.kind === "unlisted")
+              return `Not kept yet: ${kept.site} keeps ${kept.accounts.join(", ")}. If they signed in again as one of those, call this again with \`account\` written as it is there; if this is a different account, call again with \`another\` set to true.`;
+            if (kept.kind === "clash")
+              return `Not kept yet: ${kept.site} keeps a sign-in as ${account.trim() || kept.site} already. If this is that account signed in again, call this again without \`another\`; if it is a different one, call again with an \`account\` that tells it apart from ${kept.accounts.join(", ")} — what the site shows for it, or what the user calls it.`;
+            if (kept.kind === "taken")
+              return `Not kept: the user already keeps a ${kept.signIn.site} sign-in (${kept.signIn.account}) for other bots, and only they choose who uses it. This browser stays signed in for this job. Ask them, as a question, whether you may use the kept one — they allow it under Settings › Sign-ins — or, if this one should replace it, to sign out of the kept one there first; then call this again.`;
+            await holdSignIn(sandbox, env, bot, kept.signIn, "kept");
+            const said = `Kept: ${kept.signIn.site} as ${kept.signIn.account}${kept.replaced ? ", in place of the sign-in kept under that name before" : ""}. It is listed for them under Settings › Sign-ins, where they can sign out of it.`;
+            return keepWindow
+              ? said
+              : `${said} ${await hideWindow(path, kept.signIn)}`.trim();
+          } finally {
+            await sandbox.exec(`rm -f ${path}`);
+          }
+        }),
     }),
   };
 }
