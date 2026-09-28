@@ -46,8 +46,6 @@ export type ConfigEntry = {
   effortOf?: string;
   /** A studio kind. The value is `provider/model`, picked with the model picker, so ids outside `choices` are accepted. */
   kind?: MediaKind;
-  /** The one the app points a newcomer at. */
-  recommended?: true;
   /** The service's own site, for a key that is no model provider's: its icon is the row's mark. */
   site?: string;
   /** Where the key is made: the link its dialog offers. */
@@ -232,13 +230,7 @@ export const CONFIG_GROUPS: ConfigGroup[] = [
     hint: "one sign-in or one key opens every bot",
     section: "keys",
     require: "none",
-    entries: TEXT_MODEL_PROVIDER_LIST.filter(isEasy).map((provider) => ({
-      ...keyEntry(provider),
-      // one key for every model, and one bill
-      ...(provider.id === "vercel-ai-gateway" && {
-        recommended: true as const,
-      }),
-    })),
+    entries: TEXT_MODEL_PROVIDER_LIST.filter(isEasy).map(keyEntry),
   },
   {
     id: "text",

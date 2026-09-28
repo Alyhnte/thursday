@@ -495,11 +495,6 @@ function KeyRow({
         <span className="flex items-center gap-2 truncate text-sm font-medium">
           {entry.label}
           {entry.signIn && set && <PlanBadge usage={usage.data} plan={plan} />}
-          {entry.recommended && !(entry.signIn && set) && (
-            <span className="rounded-full px-1.5 font-mono text-[9.5px] leading-4 font-normal text-muted-foreground ring-1 ring-border ring-inset">
-              recommended
-            </span>
-          )}
         </span>
         {narrow ? (
           waiting ? (
