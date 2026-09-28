@@ -560,8 +560,8 @@ export function WriteLine({
               {written.error}
             </p>
           )}
-          {/* The way on from a turn that broke: the same words again, and where keys are set.
-              Never by itself: what a turn costs changes with what it runs on, so they press it */}
+          {/* The way on from a turn that broke: the same words again. Never by itself: what a
+              turn costs changes with what it runs on, so they press it */}
           {toHer && written?.error && (
             <div className="flex items-center justify-center gap-3">
               <Button
@@ -582,9 +582,6 @@ export function WriteLine({
                   ? "Send it again on your OpenAI key"
                   : "Send it again"}
               </Button>
-              <span className="font-mono text-[10.5px] text-muted-foreground/70">
-                <KeysLink>API keys</KeysLink>
-              </span>
             </div>
           )}
           <p className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 font-mono text-[10.5px] text-muted-foreground/70">
