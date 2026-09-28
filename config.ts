@@ -488,8 +488,8 @@ export const BOT_RUN = {
   compactHeadroom: 0.8,
   summaryWords: { min: 600, max: 3000, perTokens: 200 },
   // Bound concurrent work and the whole conversation between user interjections.
-  participants: 12,
-  concurrent: 4,
+  participants: 8,
+  concurrent: 8,
   turns: 120,
   queuedMessages: 200,
   silenceMs: 5 * 60_000,

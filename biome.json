@@ -63,6 +63,14 @@
       "react": "recommended"
     }
   },
+  "overrides": [
+    {
+      "includes": ["skills/artifact/runtime/motion/*.js"],
+      "linter": {
+        "rules": { "correctness": { "noUnusedVariables": "off" } }
+      }
+    }
+  ],
   "assist": {
     "actions": {
       "source": {

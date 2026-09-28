@@ -84,7 +84,8 @@ Enter sends it, and the room opens on the thread it started.
 An open thread's own message box takes files the same way. Once more than one bot is in a thread,
 the box says who it is addressed to and can be changed. Only the bot the job went to brings other
 bots in, asks the user and answers them; a bot it pulled in answers back to that bot, and anything
-it needs goes through it. A part that needs another bot's result waits until that result is in
+it needs goes through it. A thread holds at most eight bots, the one the job went to included, and
+all of them can work at the same time. A part that needs another bot's result waits until that result is in
 and the bot the job went to has read it, then goes out with it: if the result was a question back,
 that bot settles it first. Bots do not report progress to the call or a phone: the corner shows who
 is working, and what reaches the user is a question or the ending.
@@ -147,7 +148,7 @@ an open file, it is shown fresh with **Reloaded at** and the time; a sound or vi
 file, a spreadsheet or anything else the app cannot show has **Open it**, which opens it in the
 computer's own program.
 
-## Books, canvases, decks and pages
+## Books, canvases, decks, videos and pages
 
 A page, canvas or deck opened inside the app takes the keyboard once clicked; opened in its own tab
 (↗) it has the whole window. Its top bar names the bot that made it.
@@ -172,6 +173,14 @@ screen (**f**), Present, a theme button and **Export** (**Print · one slide a p
 as a picture**, **Download this file**). Presenting shows the slide alone, never the notes. There is
 no PowerPoint file; a handout prints to PDF. **Edit** changes words and notes in place, moves,
 duplicates or deletes the open slide, or changes the palette; ⌘Z undoes.
+
+A **motion video** is a short hand-drawn film with music — a birthday or anniversary gift, a
+thank-you to a parent, a farewell, a small story. Any bot can make one: tell it who it is for and
+something only you two share, and it draws the people in cut paper and crayon (their hair,
+clothes and age as you describe them), the room or the street, a cake or a letter, and writes the
+words by hand, a letter at a time. A picture you give it can sit in a paper frame. It comes back
+as an .mp4, beside a player that opens in the app: space plays and pauses, and dragging the bar
+scrubs, with its music. Ask the bot for changes; it makes the .mp4 again.
 
 A **sheet** is for numbers to keep working on — a budget, a ledger, a list of clients. It is a real
 Excel file (.xlsx) with a page that shows it in the app: a tab per sheet, the picked cell's formula

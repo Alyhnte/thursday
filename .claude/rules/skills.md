@@ -1,5 +1,5 @@
 ---
-checked: 2026-09-26
+checked: 2026-09-28
 paths:
   - "skills/**"
   - "seed-skills/**"
@@ -9,13 +9,13 @@ paths:
   - "features/ai/tools/{skills,deck}.tool.ts"
   - "app/api/{skills,artifact,file}/**"
   - "app/artifact/**"
-  - "scripts/{skill-files,page-edits,deck,sheet,artifact-paths}.test.mts"
+  - "scripts/{skill-files,page-edits,deck,sheet,motion,artifact-paths}.test.mts"
 ---
 
 # Skills and finished work
 
-Every bot makes pages, canvases, decks, picture books and reports with the same shipped skills, and
-the user opens what they made in the app and edits a page, a deck or a canvas there.
+Every bot makes pages, canvases, decks, picture books, videos and reports with the same shipped
+skills, and the user opens what they made in the app and edits a page, a deck or a canvas there.
 
 ## Start here
 - `skills/README.md` — which folders are not skills, the script paths promised, outside copies.
@@ -24,6 +24,7 @@ the user opens what they made in the app and edits a page, a deck or a canvas th
 - `skills/artifact/SKILL.md` — what the user keeps or uses (document, canvas, picture book, deck, sheet, page, app, chart, diagram) as one skill, its `runtime/` behind it; a sheet is a real .xlsx (`skills/artifact/scripts/spreadsheet.mjs`).
 - `skills/artifact/runtime/shell/put.mjs` — how a bot writes into a page a skill made; the revision saves check.
 - `features/ai/tools/deck.tool.ts` — `make_deck`: typed slides that `skills/artifact/runtime/deck` draws.
+- `skills/artifact/scripts/motion.mjs` — a motion video: the bot's code draws each scene with the kit in `runtime/motion` (`runtime/motion/film.js`, its kit `kit-*.js` and music `runtime/motion/score.js`), checked in a browser by `put`, rendered to mp4.
 - `features/bot/bot.seed.ts` — the seed bots' roles, and what a role may name.
 - `features/artifact/artifact.query.ts` — finished work, listed from the bots' folders alone.
 - `app/api/file/[...path]/route.ts` — a workspace file served; a page runs on its own origin.
@@ -39,6 +40,9 @@ it shows goes to the page as `changed`. A seed's own skills are read in place fr
 `seed-skills/<name>/`; older copies in bots' folders stay, unlisted (`seed-skills/retired.json`).
 
 ## What breaks
+- A motion film's tears are seeded by the order of draw calls (`X.n`, `runtime/motion/kit-core.js`):
+  a drawing a scene makes only some of the time moves the tear of all drawn after it, unless it
+  is `sealed` or in `quiet`.
 - A job's browser may be a window on the user's screen: a role or `SKILL.md` that sends a bot to
   the browser to look at what it made opens it in front of the user, where a skill's `shots` over
   `render.mjs --apart` shows it to the bot alone.
@@ -56,7 +60,7 @@ it shows goes to the page as `changed`. A seed's own skills are read in place fr
   does is not understood.
 
 ## Check
-`pnpm test:skills` (`load_skill`'s file list, `put` against a reader's save, `make_deck`) and
-`pnpm test:artifact` (which finished file opens, viewer URLs). A kit script run by hand from an
-empty folder outside the checkout and the workspace, with `THURSDAY_ARTIFACTS` unset, writes
-under `./artifacts`: `node <repo>/skills/artifact/scripts/document.mjs put demo <repo>/skills/artifact/templates/document/memo.md`.
+`pnpm test:skills` (`load_skill`'s file list, `put` against a reader's save, `make_deck`, motion
+checks) and `pnpm test:artifact` (which finished file opens, viewer URLs). A kit script run by
+hand from an empty folder outside the checkout and the workspace, with `THURSDAY_ARTIFACTS`
+unset, writes under `./artifacts`: `node <repo>/skills/artifact/scripts/document.mjs put demo <repo>/skills/artifact/templates/document/memo.md`.
