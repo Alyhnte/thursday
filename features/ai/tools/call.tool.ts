@@ -1,5 +1,6 @@
 import { tool } from "ai";
 import * as z from "zod";
+import { lookAtSpec } from "@/features/ai/tools/look.tool";
 import { TOOL_NAMES } from "@/features/ai/tools/tool-name";
 import {
   FACE_WORD_MARKS,
@@ -54,11 +55,21 @@ const lookAtScreenTool = tool({
   inputSchema: lookAtScreenSpec.parameters,
 });
 
-/** The tools that act on the call itself. */
+/**
+ * Deliberately has no `execute`: a spoken call's backend answers through the page, which fetches
+ * the picture and puts it in after this turn's results, as it does the shared screen's.
+ */
+const lookAtTool = tool({
+  description: lookAtSpec.description,
+  inputSchema: lookAtSpec.parameters,
+});
+
+/** The tools that act on the call itself, and the picture the page hands it. */
 export function callTools() {
   return {
     [TOOL_NAMES.end_call]: endCallTool,
     [TOOL_NAMES.emote]: emoteTool,
     [TOOL_NAMES.look_at_screen]: lookAtScreenTool,
+    [TOOL_NAMES.look_at]: lookAtTool,
   };
 }

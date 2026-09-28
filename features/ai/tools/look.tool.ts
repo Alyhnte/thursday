@@ -21,16 +21,25 @@ import { insideWorkspace } from "@/features/workspace/workspace";
 
 type Looked = { path: string; mediaType: string };
 
+/**
+ * What `look_at` is, wherever it runs: here, for a run whose model carries a picture in a tool
+ * result, and in the page on a spoken call (call.tool), which puts the picture in after it.
+ */
+export const lookAtSpec = {
+  description:
+    "See an image file yourself: a screenshot you took, a picture the user handed over, a chart you made. For what a picture shows — text files are read in the shell.",
+  parameters: z.object({
+    path: z
+      .string()
+      .describe("Workspace-relative path to a png, jpg, webp or gif."),
+  }),
+};
+
 export function createLookTool(): ToolSet {
   return {
     [TOOL_NAMES.look_at]: tool({
-      description:
-        "See an image file yourself: a screenshot you took, a picture the user handed over, a chart you made. For what a picture shows — text files are read in the shell.",
-      inputSchema: z.object({
-        path: z
-          .string()
-          .describe("Workspace-relative path to a png, jpg, webp or gif."),
-      }),
+      description: lookAtSpec.description,
+      inputSchema: lookAtSpec.parameters,
       execute: async ({ path }): Promise<Looked | string> => {
         const full = await insideWorkspace(path.trim());
         const info = full ? await stat(full).catch(() => null) : null;

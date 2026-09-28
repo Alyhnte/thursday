@@ -39,12 +39,27 @@ touch), with her glyph ramp, emoji pool, eyes and washes.
   maintainer's pick) is on naciscdn.org, which this environment's network blocks; GeoNames needs
   a credit. Until then the lights are not in the code.
 
-## Seeing: a picture in emoji pixels (design only)
+## Seeing: a picture in emoji pixels (in the app)
 
-- Code, not the model: each cell takes the emoji whose measured average colour is nearest.
-- The picture keeps its own shape, larger than her; transparent areas stay empty.
-- Emoji go down one at a time in random order, hold, and leave in another random order.
-- One picture at a time: when several come, she draws the first.
+- When: a picture handed to her on a call — put down during a spoken call, or sent to her in
+  writing. The first picture of several; nothing while another moment is over her face, with less
+  motion asked for, or in a page not in front.
+- One moment at a time over her face (`face-moment.ts`): the globe and a picture share it, and
+  while one is up no word goes on her face (`emote` is told which, the page's "OK" is let go).
+  The globe's state moved there from `use-thursday`.
+- Code, not the model: each cell takes the emoji whose colour, measured as this system draws it
+  over this page, is nearest the picture's there (the design's palette and measure; an emoji the
+  system draws in the fill colour — a box, a letter — is left out). Letters by ink elsewhere.
+- Its own shape, up to 90 % × 88 % of the globe's field (`face-grid.ts`, her grid carried wider);
+  what is clear stays empty. Down one at a time in a random, slightly clumped order (3.7 s),
+  holds 3.6 s (config `SEE.holdMs`), leaves in another order; about 10.5 s in all. Tap sends it
+  back.
+- Her face fades out under it and back in as it goes (wiping her cell by cell cut her glyphs).
+- A spoken call can now see the picture: `look_at` runs in the page there (`live-picture.ts`
+  fetches the file and fits it to the connection's one message, as the shared screen is), and
+  the voice's delegation list names pictures they give her.
+- Files: `features/thursday/components/seeing.tsx` (loaded only when it plays),
+  `face-moment.ts`, `face-grid.ts`, `live-picture.ts`.
 
 ## Drawing (design only)
 

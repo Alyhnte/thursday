@@ -2,6 +2,8 @@
 
 import { useSyncExternalStore } from "react";
 import { SCREEN_SHARE } from "@/config";
+import { errorToString } from "@/lib/utils";
+import { fitPicture, type Taken } from "./live-picture";
 
 /**
  * The screen the user shares with a spoken call, held in the page until they stop or the call
@@ -124,13 +126,10 @@ function shown(video: HTMLVideoElement): Promise<boolean> {
 }
 
 /**
- * The screen as it is now, as a JPEG data URL of at most `bytes`: a data channel carries one
- * message up to its limit and no more, so the picture is made plainer, then smaller, until it
- * fits (config SCREEN_SHARE). What went wrong otherwise, said as the backend will read it.
+ * The screen as it is now, as a picture of at most `bytes` (live-picture). What went wrong
+ * otherwise, said as the backend will read it.
  */
-export async function takePicture(
-  bytes: number,
-): Promise<{ url: string } | { failed: string }> {
+export async function takePicture(bytes: number): Promise<Taken> {
   const video = shared?.video;
   if (!video) return { failed: "Nothing is being shared." };
   const ready = await shown(video);
@@ -138,22 +137,11 @@ export async function takePicture(
   if (shared?.video !== video) return { failed: "Nothing is being shared." };
   if (!ready)
     return { failed: "The shared screen has not shown anything yet." };
-  const canvas = document.createElement("canvas");
-  const context = canvas.getContext("2d");
-  if (!context) return { failed: "This browser could not take the picture." };
-  for (const scale of SCREEN_SHARE.scales) {
-    const ratio = Math.min(
-      1,
-      (SCREEN_SHARE.longestSide * scale) /
-        Math.max(video.videoWidth, video.videoHeight),
-    );
-    canvas.width = Math.round(video.videoWidth * ratio);
-    canvas.height = Math.round(video.videoHeight * ratio);
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
-    for (const quality of SCREEN_SHARE.qualities) {
-      const url = canvas.toDataURL("image/jpeg", quality);
-      if (url.length <= bytes) return { url };
-    }
+  try {
+    const url = fitPicture(video, video.videoWidth, video.videoHeight, bytes);
+    if (url) return { url };
+  } catch (cause) {
+    return { failed: errorToString(cause) };
   }
   return {
     failed: `The picture of the shared screen would not fit the ${Math.round(bytes / 1024)} KB this connection carries.`,

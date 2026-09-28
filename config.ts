@@ -790,6 +790,17 @@ export const HERE = {
 };
 
 /**
+ * A picture handed to her on a call, drawn in her emoji over her face (features/thursday/
+ * components/seeing).
+ * - `holdMs`  how long it stays whole once every emoji of it is down (about 4.5 s after it
+ *   starts) before they leave. Longer leaves it up longer, and her face and the words beside
+ *   it off the screen as long.
+ * - `fps`  frames a second it draws while its emoji go down and leave; while it holds it draws
+ *   nothing. More costs a slow machine its smoothness everywhere else on the screen.
+ */
+export const SEE = { holdMs: 3_600, fps: 24 };
+
+/**
  * How much of the previous call the prompt carries verbatim: `rows` turns are
  * fetched, then filled newest-first until `tokens` is spent.
  */
@@ -867,21 +878,28 @@ export const LOOK = { maxBytes: 4 * 1024 * 1024 };
  * - `frameRate`  how often the browser grabs the screen while it is shared. Only a still is
  *   ever taken, when she looks: more costs the computer for nothing, fewer makes a look up to
  *   that much older.
- * - `longestSide`  the longest side, in pixels, a look is taken at. Larger keeps small text on
- *   a big screen readable, and has the picture shrink further to fit the connection's one
- *   message; smaller loses that text first.
- * - `qualities` then `scales`  what a picture too large for that message steps down through:
- *   at each size the JPEG quality, then the size, until it fits.
  * - `firstFrameMs`  how long a look waits for a share that has not shown anything yet, as one
  *   just started has not. Longer gives a slow start its chance before she hears that nothing
  *   showed; she is silent that long first.
  */
 export const SCREEN_SHARE = {
   frameRate: 5,
+  firstFrameMs: 3000,
+};
+
+/**
+ * A picture the page hands a spoken call's backend in one message of the connection: the
+ * screen they share, or a picture they gave her (features/thursday/live-picture.ts).
+ * - `longestSide`  the longest side, in pixels, a look is taken at. Larger keeps small text on
+ *   a big screen readable, and has the picture shrink further to fit the connection's one
+ *   message; smaller loses that text first.
+ * - `qualities` then `scales`  what a picture too large for that message steps down through:
+ *   at each size the JPEG quality, then the size, until it fits.
+ */
+export const LIVE_PICTURE = {
   longestSide: 1600,
   qualities: [0.8, 0.6, 0.45],
   scales: [1, 0.75, 0.5, 0.35],
-  firstFrameMs: 3000,
 };
 
 /**

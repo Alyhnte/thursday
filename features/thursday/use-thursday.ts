@@ -47,10 +47,12 @@ import { createOutbox, type Outbox } from "@/lib/queue";
 import { errorToString } from "@/lib/utils";
 import { FACE_WORD_MAX, undrawable } from "./ascii.const";
 import { callSignal, useCallHeld } from "./call-signal";
-import type { HerePhase, HereScene } from "./components/here-globe";
+import type { HereScene } from "./components/here-globe";
+import { faceMoment, useFaceMoment } from "./face-moment";
 import { finished, goodbye } from "./face-words";
 import { hereDue, hereShown } from "./here-day";
 import { loadWorld } from "./here-map";
+import { pictureOf } from "./live-picture";
 import {
   openWork,
   startedLine,
@@ -129,6 +131,20 @@ const SCTP_DEFAULT_BYTES = 65_536;
 
 /** Room left in that message for the event around a picture: its type, ids and fields. */
 const PICTURE_ENVELOPE_BYTES = 1_024;
+
+/**
+ * What one picture for the backend may take of one message of the connection. A limit no
+ * picture can be held to — none yet, 0, or none at all (Infinity) — is taken as the smallest
+ * one every end takes.
+ */
+function pictureBytes(live: LiveSession | null): number {
+  const limit = live?.messageLimit();
+  return (
+    (limit && Number.isFinite(limit) && limit > PICTURE_ENVELOPE_BYTES * 2
+      ? limit
+      : SCTP_DEFAULT_BYTES) - PICTURE_ENVELOPE_BYTES
+  );
+}
 
 /**
  * What the activity line draws: a tool the model is using, or a relay. `line` is
@@ -217,39 +233,13 @@ export function useThursday(
   const [thinkingTitle, setThinkingTitle] = useState<string | null>(null);
   /** The word `emote` last put on the face. */
   const [faceWord, setFaceWord] = useState<FaceWord | null>(null);
-  /**
-   * The globe the day's first call opens with (here-globe), and how far it has got; null while
-   * none is up. No word goes on her face from its start to its end (`hereUp`): `emote` is told
-   * so, and the page's own words are let go, so none is drawn under it or cut short by it.
-   */
-  const [here, setHere] = useState<{
-    scene: HereScene;
-    phase: HerePhase | null;
-  } | null>(null);
-  const hereUp = useRef(false);
-  /** One place for both, so the gate and the globe never disagree. */
-  const showHere = useCallback((scene: HereScene | null) => {
-    hereUp.current = scene !== null;
-    setHere(scene ? { scene, phase: null } : null);
-  }, []);
-  const herePhase = useCallback(
-    (phase: HerePhase) => {
-      if (phase === "done") return showHere(null);
-      // the day is spent on its first frame, not before: one never seen leaves it for the next call
-      if (phase === "covering") hereShown();
-      setHere((up) => (up && up.phase !== phase ? { ...up, phase } : up));
-    },
-    [showHere],
-  );
-  // it plays only while it is looked at: a page left while it is up goes back to her face
+  // The globe spends the day on its first frame, not before: one never seen leaves it for the
+  // next call (here-day)
+  const moment = useFaceMoment();
+  const globeDrawn = moment?.moment.kind === "here" && moment.phase !== null;
   useEffect(() => {
-    if (!here) return;
-    const hidden = () => {
-      if (document.visibilityState === "hidden") showHere(null);
-    };
-    document.addEventListener("visibilitychange", hidden);
-    return () => document.removeEventListener("visibilitychange", hidden);
-  }, [here, showHere]);
+    if (globeDrawn) hereShown();
+  }, [globeDrawn]);
   /** The same value where callbacks can read it, and the timer that ends it. */
   const thinking = useRef<number | null>(null);
   const thinkTail = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -501,9 +491,9 @@ export function useThursday(
       told.current.add(item.key);
       unvoiced.current.add(item.key);
     }
-    // Finished work is good news before she says it (an item's key opens with what it is)
-    // the globe owns her face while it is up; the word would be drawn under it or after its moment
-    if (first.key.startsWith("done:") && !hereUp.current)
+    // Finished work is good news before she says it (an item's key opens with what it is).
+    // A moment over her face owns it while it is up: the word would be drawn under it (face-moment)
+    if (first.key.startsWith("done:") && !faceMoment.current())
       setFaceWord(finished());
     readAloud();
     onLine.current = due.map((item) => item.key);
@@ -690,8 +680,8 @@ export function useThursday(
       // A screen is shared with a call, and goes with it; nothing about it is left to tell
       shareNews.current = null;
       stopSharing();
-      // the globe is the call's opening, and goes with it
-      showHere(null);
+      // what stands over her face came with the call, and goes with it
+      faceMoment.clear();
       rang.current = false;
       // What she did not voice goes in again next call; unsent context goes with the session
       for (const key of unvoiced.current) told.current.delete(key);
@@ -781,6 +771,7 @@ export function useThursday(
       if (leaving.current) clearInterval(leaving.current);
       // Held for the page, not this screen: left on, it would go on with no Stop in sight
       stopSharing();
+      faceMoment.clear();
     };
   }, []);
 
@@ -1021,8 +1012,9 @@ export function useThursday(
             }
             // the face draws the word; nothing runs anywhere else
             if (call.name === TOOL_NAMES.emote) {
-              if (hereUp.current)
-                return "Nothing was shown: their screen is showing where they are for a few seconds more.";
+              const over = faceMoment.current()?.moment.kind;
+              if (over)
+                return `Nothing was shown: your face is showing ${over === "here" ? "where they are" : "the picture they gave you"} for a few seconds more.`;
               const { word, reply } = readFaceWord(call.arguments);
               if (word) setFaceWord({ text: word, at: Date.now() });
               return reply;
@@ -1034,19 +1026,26 @@ export function useThursday(
                 return canShare()
                   ? "Nothing is being shared. They can share a screen, a window or a tab with Share screen, under your face."
                   : "Nothing is being shared, and this browser cannot share a screen.";
-              // A limit no picture can be held to — none yet, 0, or none at all (Infinity) —
-              // is taken as the smallest one every end takes
-              const limit = session.current?.messageLimit();
-              const bytes =
-                limit &&
-                Number.isFinite(limit) &&
-                limit > PICTURE_ENVELOPE_BYTES * 2
-                  ? limit
-                  : SCTP_DEFAULT_BYTES;
-              const taken = await takePicture(bytes - PICTURE_ENVELOPE_BYTES);
+              const taken = await takePicture(pictureBytes(session.current));
               if ("failed" in taken) return taken.failed;
               return {
                 output: "Their screen as it is now follows, as a picture.",
+                image: taken.url,
+              };
+            }
+            // A picture in the workspace — one they gave her — goes in the same way: the backend
+            // answers through the page, where a tool's result can carry no picture of its own
+            if (call.name === TOOL_NAMES.look_at) {
+              const path = readPath(call.arguments);
+              if (!path)
+                return "Nothing was looked at: path is empty. Give the path from the workspace root.";
+              const taken = await pictureOf(
+                path,
+                pictureBytes(session.current),
+              );
+              if ("failed" in taken) return taken.failed;
+              return {
+                output: `${path} follows, as a picture.`,
                 image: taken.url,
               };
             }
@@ -1266,8 +1265,7 @@ export function useThursday(
 
       // The globe comes up as she starts to greet them with the weather it shows, if they are
       // still looking: a hidden page draws nothing, and it would come up late, over the talk
-      if (line.here && document.visibilityState === "visible")
-        showHere(line.here);
+      if (line.here) faceMoment.show({ kind: "here", scene: line.here });
       if (line.opening) {
         // The greeting goes first; open work waits until she has said it. The room is kept
         // from her until she starts it, or she waits on it (config LIVE_CALL.openingHoldMs)
@@ -1387,12 +1385,6 @@ export function useThursday(
     thinkingTitle,
     /** The word `emote` last put on the face; null before one. */
     faceWord,
-    /** The globe the day's first call opens with (here-globe); null while none is up. */
-    here: here?.scene ?? null,
-    /** How far it has got, as it last said; null before it has started drawing. */
-    herePhase: here?.phase ?? null,
-    /** What the globe says of itself as it goes. */
-    onHere: herePhase,
     /** Seconds until idle hang-up; null outside the warning window. */
     idleLeft,
     /** When the line opened (ms); null without a call. */
@@ -1412,6 +1404,18 @@ export function useThursday(
 }
 
 const EMPTY_BANDS = new Array<number>(SPECTRUM_BANDS).fill(0);
+
+/** The path `look_at` was asked about; empty when it named none. */
+function readPath(args: string): string {
+  try {
+    const parsed: unknown = JSON.parse(args);
+    if (parsed && typeof parsed === "object" && "path" in parsed)
+      return String(parsed.path ?? "").trim();
+  } catch {
+    // not JSON: it named no path, and is told so
+  }
+  return "";
+}
 
 /** What `emote` asked the face to show, and the line the model reads back; `word` is null when nothing is shown. */
 function readFaceWord(args: string): { word: string | null; reply: string } {

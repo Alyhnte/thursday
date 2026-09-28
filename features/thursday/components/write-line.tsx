@@ -35,6 +35,7 @@ import {
 } from "@/features/bot/thread.store";
 import { openSettings } from "@/features/settings/settings.store";
 import { useCallHeld } from "@/features/thursday/call-signal";
+import { faceMoment } from "@/features/thursday/face-moment";
 import { useThursdayStore } from "@/features/thursday/thursday.store";
 import type { TextCall } from "@/features/thursday/use-text-call";
 import {
@@ -42,6 +43,7 @@ import {
   roomDrop,
   useGivenFiles,
 } from "@/features/workspace/components/given-files";
+import { viewKindOf } from "@/features/workspace/file-kind";
 import { composing, useEscape, windowKey } from "@/hooks/use-hotkey";
 import { useServerAction } from "@/lib/protocol/use-server-action";
 import { revalidate, useServerRoute } from "@/lib/protocol/use-server-route";
@@ -87,6 +89,12 @@ const mentionOf = (draft: string) => /^@(\S*)$/.exec(draft.split(/\s/, 1)[0]);
 /** How long the line takes to go, so it can be watched leaving. */
 const LEAVE_MS = 200;
 
+/** The first picture of what she was just handed, drawn over her face (face-moment `see`). */
+function showPicture(paths: string[]) {
+  const picture = paths.find((path) => viewKindOf(path) === "image");
+  if (picture) faceMoment.show({ kind: "see", src: queryKey.file(picture) });
+}
+
 export function WriteLine({
   written,
   onCall = false,
@@ -116,10 +124,12 @@ export function WriteLine({
   const spoken = useRef(onCall);
   spoken.current = onCall;
   const given = useGivenFiles({
-    // On a call the file is a fact she is given as it lands; what it is for is said aloud
+    // On a call the file is a fact she is given as it lands; what it is for is said aloud.
+    // A picture among them goes on her face as she is given it
     onKept: (paths) => {
       if (!spoken.current) return undefined;
       screenActs.announce({ kind: "gave", paths });
+      showPicture(paths);
       return "she knows it is here";
     },
   });
@@ -263,9 +273,12 @@ export function WriteLine({
     if (!toHer) return void start(to.name, words);
     if (!written) return;
     setReaching(true);
+    const paths = given.files.flatMap((file) => file.path ?? []);
     written
       .say(words)
       .then(() => {
+        // what she was handed with the words is on her face while she reads them
+        showPicture(paths);
         setDraft("");
         given.clear();
       })

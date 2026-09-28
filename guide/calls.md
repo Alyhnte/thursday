@@ -71,7 +71,8 @@ as on a spoken call, with no voice and no per-minute billing.
 - **Her answers** keep their shape (lists, tables), and what she names is a link: a file opens over
   the call, a web page in a new tab.
 - **Files**: the paperclip, a paste, or a drop anywhere on the window — at most 8 at a time, 25 MB
-  each. She can look at a picture herself, so "what does this say?" is answered on the spot.
+  each. She can look at a picture herself, so "what does this say?" is answered on the spot. The
+  first picture sent to her is drawn over her face in her own emoji for about ten seconds (below).
 - **Who it goes to**: the chip at the left of the line, or `@` and a name at the start. A bot picked
   there gets that one message, then the line goes back to her; **Esc** with a bot picked also goes
   back to her.
@@ -93,8 +94,17 @@ as on a spoken call, with no voice and no per-minute billing.
 It is kept with the other calls, marked *in writing*.
 
 During a spoken call the line writes to bots only. A file put down then is one she is told about —
-its chip says *she knows it is here* — and what to do with it can simply be said; she hands it to a
-bot.
+its chip says *she knows it is here* — and what to do with it can simply be said: she looks at a
+picture herself when what they ask needs it, and it goes to the model behind her, nowhere else;
+anything else she hands to a bot.
+
+A picture handed to her, in writing or put down on a spoken call, is drawn over her face in her own
+emoji — each spot of it in the emoji nearest its colour, or in her letters where she is drawn in
+letters — larger than her, with what is clear in it left empty. The emoji go down one by one, stay
+a few seconds, and go, and she is back after about ten seconds; tapping it brings her back sooner
+and does not hang up. Of several pictures at once, the first is drawn. Nothing is drawn while the
+globe or another picture is over her face, when the system is set to reduce motion, or when the
+app's page is not the one in front.
 
 ## Seeing the words
 
