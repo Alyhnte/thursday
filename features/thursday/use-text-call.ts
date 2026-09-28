@@ -20,7 +20,6 @@ import { unwrapResult } from "@/lib/protocol/result";
 import { useServerAction } from "@/lib/protocol/use-server-action";
 import { revalidate, useServerRoute } from "@/lib/protocol/use-server-route";
 import { captionText, errorToString } from "@/lib/utils";
-import { faceMoment } from "./face-moment";
 import { openWork, stoodBefore, toldWork } from "./open-work";
 import { screenActLine } from "./screen-act";
 import {
@@ -218,8 +217,6 @@ export function useTextCall(): TextCall {
     void stop();
     setMessages([]);
     clearError();
-    // a picture of this call's still over her face goes with it
-    faceMoment.clear();
     void endCallAction(ending.callId)
       .then(unwrapResult)
       // the log lists it from here on

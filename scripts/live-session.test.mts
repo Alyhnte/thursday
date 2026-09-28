@@ -268,7 +268,7 @@ test("a picture the connection will not carry is said to the backend and the use
   )?.item as { content: { text: string }[] };
   assert.match(note.content[0].text, /did not go through.*Message too large/);
   assert.equal(warnings.length, 1);
-  assert.match(warnings[0], /A picture for her did not go through/);
+  assert.match(warnings[0], /picture of what you show did not go through/);
 });
 
 test("an incomplete response that asked for tools is continued once, and a second in a row only warns", async () => {
@@ -1172,7 +1172,7 @@ test("both call prompts open as one Thursday: the voice gets the guide's delegat
     assert.match(on.text, /Prefer brief replies/);
     assert.match(
       on.text,
-      /\n\n## Always\n\nBackchannel policy: Use moderate backchannels\. .*\n\nInterruption policy: Stop speaking when the user interrupts\. Listen to what they say\.\n\nSpeak the language the user is speaking, [^\n]+\n\nDelegation policy:\nBackend tools:\n- Ending the call: hangs up the line — only the backend can, so a goodbye, or a hang-up they ask for, is handed over rather than answered\.\n(- [^\n]+\n){6}\nDelegate to the backend when:\n- They say goodbye or good night, in whatever words, or want the call to end\.\n(- [^\n]+\n)+\nDo not delegate to the backend when:\n- They say hello, [^\n]+\n(- [^\n]+\n)+\nDelegate before giving an answer that depends on backend work\. Do not guess the result while waiting\.\n\nWhat they tell you about themselves is handed over quietly: [^\n]+\n\n## What you know about them\n/,
+      /\n\n## Always\n\nBackchannel policy: Use moderate backchannels\. .*\n\nInterruption policy: Stop speaking when the user interrupts\. Listen to what they say\.\n\nSpeak the language the user is speaking, [^\n]+\n\nDelegation policy:\nBackend tools:\n- Ending the call: hangs up the line — only the backend can, so a goodbye, or a hang-up they ask for, is handed over rather than answered\.\n(- [^\n]+\n){5}\nDelegate to the backend when:\n- They say goodbye or good night, in whatever words, or want the call to end\.\n(- [^\n]+\n)+\nDo not delegate to the backend when:\n- They say hello, [^\n]+\n(- [^\n]+\n)+\nDelegate before giving an answer that depends on backend work\. Do not guess the result while waiting\.\n\nWhat they tell you about themselves is handed over quietly: [^\n]+\n\n## What you know about them\n/,
     );
     // Who she is to talk to sits right under the identity, character only: no stamp, no rule
     assert.match(

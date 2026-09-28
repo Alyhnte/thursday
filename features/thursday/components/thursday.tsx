@@ -113,17 +113,9 @@ import { WriteLine, type WrittenCall } from "./write-line";
  * writing drive the same markup (Thursday, below).
  */
 
-/** What stands over her face plays now and then (face-moment): its code loads when it does. */
+/** The globe plays once a day at most (face-moment): its code loads when it does. */
 const HereGlobe = dynamic(
   () => import("./here-globe").then((module) => module.HereGlobe),
-  { ssr: false },
-);
-const Seeing = dynamic(
-  () => import("./seeing").then((module) => module.Seeing),
-  { ssr: false },
-);
-const HerDrawing = dynamic(
-  () => import("./her-drawing").then((module) => module.HerDrawing),
   { ssr: false },
 );
 
@@ -206,9 +198,9 @@ function CallScreen({
   // draws her last line instead, whatever the setting.
   const wide = useWide(SIDES_MIN_WIDTH);
   const sided = captionView === "sides" && status !== "idle" && wide;
-  // The globe or a picture over her face (face-moment), which spreads past her on either side:
-  // the columns beside her are kept meanwhile, unseen, so nothing is typed out again when it
-  // goes, and her words stand under her face
+  // The globe over her face (face-moment), which spreads past her on either side: the columns
+  // beside her are kept meanwhile, unseen, so nothing is typed out again when it goes, and her
+  // words stand under her face
   const moment = useFaceMoment();
   const under = !sided || moment !== null;
   const talk = useMemo(() => turnsOf(messages), [messages]);
@@ -302,21 +294,6 @@ function CallScreen({
             <HereGlobe
               key={moment.id}
               scene={moment.moment.scene}
-              onPhase={(phase) => faceMoment.tell(moment.id, phase)}
-            />
-          )}
-          {moment?.moment.kind === "see" && (
-            <Seeing
-              key={moment.id}
-              src={moment.moment.src}
-              onPhase={(phase) => faceMoment.tell(moment.id, phase)}
-            />
-          )}
-          {moment?.moment.kind === "draw" && (
-            <HerDrawing
-              key={moment.id}
-              path={moment.moment.path}
-              color={moment.moment.color}
               onPhase={(phase) => faceMoment.tell(moment.id, phase)}
             />
           )}
