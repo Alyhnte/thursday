@@ -793,58 +793,8 @@ export const HISTORY_KEEP = {
  *   outwaits the prompt goes without while the next has it.
  * - `keptMs`  how long what was found is used before it is found again. Longer asks the
  *   device and the services less often and may name a place they have left.
- * - `holdMs`  how long the globe (features/thursday/components/here-globe), shown as the
- *   day's first call opens, stays once their country, sky and weather are all in (about 7.6 s
- *   after it starts) before she comes back. Longer leaves them up longer, and her face and the
- *   words beside it off the screen as long.
- * - `globeFps`  frames a second the globe draws. It draws two or three times her cells, so
- *   more costs a slow machine its smoothness everywhere else on the screen.
- * - `windyKmh`, `stormKmh`  gusts past which the globe draws wind blowing across it, and a
- *   storm turning over it as well. Lower draws them on more ordinary days.
- * - `coastDeg`  how far off a coast a position still counts as in the country there, when the
- *   place service named none the map has (features/thursday/here-map). Farther reaches a
- *   neighbour across a strait; nearer leaves a town on a coast this simple out at sea.
  */
-export const HERE = {
-  waitMs: 3_000,
-  keptMs: 30 * 60_000,
-  holdMs: 3_400,
-  globeFps: 24,
-  windyKmh: 50,
-  stormKmh: 90,
-  coastDeg: 1.2,
-};
-
-/**
- * A picture handed to her on a call, drawn in her emoji over her face (features/thursday/
- * components/seeing).
- * - `holdMs`  how long it stays whole once every emoji of it is down (about 4.5 s after it
- *   starts) before they leave. Longer leaves it up longer, and her face and the words beside
- *   it off the screen as long.
- * - `fps`  frames a second it draws while its emoji go down and leave; while it holds it draws
- *   nothing. More costs a slow machine its smoothness everywhere else on the screen.
- */
-export const SEE = { holdMs: 3_600, fps: 24 };
-
-/**
- * A drawing she makes on her face (`draw`, features/thursday/components/her-drawing), her body
- * the pen that draws it.
- * - `holdMs`  how long the finished drawing stays, her pen resting at its end (about 5.6 s after
- *   she starts), before it fades and she is herself again. Longer leaves it to be looked at
- *   longer, and her face off the screen as long.
- * - `fps`  frames a second it draws. More costs a slow machine its smoothness everywhere else
- *   on the screen.
- */
-export const DRAW = { holdMs: 2_000, fps: 24 };
-
-/**
- * The drawing pad on the write line (features/thursday/components/draw-pad), whose drawing is
- * handed over as a picture.
- * - `longestSide`  the longest side, in pixels, a drawing is kept at, cropped to what was drawn.
- *   Larger keeps thin strokes and writing readable to the model that looks at it, in a heavier
- *   file; it is never kept larger than it was drawn.
- */
-export const DRAW_PAD = { longestSide: 1024 };
+export const HERE = { waitMs: 3_000, keptMs: 30 * 60_000 };
 
 /**
  * How much of the previous call the prompt carries verbatim: `rows` turns are
@@ -920,9 +870,7 @@ export const MEMORY_EDIT = { maxSteps: 20 };
 export const LOOK = { maxBytes: 4 * 1024 * 1024 };
 
 /**
- * What the user shows a spoken call, a screen or their camera (features/thursday/show.ts), and
- * how a picture for the call's backend is made to fit — of what is shown, or of a picture they
- * gave her (features/thursday/live-picture.ts).
+ * What the user shows a spoken call, a screen or their camera (features/thursday/show.ts).
  * - `frameRate`  how often the browser grabs the screen or camera while it is shown. Only a
  *   still is ever taken: more costs the computer for nothing, fewer makes a picture up to that
  *   much older.

@@ -7,7 +7,7 @@ import {
   ALPHA_TOP,
   EMOJI_POOL,
   emojiAlpha,
-  emojiPx,
+  emojiWeight,
   hash,
   LETTERS,
   LEVELS,
@@ -89,14 +89,10 @@ type AsciiOrbProps = {
  * Slack on the frame cap (ms): a frame that comes this close to when her next one is due draws,
  * or a 60 Hz display capped at 30 would now and then wait a frame too long.
  */
-export const CAP_SLACK_MS = 1000 / 240;
+const CAP_SLACK_MS = 1000 / 240;
 
 /** Her glyph size and how tightly her cells pack (config ASCII_FACE). */
 const { fontSize: GLYPH_PX, density: DENSITY } = ASCII_FACE;
-
-/** Her cell pitch, px: what anything drawn on her grid (here-globe) lines up with. */
-export const CELL_W = (GLYPH_PX * 0.95) / DENSITY;
-export const CELL_H = (GLYPH_PX * 1.25) / DENSITY;
 
 /** Her glyphs at a size (px). */
 export const GLYPH_FONT = (px: number) =>
@@ -104,7 +100,7 @@ export const GLYPH_FONT = (px: number) =>
 
 /** The same, for an emoji standing at one rung of the ramp rather than at the top of it. */
 const emojiFont = (px: number, level: number, top: number) =>
-  GLYPH_FONT(emojiPx(px, level, top));
+  GLYPH_FONT(px * (0.5 + emojiWeight(level, top) * 0.5));
 
 /**
  * Every emoji she can show — her own, the washes' and her pieces' — drawn once at every size she draws them,
@@ -859,8 +855,8 @@ export function AsciiOrb({
     if (!host) return;
 
     // actual px pitch for drawing
-    const cw = CELL_W;
-    const ch = CELL_H;
+    const cw = (GLYPH_PX * 0.95) / DENSITY;
+    const ch = (GLYPH_PX * 1.25) / DENSITY;
     // pitch in reference units, where the tuning constants live
     const norm = DESIGN / size;
     const cwN = cw * norm;

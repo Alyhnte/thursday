@@ -2,8 +2,6 @@
 
 import { useSyncExternalStore } from "react";
 import { SHOWING } from "@/config";
-import { errorToString } from "@/lib/utils";
-import { fitPicture } from "./live-picture";
 
 /**
  * What the user shows a spoken call — a screen, a window or a tab, or their camera — held in
@@ -156,8 +154,9 @@ function framed(video: HTMLVideoElement): Promise<boolean> {
 }
 
 /**
- * What is shown as it is now, as a picture of at most `bytes` (live-picture). What went wrong
- * otherwise, said as the backend will read it.
+ * What is shown as it is now, as a JPEG data URL of at most `bytes`: a data channel carries
+ * one message up to its limit and no more, so the picture is made plainer, then smaller, until
+ * it fits (config SHOWING). What went wrong otherwise, said as the backend will read it.
  */
 export async function takePicture(
   bytes: number,
@@ -169,11 +168,22 @@ export async function takePicture(
   // Stopped while it waited
   if (shown !== taking) return { failed: "Nothing is being shown." };
   if (!ready) return { failed: `Their ${kind} has not shown anything yet.` };
-  try {
-    const url = fitPicture(video, video.videoWidth, video.videoHeight, bytes);
-    if (url) return { url, kind };
-  } catch (cause) {
-    return { failed: errorToString(cause) };
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d");
+  if (!context) return { failed: "This browser could not take the picture." };
+  for (const scale of SHOWING.scales) {
+    const ratio = Math.min(
+      1,
+      (SHOWING.longestSide * scale) /
+        Math.max(video.videoWidth, video.videoHeight),
+    );
+    canvas.width = Math.round(video.videoWidth * ratio);
+    canvas.height = Math.round(video.videoHeight * ratio);
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    for (const quality of SHOWING.qualities) {
+      const url = canvas.toDataURL("image/jpeg", quality);
+      if (url.length <= bytes) return { url, kind };
+    }
   }
   return {
     failed: `The picture of their ${kind} would not fit the ${Math.round(bytes / 1024)} KB this connection carries.`,

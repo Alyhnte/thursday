@@ -20,7 +20,6 @@ import { unwrapResult } from "@/lib/protocol/result";
 import { useServerAction } from "@/lib/protocol/use-server-action";
 import { revalidate, useServerRoute } from "@/lib/protocol/use-server-route";
 import { captionText, errorToString } from "@/lib/utils";
-import { faceMoment } from "./face-moment";
 import { openWork, stoodBefore, toldWork } from "./open-work";
 import { screenActLine } from "./screen-act";
 import {
@@ -218,8 +217,6 @@ export function useTextCall(): TextCall {
     void stop();
     setMessages([]);
     clearError();
-    // a picture of this call's still over her face goes with it
-    faceMoment.clear();
     void endCallAction(ending.callId)
       .then(unwrapResult)
       // the log lists it from here on
@@ -268,8 +265,8 @@ export function useTextCall(): TextCall {
         // the hook has already said why when this throws
         // Asked from the send that opens the call, so a first call's permission prompt
         // comes with it
-        const [opened, found] = await Promise.all([open(runsOn()), whereNow()]);
-        to = { ...opened, at: Date.now(), where: found?.where ?? null };
+        const [opened, where] = await Promise.all([open(runsOn()), whereNow()]);
+        to = { ...opened, at: Date.now(), where };
         held.current = to;
         stood.current = stoodBefore(inbox.current ?? []);
         setLine(to);
