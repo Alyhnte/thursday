@@ -181,7 +181,8 @@ export function CallLines({
           <ChatGptSignIn
             variant={noCalls ? "outline" : "brand"}
             size="sm"
-            className="w-full"
+            // Both rows' buttons round like the brand one (button.tsx), whichever of them is brand
+            className="w-full rounded-full"
             label={planLost || noCalls ? "Sign in again" : "Sign in"}
           />
         )}
@@ -205,7 +206,7 @@ export function CallLines({
             variant={noCalls ? "brand" : "outline"}
             aria-expanded={keyOpen}
             onClick={() => setKeyOpen((open) => !open)}
-            className="w-full"
+            className="w-full rounded-full"
           >
             Paste a key
           </Button>
