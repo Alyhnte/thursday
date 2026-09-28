@@ -5,16 +5,18 @@ yet: the work so far is a design canvas, https://claude.ai/artifact/CMHZ6oW7wYJ2
 
 ## Here: where you are and the sky over it
 
-- She turns into a globe, spins to the user's location, then dives until their country fits and
-  widens past her circle into a 2:1 field. On the way in everything else falls away: only their
-  country is left, drawn in her emoji.
+- Runs once a day, for users who have given their location.
+- She turns into a globe (land as trees, sea as water; the night side dark, with lights), spins to
+  the user's location, then dives until their country fits and widens past her circle into a 2:1
+  field. On the way in everything else falls away: only their country is left, low in the frame.
 - Country outlines from Natural Earth 50m (world-atlas `countries-50m`, simplified to ~240 KB).
-- A pin at the location and the local time. The sun glides along today's real path to where it is
-  now (suncalc's formulas); at night the moon in its real phase, with stars. On the globe, the
-  night side is dark with city lights.
-- Weather over the country, kept light: a few clouds drifting across, rain or snow falling a
-  little way from under them. Clear, partly cloudy, overcast, fog, drizzle, rain, heavy rain,
-  snow, thunderstorm, typhoon (called typhoon, hurricane or cyclone by region).
+- A pin at the location. In the sky above, the sun as a small living cluster of emoji, where it
+  really is now (suncalc's formulas): up left in the morning, high at noon, down right toward
+  evening. At night the moon, lit as it is tonight, and stars.
+- Weather kept light: rain or snow falling thinly across, a few small clouds in the sky, never a
+  sheet over the map. Clear, partly cloudy, overcast, fog, drizzle, rain, heavy rain, snow,
+  thunderstorm, typhoon (called typhoon, hurricane or cyclone by region). Place, time and weather
+  are a line of text under the scene, not a box on the map.
 
 ## Seeing: a picture in emoji pixels
 
