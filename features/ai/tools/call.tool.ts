@@ -64,22 +64,22 @@ const drawTool = tool({
   inputSchema: drawSpec.parameters,
 });
 
-const lookAtScreenSpec = {
-  description: `See the screen the user is sharing with you, as it is at this moment.
+const lookAtSharedSpec = {
+  description: `See what the user is showing you, their screen or their camera, as it is at this moment.
 
-The picture comes right after this result. When they are not sharing, the result says so.`,
+The picture comes right after this result. When they are showing nothing, the result says so.`,
   parameters: z.object({}),
 };
 
-/** Deliberately has no `execute`: the page holds the shared screen and takes the picture. */
-const lookAtScreenTool = tool({
-  description: lookAtScreenSpec.description,
-  inputSchema: lookAtScreenSpec.parameters,
+/** Deliberately has no `execute`: the page holds what is shown and takes the picture. */
+const lookAtSharedTool = tool({
+  description: lookAtSharedSpec.description,
+  inputSchema: lookAtSharedSpec.parameters,
 });
 
 /**
  * Deliberately has no `execute`: a spoken call's backend answers through the page, which fetches
- * the picture and puts it in after this turn's results, as it does the shared screen's.
+ * the picture and puts it in after this turn's results, as it does what is shown.
  */
 const lookAtTool = tool({
   description: lookAtSpec.description,
@@ -92,7 +92,7 @@ export function callTools() {
     [TOOL_NAMES.end_call]: endCallTool,
     [TOOL_NAMES.emote]: emoteTool,
     [TOOL_NAMES.draw]: drawTool,
-    [TOOL_NAMES.look_at_screen]: lookAtScreenTool,
+    [TOOL_NAMES.look_at_shared]: lookAtSharedTool,
     [TOOL_NAMES.look_at]: lookAtTool,
   };
 }

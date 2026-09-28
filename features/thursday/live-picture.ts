@@ -1,15 +1,15 @@
 "use client";
 
 import { queryKey } from "@/app/api/query-key";
-import { LIVE_PICTURE } from "@/config";
+import { SHOWING } from "@/config";
 import { viewKindOf } from "@/features/workspace/file-kind";
 import { errorToString } from "@/lib/utils";
 
 /**
  * A picture for a spoken call's backend, which the page puts in after the turn's results
- * (live.session): the screen they share (screen-share) or a picture they gave her (`look_at`,
+ * (live.session): what they show (show.ts) or a picture they gave her (`look_at`,
  * use-thursday). A data channel carries one message up to its limit and no more, so the
- * picture is made plainer, then smaller, until it fits (config LIVE_PICTURE). What went wrong
+ * picture is made plainer, then smaller, until it fits (config SHOWING). What went wrong
  * otherwise is said as the backend will read it.
  */
 
@@ -29,17 +29,17 @@ export function fitPicture(
   const canvas = document.createElement("canvas");
   const context = canvas.getContext("2d");
   if (!context) throw new Error("This browser could not take the picture.");
-  for (const scale of LIVE_PICTURE.scales) {
+  for (const scale of SHOWING.scales) {
     const ratio = Math.min(
       1,
-      (LIVE_PICTURE.longestSide * scale) / Math.max(width, height),
+      (SHOWING.longestSide * scale) / Math.max(width, height),
     );
     canvas.width = Math.max(1, Math.round(width * ratio));
     canvas.height = Math.max(1, Math.round(height * ratio));
     context.fillStyle = "#fff";
     context.fillRect(0, 0, canvas.width, canvas.height);
     context.drawImage(source, 0, 0, canvas.width, canvas.height);
-    for (const quality of LIVE_PICTURE.qualities) {
+    for (const quality of SHOWING.qualities) {
       const url = canvas.toDataURL("image/jpeg", quality);
       if (url.length <= bytes) return url;
     }

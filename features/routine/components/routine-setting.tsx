@@ -599,7 +599,7 @@ function RoutineSheet({
                       id="routine-name"
                       value={draft.label}
                       onChange={(event) => patch({ label: event.target.value })}
-                      placeholder="Morning mail"
+                      placeholder="e.g. Morning mail"
                       maxLength={80}
                       autoFocus={!saved}
                     />
@@ -789,7 +789,7 @@ function RoutineSheet({
                       onChange={(event) =>
                         patch({ request: event.target.value })
                       }
-                      placeholder="Go through the mail that came since the last run and draft replies to what needs one. Send nothing."
+                      placeholder="e.g. Go through the mail that came since the last run and draft replies to what needs one. Send nothing."
                       className="min-h-28"
                     />
                     <Hint>

@@ -509,6 +509,14 @@ export function WriteLine({
                     event.preventDefault();
                     return walk(event.key === "ArrowDown" ? 1 : -1);
                   }
+                  // Tab completes the name, as it does in any list that finishes a word; with
+                  // nobody by that name it moves on, as Tab does, rather than holding the focus
+                  const tab = event.key === "Tab" && !event.shiftKey;
+                  if (mention && tab && !midWord && matches[at]) {
+                    event.preventDefault();
+                    pick(matches[at]);
+                    return;
+                  }
                   if (event.key !== "Enter" || event.shiftKey || midWord)
                     return;
                   event.preventDefault();
@@ -585,8 +593,8 @@ export function WriteLine({
               {written.error}
             </p>
           )}
-          {/* The way on from a turn that broke: the same words again, and where keys are set.
-              Never by itself: what a turn costs changes with what it runs on, so they press it */}
+          {/* The way on from a turn that broke: the same words again. Never by itself: what a
+              turn costs changes with what it runs on, so they press it */}
           {toHer && written?.error && (
             <div className="flex items-center justify-center gap-3">
               <Button
@@ -607,20 +615,17 @@ export function WriteLine({
                   ? "Send it again on your OpenAI key"
                   : "Send it again"}
               </Button>
-              <span className="font-mono text-[10.5px] text-muted-foreground/70">
-                <KeysLink>API keys</KeysLink>
-              </span>
             </div>
           )}
           <p className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 font-mono text-[10.5px] text-muted-foreground/70">
             {mention ? (
               // an open list has the keys: nothing is sent or left while it is up
               <>
-                <Key>↑↓</Key> walk
+                <Hint keys={["↑↓"]}>walk</Hint>
                 <Dot />
-                <Key>Enter</Key> take
+                <Hint keys={["Tab", "Enter"]}>take</Hint>
                 <Dot />
-                <Key>Esc</Key> close the list
+                <Hint keys={["Esc"]}>close the list</Hint>
               </>
             ) : (
               <>
@@ -629,9 +634,9 @@ export function WriteLine({
                   <RunsOn runsOn={null} />
                 ) : (
                   <>
-                    <Key>Enter</Key> send
+                    <Hint keys={["Enter"]}>send</Hint>
                     <Dot />
-                    <Key>@</Key> {toHer ? "a bot" : "pick a bot"}
+                    <Hint keys={["@"]}>{toHer ? "a bot" : "pick a bot"}</Hint>
                     {toHer && (
                       <>
                         <Dot />
@@ -641,8 +646,9 @@ export function WriteLine({
                   </>
                 )}
                 <Dot />
-                <Key>Esc</Key>{" "}
-                {calling ? (toHer ? "to end" : "back to her") : "close"}
+                <Hint keys={["Esc"]}>
+                  {calling ? (toHer ? "to end" : "back to her") : "close"}
+                </Hint>
               </>
             )}
           </p>
@@ -723,6 +729,18 @@ function Mark({ bot, size }: { bot: BotRef; size: number }) {
       notify={false}
       className="shrink-0"
     />
+  );
+}
+
+/** A key and what it does, kept on one line: the small print wraps between them, never inside one. */
+function Hint({ keys, children }: { keys: string[]; children: string }) {
+  return (
+    <span className="inline-flex items-center gap-2 whitespace-nowrap">
+      {keys.map((key) => (
+        <Key key={key}>{key}</Key>
+      ))}
+      {children}
+    </span>
   );
 }
 

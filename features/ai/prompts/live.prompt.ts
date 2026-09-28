@@ -44,6 +44,11 @@ export async function loadLivePrompt(options: {
    * weather to greet them with; `here` in what comes back says whether it was.
    */
   here?: boolean;
+  /**
+   * The call runs on the GPT subscription's voice (thursday.plan), where what comes back to her
+   * arrives on one of two channels rather than as the key's kinds of update.
+   */
+  plan?: boolean;
 }): Promise<{ text: string; opening: string; here: boolean }> {
   const [open, index, calls] = await Promise.all([
     // Written out in the prompt, which is not the user asking for them: no read counted
@@ -60,6 +65,7 @@ export async function loadLivePrompt(options: {
     thursdayIdentity(new Date(), options.where),
     personaLines(options.persona),
     always(),
+    options.plan ? channels() : "",
     known(open.notes, index),
     first ? firstCall(!earlier) : "",
     earlier,
@@ -151,7 +157,7 @@ Backend tools:
 - Routines: jobs that start by themselves later.
 - Memory: keeps what the user tells you about themselves, and looks it up.
 - This computer and the web: runs a command, searches.
-- What they show you: looks at a picture they give you, or at what they share with you — a screen, a window or a tab — as it is when they ask.
+- What they show you: looks at a picture they give you, or at their screen — a screen, a window or a tab — or their camera, as it is when they ask.
 - Your face: a short word or a small drawing on it, when you want to show or express something.
 
 Delegate to the backend when:
@@ -167,6 +173,18 @@ Do not delegate to the backend when:
 Delegate before giving an answer that depends on backend work. Do not guess the result while waiting.
 
 What they tell you about themselves is handed over quietly: go on talking with them as you were, with no word about noting it, checking or thinking it over, and say nothing more of it when it comes back kept.`;
+}
+
+/**
+ * On the GPT subscription's voice, what the app puts in comes on one of two channels
+ * (live.plan `PlanChannel`): what she is to say, and background she is not to read out. The
+ * lines follow what OpenClaw tells the same voice (extensions/openai
+ * realtime-quicksilver-instructions.ts `OPENAI_QUICKSILVER_CHANNEL_INSTRUCTIONS`).
+ */
+function channels(): string {
+  return `## What comes back to you
+
+Context on the speakable channel is yours to say: the result of what you handed over, or an update for them. Say it naturally, in your own words. Context on the commentary channel is silent background: use it when it matters, and never read it out. Never mention the channel or the hand-over.`;
 }
 
 /**

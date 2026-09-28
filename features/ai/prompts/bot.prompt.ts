@@ -37,6 +37,7 @@ import {
 } from "@/features/skills/skills.discover";
 import { pathsIn } from "@/features/workspace/file-kind";
 import {
+  botFolder,
   type MachineTools,
   openWorkspace,
   readMachineTools,
@@ -111,6 +112,7 @@ export async function loadBotPrompt(
     environment(sandbox.cwd, machine, folders),
     // After Environment: its folder is named against the Cwd said there
     memoryOn ? ownMemory(botMemoryFolder(name), kept) : "",
+    ownSkillsNote(`${botFolder(name)}/${PATHS.skills.own}`),
     otherThreads(name, work),
     roster(peers, name, seat),
     collaboration(name, seat),
@@ -222,6 +224,19 @@ function ownMemory(folder: string, kept: BotMemory): string {
 What you learned on your own earlier jobs, in \`${folder}/\`: one topic per file, its first line saying what it holds, read by no other bot, up to ${BOT_MEMORY_LIMITS.files} files of ${BOT_MEMORY_LIMITS.chars.toLocaleString("en-US")} characters each. It is how you get better at this work. When a job teaches you something a later one would otherwise find out again — how a site signs in, the way through its screens, a command that turned out right — or the user asks you to remember how to work, keep it with the date it was true, and fix or delete what proved wrong. No passwords, keys or codes.
 
 ${listing}${rest}`;
+}
+
+/**
+ * When a bot writes a skill for itself, as Hermes Agent's prompt has it record a workflow worth
+ * repeating (hermes-agent docs, Skills). Held to a kind of job that comes again, which its
+ * routine opening and its other threads let it see, since each skill of its own is read on
+ * every step it takes; a fact goes to its memory instead. Only its own folder: the shipped and
+ * ready-made skills are read-only, and the every-bot ones are the user's.
+ */
+function ownSkillsNote(folder: string): string {
+  return `## Your own skills
+
+A skill in \`${folder}/\` is listed to you alone, and read on every step you take, so keep few. Write one only when the job is a kind that comes again — a routine runs it, or your other threads show the same kind of job — and doing it well took a way of working, not a fact your memory can hold. Before writing one, improve the one of yours that covers the job instead. Write it as the skill-creator skill says; the job you just did is its test, so validate it and run no test prompts. Say in one line of your answer which skill you wrote or changed. Any skill outside that folder changes only when the user asks.`;
 }
 
 /**

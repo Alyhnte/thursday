@@ -1,4 +1,4 @@
-import { LIVE_PROVIDER } from "@/features/ai/live.schema";
+import { LIVE_LINES, LIVE_PROVIDER } from "@/features/ai/live.schema";
 import {
   canMakeKind,
   EFFORTS,
@@ -8,6 +8,7 @@ import {
   parseMediaModel,
   parseTextModel,
   TEXT_MODEL_PROVIDER_LIST,
+  TEXT_MODEL_PROVIDERS,
   type TextModelProviderId,
 } from "@/features/ai/model.schema";
 import {
@@ -45,8 +46,6 @@ export type ConfigEntry = {
   effortOf?: string;
   /** A studio kind. The value is `provider/model`, picked with the model picker, so ids outside `choices` are accepted. */
   kind?: MediaKind;
-  /** The one the app points a newcomer at. */
-  recommended?: true;
   /** The service's own site, for a key that is no model provider's: its icon is the row's mark. */
   site?: string;
   /** Where the key is made: the link its dialog offers. */
@@ -90,7 +89,7 @@ export type ConfigGroup = {
 /** Live voice and Responses delegation share this API key. */
 const voiceKeys = [LIVE_PROVIDER.apiKeyName];
 
-/** The studio model per kind, as `provider/model`. Unset means the tool is absent, not a fallback. */
+/** The studio model per kind, as `provider/model`. Unset, the GPT Subscription makes what its plan can (model.schema planMediaOf) and the rest is absent: no key is a fallback. */
 export const MEDIA_MODEL_KEYS: Record<MediaKind, string> = {
   image: "IMAGE_MODEL",
   video: "VIDEO_MODEL",
@@ -214,9 +213,14 @@ export const CONFIG_GROUPS: ConfigGroup[] = [
   {
     id: "voice",
     title: "voice",
-    hint: "calls run on this key",
+    hint: "calls run on this key, or on a paid GPT Subscription sign-in",
     section: "keys",
     require: "any",
+    // The sign-in is listed with the easy ways, and opens a call as well on a plan with calls
+    // (live.schema liveLineOf; config.query isCallable and voice-key useVoiceLine ask the plan)
+    requireKeys: LIVE_LINES.map(
+      (line) => TEXT_MODEL_PROVIDERS[line].apiKeyName,
+    ),
     note: "required for calls",
     entries: TEXT_MODEL_PROVIDER_LIST.filter(isVoiceKey).map(keyEntry),
   },
@@ -226,13 +230,7 @@ export const CONFIG_GROUPS: ConfigGroup[] = [
     hint: "one sign-in or one key opens every bot",
     section: "keys",
     require: "none",
-    entries: TEXT_MODEL_PROVIDER_LIST.filter(isEasy).map((provider) => ({
-      ...keyEntry(provider),
-      // one key for every model, and one bill
-      ...(provider.id === "vercel-ai-gateway" && {
-        recommended: true as const,
-      }),
-    })),
+    entries: TEXT_MODEL_PROVIDER_LIST.filter(isEasy).map(keyEntry),
   },
   {
     id: "text",
@@ -305,7 +303,7 @@ export const CONFIG_GROUPS: ConfigGroup[] = [
   {
     id: "studio",
     title: "Studio",
-    hint: "what a bot draws, films and speaks with — off until you pick one",
+    hint: "what a bot draws, films and speaks with — off until you pick one; a paid GPT Subscription draws by itself",
     section: "models",
     require: "none",
     entries: (Object.keys(MEDIA_MODEL_KEYS) as MediaKind[]).map(mediaEntry),
@@ -332,10 +330,29 @@ export const CONFIG_CHOICES: Record<string, ConfigChoice[]> =
       .map((entry) => [entry.key, entry.choices as ConfigChoice[]]),
   );
 
+/**
+ * Whether a key's value is a secret: every Settings entry without `choices` — a key, a token,
+ * the ChatGPT sign-in. Sealed before it is written (config.query), and never served.
+ */
+export function isSecretKey(key: string): boolean {
+  const entry = CONFIG_ENTRIES[key];
+  return Boolean(entry && !entry.choices);
+}
+
 /** What /api/config returns; never a secret's value. */
 export type ConfigStatus = {
   key: string;
   set: boolean;
+  /**
+   * Saved, but sealed under a key the data folder no longer has (lib/secret): not set, since
+   * nothing can use it, and the screen asks for it again rather than showing it as never given.
+   */
+  unreadable?: true;
+  /**
+   * Set in the environment the app started with (a `.env` Next loads, or the shell), which wins
+   * over a row (config.query readConfig): Settings can neither replace nor remove it.
+   */
+  env?: true;
   /** Choice entries only. */
   value?: string;
 };
@@ -345,6 +362,42 @@ export function isConfigSet(
   key: string,
 ): boolean {
   return status?.some((entry) => entry.key === key && entry.set) ?? false;
+}
+
+export function isConfigUnreadable(
+  status: ConfigStatus[] | undefined,
+  key: string,
+): boolean {
+  return (
+    status?.some((entry) => entry.key === key && entry.unreadable) ?? false
+  );
+}
+
+export function isConfigFromEnv(
+  status: ConfigStatus[] | undefined,
+  key: string,
+): boolean {
+  return status?.some((entry) => entry.key === key && entry.env) ?? false;
+}
+
+/** How a setting the environment holds is said, on the screen and in the action's refusal. */
+export function envWords(label: string): string {
+  return `${label} is set in the environment the app started with — a .env or your shell — and that one is used over one saved here. Change or remove it there, then start the app again.`;
+}
+
+/**
+ * Why a saved secret cannot be read: the one cause there is, since the key is the data folder's
+ * `.env` alone (lib/secret) — it was lost, replaced, or left behind when the database moved.
+ */
+const LOST_KEY_WHY =
+  "the .env in the data folder that unlocks it was lost or replaced";
+
+/**
+ * How a saved secret that can no longer be opened is said, wherever it is — a screen, an error,
+ * a connector's row: what it was, why, the file's path where the server has it, and what to do.
+ */
+export function lostWords(what: string, todo: string, where?: string): string {
+  return `${what} can't be unlocked any more: ${LOST_KEY_WHY}${where ? ` (${where})` : ""}. ${todo}`;
 }
 
 export function groupSatisfied(

@@ -3,9 +3,9 @@
 ## Who the bots are
 
 A bot is a text model with a name, one sentence about what it is for, and a face. That sentence is
-how a job finds its bot. The roster is **Settings › Bots**. **New bot** makes one — it needs a name,
-a description and a model, and the name cannot be changed later. A bot's page holds what it
-**Runs on**, its **Effort**, when it **Compacts at**, its **Tools**, its own **Prompt**, its recent
+how a job finds its bot. The roster is **Settings › Bots**. **New bot** makes one — it needs a name
+and a description, and the name cannot be changed later; left without a model it runs on the app
+default one. A bot's page holds what it **Runs on**, its **Effort**, when it **Compacts at**, its **Tools**, its own **Prompt**, its recent
 threads and its own memory. A bot can be switched off without being deleted. Deleting one keeps what
 it finished (**Settings › Files** still shows it under that bot's name), but its memory and the
 skills it installed go with it. **Ready-made bots**, beside New bot, adds the ready-made ones; the
@@ -90,8 +90,8 @@ that bot settles it first. Bots do not report progress to the call or a phone: t
 is working, and what reaches the user is a question or the ending.
 
 A picture a bot made or was given can be changed rather than drawn again: ask for what should be
-different. This needs an image model in **Settings › Models**; if the one picked cannot work from a
-picture, the bot says so.
+different. This needs an image model in **Settings › Models**, or the GPT Subscription signed in on
+a paid plan; if the one picked cannot work from a picture, the bot says so.
 
 ## Telling a running bot something
 

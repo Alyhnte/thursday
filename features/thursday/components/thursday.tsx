@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import {
+  Fragment,
   type ReactNode,
   useCallback,
   useEffect,
@@ -36,9 +37,10 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { CALL_IDLE, CALL_LINE } from "@/config";
-import { LIVE_DEFAULTS, LIVE_PROVIDER } from "@/features/ai/live.schema";
+import { LIVE_DEFAULTS, LIVE_LINES } from "@/features/ai/live.schema";
 import {
   type AutomaticModel,
+  planName,
   TEXT_MODEL_PROVIDERS,
 } from "@/features/ai/model.schema";
 import { type Bot, DEFAULT_BOT } from "@/features/bot/bot.schema";
@@ -46,8 +48,15 @@ import { BotMark } from "@/features/bot/components/bot-mark";
 import { BotRoom } from "@/features/bot/components/bot-room";
 import { toolIcon } from "@/features/bot/components/bot-tool";
 import { useAnswerThread } from "@/features/bot/components/thread-reply";
-import { GetKeyLink, VoiceKeys } from "@/features/config/components/voice-key";
-import { type ConfigStatus, isConfigSet } from "@/features/config/config.const";
+import {
+  CallLines,
+  useVoiceLine,
+} from "@/features/config/components/voice-key";
+import {
+  type ConfigStatus,
+  isConfigSet,
+  isConfigUnreadable,
+} from "@/features/config/config.const";
 import { InstallNudge } from "@/features/settings/components/install-app";
 import { SECTIONS, Settings } from "@/features/settings/components/settings";
 import {
@@ -59,11 +68,12 @@ import { openSettings } from "@/features/settings/settings.store";
 import { useCallHeld } from "@/features/thursday/call-signal";
 import { faceMoment, useFaceMoment } from "@/features/thursday/face-moment";
 import {
-  canShare,
-  share,
-  stopSharing,
-  useSharedScreen,
-} from "@/features/thursday/screen-share";
+  canShow,
+  type ShownKind,
+  show,
+  stopShowing,
+  useShown,
+} from "@/features/thursday/show";
 import { silentVoice } from "@/features/thursday/silent-voice";
 import {
   type CallMessage,
@@ -83,7 +93,6 @@ import {
 } from "@/features/thursday/use-thursday";
 import { ArtifactView } from "@/features/workspace/components/artifact-view";
 import { useHotkeyLabel } from "@/hooks/use-hotkey";
-import { RING_CYCLE_MS } from "@/lib/live/ring";
 import { useServerRoute } from "@/lib/protocol/use-server-route";
 import { cn, errorToString, plainText } from "@/lib/utils";
 import { CaptionWords } from "./caption-words";
@@ -237,7 +246,7 @@ function CallScreen({
           hidden={status !== "idle" || ringing !== null || writing}
         />
         {/* On the caller's side, clear of the captions stacked beside her face */}
-        <SharedScreen />
+        <ShownPreview />
       </div>
 
       {/* Top padding in vh, like the face itself, so the face+text column sits below center */}
@@ -1241,20 +1250,17 @@ function WorkStack({
   );
 }
 
-/** The word the orb shows while she rings, once a ring (lib/live/ring): lit, held, out, a breath of her own face. */
-const RING_WORD = { text: "CALL", hold: 1.5 };
+/**
+ * The word the orb shows while she rings: lit as the ring starts and held until it is answered,
+ * declined or rung out. Lit once a ring, her face came back between the rings, and the screen
+ * went back and forth between CALL and her.
+ */
+const RING_WORD = { text: "CALL", hold: Number.POSITIVE_INFINITY };
 
 function useRingWord(on: boolean): FaceWord | null {
   const [word, setWord] = useState<FaceWord | null>(null);
   useEffect(() => {
-    if (!on) {
-      setWord(null);
-      return;
-    }
-    const show = () => setWord({ ...RING_WORD, at: Date.now() });
-    show();
-    const again = setInterval(show, RING_CYCLE_MS);
-    return () => clearInterval(again);
+    setWord(on ? { ...RING_WORD, at: Date.now() } : null);
   }, [on]);
   return word;
 }
@@ -1566,7 +1572,7 @@ function Hint({
         ) : (
           <Elapsed since={since} />
         )}
-        <ShareScreen />
+        <ShowOnLine />
       </>
     );
   } else if (ended) {
@@ -1631,58 +1637,78 @@ function Hint({
 const LINE_BUTTON =
   "rounded-md outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50";
 
+/** What each way to show her is called on the line, and what the browser refusing it says. */
+const SHOW_WAYS: Record<
+  ShownKind,
+  { press: string; on: string; refused: string }
+> = {
+  screen: {
+    press: "Share screen",
+    on: "Sharing screen",
+    refused: "Nothing was shared",
+  },
+  camera: {
+    press: "Camera",
+    on: "Camera on",
+    refused: "The camera did not start",
+  },
+};
+
 /**
- * The way to show her a screen, on the line while a spoken call is up. The browser asks which
- * screen, window or tab, and only from a press; she sees it only when she looks (screen-share).
+ * The ways to show her a screen or the camera, on the line while a spoken call is up; one at
+ * a time. The browser asks which screen, window or tab, or for the camera, and only from a
+ * press (show).
  */
-function ShareScreen() {
-  const stream = useSharedScreen();
-  if (!canShare()) return null;
-  return (
-    <>
-      <span className="text-muted-foreground/40">·</span>
-      {stream ? (
-        <>
-          <span>Sharing</span>
-          <span className="text-muted-foreground/40">·</span>
-          <button type="button" onClick={stopSharing} className={LINE_BUTTON}>
-            Stop
-          </button>
-        </>
-      ) : (
-        <button
-          type="button"
-          // What the browser refused, in its words: a press that did nothing left the person
-          // guessing, where the system's screen recording permission was the answer
-          onClick={() =>
-            share().catch((cause: unknown) =>
-              toast.add({
-                type: "warning",
-                title: "Nothing was shared",
-                description: errorToString(cause),
-              }),
-            )
-          }
-          className={LINE_BUTTON}
-        >
-          Share screen
+function ShowOnLine() {
+  const shown = useShown();
+  if (shown)
+    return (
+      <>
+        <span className="text-muted-foreground/40">·</span>
+        <span>{SHOW_WAYS[shown.kind].on}</span>
+        <span className="text-muted-foreground/40">·</span>
+        <button type="button" onClick={stopShowing} className={LINE_BUTTON}>
+          Stop
         </button>
-      )}
-    </>
-  );
+      </>
+    );
+  return (["screen", "camera"] as const).filter(canShow).map((kind) => (
+    <Fragment key={kind}>
+      <span className="text-muted-foreground/40">·</span>
+      <button
+        type="button"
+        // What the browser refused, in its words: a press that did nothing left the person
+        // guessing, where the system's screen recording permission was the answer
+        onClick={() =>
+          show(kind).catch((cause: unknown) =>
+            toast.add({
+              type: "warning",
+              title: SHOW_WAYS[kind].refused,
+              description: errorToString(cause),
+            }),
+          )
+        }
+        className={LINE_BUTTON}
+      >
+        {SHOW_WAYS[kind].press}
+      </button>
+    </Fragment>
+  ));
 }
 
 /**
- * What is shared with her, small, while it is. Nothing of it leaves the page until she looks,
+ * What is shown to her, small, while it is. Nothing of it leaves the page until she looks,
  * which the backend decides, most often when asked: the caption says only what the code holds.
  */
-function SharedScreen() {
-  const stream = useSharedScreen();
+function ShownPreview() {
+  const shown = useShown();
   const video = useRef<HTMLVideoElement>(null);
+  const stream = shown?.stream ?? null;
   useEffect(() => {
     if (video.current) video.current.srcObject = stream;
   }, [stream]);
-  if (!stream) return null;
+  if (!shown) return null;
+  const camera = shown.kind === "camera";
   return (
     <figure className="flex w-44 animate-in flex-col items-end gap-1.5 fade-in duration-300">
       <video
@@ -1690,8 +1716,13 @@ function SharedScreen() {
         autoPlay
         muted
         playsInline
-        aria-label="The screen you are sharing"
-        className="aspect-video w-full rounded-lg bg-muted object-contain ring-1 ring-border/60"
+        aria-label={camera ? "Your camera" : "The screen you are sharing"}
+        // The camera as a mirror, the way people expect to see themselves; the picture she
+        // gets is not flipped
+        className={cn(
+          "w-full rounded-lg bg-muted object-contain ring-1 ring-border/60",
+          camera ? "aspect-[4/3] -scale-x-100" : "aspect-video",
+        )}
       />
       <figcaption className="font-mono text-[11px] text-muted-foreground">
         Sent only when she looks
@@ -1754,13 +1785,19 @@ function NeedsKey({
   const { data: automatic } = useServerRoute<AutomaticModel>(
     queryKey.automaticModel,
   );
+  // A key or sign-in saved before that can no longer be opened is said as that, not as one never given
+  const { data: config } = useServerRoute<ConfigStatus[]>(queryKey.config);
+  const lost = LIVE_LINES.find((line) =>
+    isConfigUnreadable(config, TEXT_MODEL_PROVIDERS[line].apiKeyName),
+  );
+  // Signed in on a plan without spoken calls: bots and writing run on it, a call does not
+  const voice = useVoiceLine();
+  const noCalls = voice.signedIn && !voice.planCalls;
   if (open) {
     return (
       <div className="w-[min(26rem,84vw)] animate-in space-y-2.5 rounded-2xl bg-background/80 p-3 ring-1 ring-border/60 backdrop-blur-md fade-in duration-300">
         <div className="flex h-6 items-center justify-between gap-2 pl-0.5">
-          <span className="text-[13px] font-medium">
-            Paste your OpenAI API key
-          </span>
+          <span className="text-[13px] font-medium">Give her a voice</span>
           <Button
             type="button"
             size="icon"
@@ -1772,10 +1809,11 @@ function NeedsKey({
             <X className="size-3.5" />
           </Button>
         </div>
-        {/* the intro's key step, in place. The bots picked on the first run are already
-            installed, key or no key: installing every seed here brought back the ones left out */}
-        <VoiceKeys dense plain autoFocus />
-        <GetKeyLink />
+        {/* The intro's first step, in place: the sign-in first, as on a plan it opens calls,
+            bots and pictures at once (live.schema liveLineOf). The bots picked on the first run
+            are already installed, key or no key: installing every seed here brought back the
+            ones left out */}
+        <CallLines />
       </div>
     );
   }
@@ -1795,13 +1833,19 @@ function NeedsKey({
         <MicOff className="absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full bg-muted text-muted-foreground" />
       </span>
       <span className="text-[13px] text-muted-foreground break-keep wrap-anywhere">
-        {automatic && !automatic.ref
-          ? "Calls need one speech key, and bots a model key or a ChatGPT sign-in."
-          : "Calls need one speech key. Everything else here already works."}
+        {lost === "chatgpt"
+          ? "The ChatGPT sign-in saved for calls can't be unlocked any more — sign in again."
+          : lost
+            ? "The key saved for calls can't be unlocked any more — add it again."
+            : noCalls
+              ? `Your ${planName(voice.plan) ? `${planName(voice.plan)} ` : ""}ChatGPT plan has no spoken calls — add an OpenAI key. Bots and writing already run on it.`
+              : automatic && !automatic.ref
+                ? "Sign in with ChatGPT and calls and bots run on your plan, or add a key."
+                : "Calls need a GPT Subscription or an OpenAI key. Everything else here already works."}
       </span>
       {/* the one thing this screen asks for */}
       <Button size="sm" variant="brand" onClick={onOpen} className="h-7 px-3.5">
-        Add key
+        Set up
       </Button>
     </span>
   );
@@ -1887,9 +1931,10 @@ export function Thursday({
    * every load, then woke her.
    */
   const { data: config } = useServerRoute<ConfigStatus[]>(queryKey.config);
-  const callable = config
-    ? isConfigSet(config, LIVE_PROVIDER.apiKeyName)
-    : ready;
+  // The OpenAI key, or the GPT Subscription's sign-in on a plan with calls, which opens a
+  // call on its own line
+  const voice = useVoiceLine();
+  const callable = voice.known ? voice.line !== null : ready;
 
   // A call in writing takes the same screen while no line is open; a spoken call ends it,
   // which is what tapping her face in the middle of one does

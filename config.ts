@@ -36,6 +36,24 @@ export const LIVE_CALL = {
 };
 
 /**
+ * A spoken call on the GPT subscription (features/thursday/thursday.plan), where the app runs
+ * her backend for the voice instead of the provider.
+ * - `delegationBytes`  the most of the voice's request, and of what was said since the hand-over
+ *   before it, that each hand-over carries to her backend; past it the request keeps its start
+ *   and the talk its end. Codex's own bound (codex-rs core context/realtime_delegation.rs
+ *   `MAX_REALTIME_DELEGATION_FIELD_BYTES`). More hands the backend more of the talk at more
+ *   input; less cuts a long request short.
+ * - `pictureBytes`  the largest picture of what the user shows (features/thursday/show.ts) the
+ *   page sends her backend on this line, where it goes over HTTP instead of a data channel with
+ *   a limit of its own: about what Chrome's channel takes on a key's call. More costs the
+ *   backend more to read, less blurs small text.
+ */
+export const PLAN_CALL = {
+  delegationBytes: 4 * 1024,
+  pictureBytes: 262_144,
+};
+
+/**
  * Background work put to the voice during a call (useThursday). Live never speaks
  * unprompted, so what waits on the user reaches them only when the page puts it in.
  * Each item goes in once a call; once she has voiced it, not on a later call either,
@@ -241,6 +259,13 @@ export const DB_PATH = `${DATA_DIR}/local.db`;
 export const DB_FILE_NAME = `file:${DB_PATH}`;
 
 /**
+ * The data folder's own `.env`, where the key that seals the secrets in DB_PATH is kept when
+ * the environment does not set it (lib/secret). Beside the database, so it goes wherever the
+ * database goes: a copy of the folder carries both.
+ */
+export const ENV_PATH = `${DATA_DIR}/.env`;
+
+/**
  * Relative paths; readers join them with the root that owns them (APP_DIR for
  * the app's, DATA_DIR for the user's).
  */
@@ -271,9 +296,9 @@ export const PATHS = {
   /** Where tool output over TOOL_OUTPUT is written in full. */
   output: ".output",
   /**
-   * The sites the user signed in to (features/signins), one file a site. Under DATA_DIR and
-   * outside the workspace, so no bot comes across another's session among its files; named
-   * here because `pnpm reset` has to find it without the app.
+   * The sites the user signed in to (features/signins), one file per account. Under DATA_DIR
+   * and outside the workspace, so no bot comes across another's session among its files;
+   * named here because `pnpm reset` has to find it without the app.
    */
   signIns: ".sign-ins",
   skills: {
@@ -636,7 +661,8 @@ export const BROWSER_VIEWPORT = "700x700";
  * How long the app waits on a browser command it sends itself, not a bot's own
  * (workspace, signins.query, ai/tools/signin.tool).
  * - `readMs`  one that only asks — `list`, the page's address — or closes a job's
- *   browsers when it is cancelled, deleted or swept. A list runs before a sign-in is
+ *   browsers when it is cancelled, deleted or swept. A list, and reading or setting the
+ *   mark that says a browser is the one a sign-in was lent to, run before a sign-in is
  *   lent, kept or renewed too, so a browser that hangs holds each of those this long.
  * - `loadMs`  each step of lending or keeping a sign-in: `state-load`, `state-save`, and
  *   the `close`, `open` and `goto` that take its window away. Shorter fails a slow
@@ -894,32 +920,27 @@ export const MEMORY_EDIT = { maxSteps: 20 };
 export const LOOK = { maxBytes: 4 * 1024 * 1024 };
 
 /**
- * A screen the user shares with a spoken call (features/thursday/screen-share.ts).
- * - `frameRate`  how often the browser grabs the screen while it is shared. Only a still is
- *   ever taken, when she looks: more costs the computer for nothing, fewer makes a look up to
- *   that much older.
- * - `firstFrameMs`  how long a look waits for a share that has not shown anything yet, as one
- *   just started has not. Longer gives a slow start its chance before she hears that nothing
- *   showed; she is silent that long first.
- */
-export const SCREEN_SHARE = {
-  frameRate: 5,
-  firstFrameMs: 3000,
-};
-
-/**
- * A picture the page hands a spoken call's backend in one message of the connection: the
- * screen they share, or a picture they gave her (features/thursday/live-picture.ts).
+ * What the user shows a spoken call, a screen or their camera (features/thursday/show.ts), and
+ * how a picture for the call's backend is made to fit — of what is shown, or of a picture they
+ * gave her (features/thursday/live-picture.ts).
+ * - `frameRate`  how often the browser grabs the screen or camera while it is shown. Only a
+ *   still is ever taken: more costs the computer for nothing, fewer makes a picture up to that
+ *   much older.
  * - `longestSide`  the longest side, in pixels, a look is taken at. Larger keeps small text on
  *   a big screen readable, and has the picture shrink further to fit the connection's one
  *   message; smaller loses that text first.
  * - `qualities` then `scales`  what a picture too large for that message steps down through:
  *   at each size the JPEG quality, then the size, until it fits.
+ * - `firstFrameMs`  how long a picture waits for a capture that has not shown anything yet, as
+ *   one just started has not. Longer gives a slow start its chance before she hears that nothing
+ *   showed; she is silent that long first.
  */
-export const LIVE_PICTURE = {
+export const SHOWING = {
+  frameRate: 5,
   longestSide: 1600,
   qualities: [0.8, 0.6, 0.45],
   scales: [1, 0.75, 0.5, 0.35],
+  firstFrameMs: 3000,
 };
 
 /**

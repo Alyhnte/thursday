@@ -1,5 +1,5 @@
 ---
-checked: 2026-09-26
+checked: 2026-09-28
 paths:
   - "features/workspace/*.ts"
   - "lib/sandbox.ts"
@@ -18,9 +18,9 @@ it, in a workspace the app lays out and clears by age.
 - `features/workspace/workspace.ts` — the workspace folders, `writeRefusal`, `insideWorkspace`, each shell's environment, fetching the browser, closing and forgetting a thread's browsers.
 - `lib/sandbox.ts` — the shell: scrubbed environment, timeouts that kill the process group, long output folded to a file.
 - `features/ai/tools/workspace.tool.ts` — `bash`, `write_file`, and the shell guide on a bot's first command.
-- `features/signins/signins.query.ts` — the sign-in vault: keep, borrow, renew, whose browser a session drives.
+- `features/signins/signins.query.ts` — the sign-in vault, one file per account of a site: keep, borrow, renew, whose browser a session drives.
 - `features/ai/tools/signin.tool.ts` — `sign_in_use` and `sign_in_keep`.
-- `features/signins/components/signins-setting.tsx` — Settings › Sign-ins: which bots may borrow, and signing out.
+- `features/signins/components/signins-setting.tsx` — Settings › Sign-ins: a site's accounts, which bots may borrow each, and signing out.
 - `skills/browser/SKILL.md` — what a bot is told about the browser.
 
 ## How it fits
@@ -45,8 +45,8 @@ Settings › Sign-ins or `signin-ask.tsx` in its question lets it in.
   `lib/sandbox.ts` does not match is read by every bot's project as its own: Thursday's port,
   production mode, Next's config.
 - Every shell can read the sign-in vault, so the tools are its lock: a kept sign-in is replaced
-  only by a bot on its list and renewed only from a browser the app lent it to (`keepSignIn`,
-  `holdSignIn`).
+  only by a bot on its list and renewed only from the browser the app lent it to, told by the
+  mark `holdSignIn` sets on that browser through `run-code` (`keepSignIn`, `holdSignIn`).
 - This area leans on `@playwright/cli`'s variable names, `list --json`, the `.playwright` marker
   and how it names its daemon folder, where a change fails quietly as windows left open and
   profiles piling up. It is pinned to one version in `package.json`, which each install of the

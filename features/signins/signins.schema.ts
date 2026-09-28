@@ -6,7 +6,10 @@
 export type SignIn = {
   /** The site as the bot named it: a host such as `instagram.com`, lowercase. */
   site: string;
-  /** Who it signs in as, as the site shows it; the site's own name when nothing is shown. */
+  /**
+   * Who it signs in as, as the site shows it; the site's own name when nothing is shown. With
+   * `site` it names the sign-in: a site keeps one per account.
+   */
   account: string;
   /** The bots that may borrow it. The one that kept it is the first. */
   bots: string[];

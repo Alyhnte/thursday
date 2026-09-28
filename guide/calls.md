@@ -15,7 +15,7 @@ Both are switched on, off or changed in **Settings › Thursday › Starting a c
 
 She speaks first, with a short greeting, in the language the user speaks, and switches when they
 do. Until she starts speaking — three seconds at most — she does not hear the room, so words said
-in that moment are lost. Every call starts fresh, but she remembers the last part of her recent
+in that moment are lost; on the GPT Subscription she hears it from the start. Every call starts fresh, but she remembers the last part of her recent
 calls and picks a subject up when the user does. Anything older is gone unless she kept it in
 memory (`memory.md`). A call she places herself opens on why she called.
 
@@ -47,19 +47,20 @@ While she is working, the line under her face says so. The microphone stays open
 meanwhile is heard and answered once she is done, so there is no need to repeat it.
 
 **Share screen**, on that line during a spoken call, shows her a screen, a window or a tab; the
-browser asks which. A small copy of it stands at the top right while it is shared. Nothing of it
-is sent while it is only shared: she looks when what they ask needs it — "what does this error
-say?" — and then a picture of it as it is at that moment goes to the model behind her, nowhere
-else. **Stop** on the line, the browser's own bar, or the end of the call stops sharing. When the
-browser refuses — on a Mac, the browser needs Screen Recording in System Settings › Privacy &
-Security to share a window or the whole screen — its reason shows, and nothing is shared.
+browser asks which. **Camera** shows her your camera instead — one or the other, not both. A small
+copy stands at the top right while it is on. Nothing of it is sent while it is only on: she looks
+when what they ask needs it — "what does this error say?", "what am I holding?" — and then a
+picture of it as it is at that moment goes to the model behind her, nowhere else. **Stop** on the line, the browser's own bar, or the end of the call
+stops it. When the browser refuses — on a Mac, the browser needs Screen Recording, or Camera, in
+System Settings › Privacy & Security — its reason shows, and nothing is shown.
 
 ## Ending it
 
 Saying goodbye usually ends the call, but not always. Tapping her face ends it for certain, and so
 does the shortcut. When nothing is said and she is neither talking nor working for 25 seconds, the
-call ends by itself; the last 10 seconds count down on screen. A spoken call is billed by the
-minute while it is open, silence included. Work already handed to a bot carries on.
+call ends by itself; the last 10 seconds count down on screen. On an OpenAI key a spoken call is
+billed by the minute while it is open, silence included; on the GPT Subscription it uses the plan.
+Work already handed to a bot carries on.
 
 ## Writing to her instead
 
@@ -77,9 +78,9 @@ as on a spoken call, with no voice and no per-minute billing.
   **Add to the message** puts the drawing on the line as a picture (on a spoken call the button
   reads **Show Thursday**, and she is shown it at once). **Clear** starts over; closing the pad
   keeps what is drawn for next time.
-- **Who it goes to**: the chip at the left of the line, or `@` and a name at the start. A bot picked
-  there gets that one message, then the line goes back to her; **Esc** with a bot picked also goes
-  back to her.
+- **Who it goes to**: the chip at the left of the line, or `@` and a name at the start (**Tab** or
+  **Enter** takes the highlighted one). A bot picked there gets that one message, then the line goes
+  back to her; **Esc** with a bot picked also goes back to her.
 - **What it runs on**: the GPT Subscription when one is signed in, else the OpenAI key. The small
   **runs on** button under the line shows which, and can pick another model, from any provider with
   a key, for writing only. With nothing to run on it says so; keys are in **Settings › API keys**.
@@ -132,7 +133,13 @@ read on the web show under her face, and each opens in a new tab.
 These are in **Settings › Thursday › Models**, in two parts, **Voice** and **Backend**. Changes
 apply from the next call.
 
-- **voice**: 22 voices; clicking a name plays it. Only the spoken call uses it.
+- **runs on**: what a spoken call runs on, **GPT Subscription** (GPT-Live 1 Codex, on the plan,
+  with the plan's name beside it) or **OpenAI key** (GPT-Live 1, billed by the minute). Both are
+  always shown. One not set up reads **sign in** or **add**, and a Free plan reads **no calls**; picking it asks for the sign-in or the
+  key right there, and calls stay on the other until it is in. Left alone, a call runs on the GPT
+  Subscription. When neither is set, the card asks for one the way the first run does.
+- **voice**: 22 voices; clicking a name plays it. Only the spoken call uses it. On the GPT
+  Subscription she speaks in the plan's own nine voices instead, and none plays.
 - **style**: Bright, Calm, Straight or Rough. It changes only how she talks, never what she can do.
   **Your own** adds their own words on top — how she talks, how much she says — and wins where the
   two differ. What she calls them is not set here: tell her on a call and she remembers it.
@@ -166,7 +173,8 @@ notification says it instead (on a Mac, clicking it opens Script Editor, not the
 - **Whenever a job ends** rings for every ending too.
 - **Never** leaves it to the notification.
 
-It needs this tab open. While it rings, the screen shows whose work it is and what it asks, with
+It needs this tab open. While it rings, her face says CALL until it is answered, declined or rung
+out, and the screen shows whose work it is and what it asks, with
 the bot's suggested answers — picking one replies without a call. **Answer**, tapping her face or
 the wake phrase picks up; **Esc** is "not now". A missed ring stays on screen with **Call back**
 until called back or cleared with Esc. She cannot switch this on herself: when asked to call back,
