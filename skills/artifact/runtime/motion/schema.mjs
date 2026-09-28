@@ -2,7 +2,9 @@
 // named with the scene it is in, so the bot fixes the file rather than guessing. The page
 // (stage.js, parts.js) trusts what passes here.
 
-export const THEMES = ["paper", "ink", "mist"];
+export const THEMES = ["thursday", "night", "paper", "ink", "mist"];
+export const BACKDROPS = ["plain", "dots", "grid", "glyphs"];
+export const ENTERS = ["morph", "push", "zoom", "rise", "cut"];
 export const COLOURS = [
   "canvas",
   "card",
@@ -11,6 +13,8 @@ export const COLOURS = [
   "line",
   "soft",
   "accent",
+  "ember",
+  "edge",
   "onAccent",
   "dark",
   "onDark",
@@ -174,10 +178,179 @@ export const KINDS = {
     },
     beats: () => 1,
   },
+  text: {
+    fields: {
+      text: ["text", true, 120],
+      style: ["enum:rise,blur,type,slam,mask,decode", false],
+      mark: ["enum:marker,underline,circle,strike,color", false],
+      kicker: ["text", false, 40],
+      sub: ["text", false, 120],
+      card: ["bool", false],
+    },
+    beats: (s) => (s.style === "slam" ? s.text.split(/\s+/).length : 1),
+  },
+  swap: {
+    fields: {
+      words: ["labels", true, 6],
+      before: ["text", false, 40],
+      after: ["text", false, 40],
+    },
+    beats: (s) => s.words.length - 1,
+  },
+  orb: {
+    fields: { label: ["text", false, 80], talk: ["bool", false] },
+    beats: () => 0,
+  },
+  call: {
+    fields: { you: ["text", false, 140], her: ["text", false, 160] },
+    beats: (s) => (s.you ? 1 : 0) + (s.her ? 1 : 0),
+  },
+  bots: {
+    fields: {
+      bots: ["faces", true, 6],
+      active: ["number", false],
+      title: ["text", false, 60],
+    },
+    beats: (s) => (s.active === undefined ? 0 : 1),
+  },
+  notify: {
+    fields: { cards: ["cards", true, 3] },
+    beats: (s) => s.cards.length,
+  },
+  agent: {
+    fields: {
+      bot: ["text", true, 24],
+      steps: ["texts", true, 5],
+      working: ["text", false, 24],
+      done: ["text", false, 24],
+      color: ["color", false],
+    },
+    beats: (s) => s.steps.length,
+  },
+  prompt: {
+    fields: {
+      text: ["text", true, 90],
+      result: ["text", true, 48],
+      detail: ["text", false, 60],
+      icon: ["icon", false],
+      placeholder: ["text", false, 40],
+    },
+    beats: () => 2,
+  },
+  stats: {
+    fields: {
+      stats: ["stats", true, 4],
+      title: ["text", false, 60],
+      locale: ["text", false, 16],
+    },
+    beats: (s) => s.stats.length,
+  },
+  line: {
+    fields: {
+      values: ["numbers", true, 24],
+      labels: ["texts", false, 12],
+      title: ["text", false, 60],
+      label: ["text", false, 16],
+      prefix: ["text", false, 4],
+      suffix: ["text", false, 8],
+    },
+    beats: () => 1,
+  },
+  ring: {
+    fields: {
+      value: ["number", true],
+      of: ["number", false],
+      suffix: ["text", false, 8],
+      label: ["text", false, 30],
+      title: ["text", false, 60],
+      decimals: ["number", false],
+    },
+    beats: () => 1,
+  },
+  table: {
+    fields: {
+      columns: ["labels", true, 5],
+      rows: ["rows", true, 6],
+      highlight: ["number", false],
+      title: ["text", false, 60],
+    },
+    beats: (s) => s.rows.length,
+  },
+  timeline: {
+    fields: { events: ["events", true, 6] },
+    beats: (s) => s.events.length,
+  },
+  hub: {
+    fields: {
+      center: ["text", true, 24],
+      around: ["labels", true, 8],
+      icon: ["icon", false],
+    },
+    beats: (s) => s.around.length,
+  },
+  phone: {
+    fields: {
+      messages: ["messages", false, 6],
+      items: ["items", false, 6],
+      image: ["file", false],
+      caption: ["text", false, 60],
+      time: ["text", false, 8],
+      tilt: ["bool", false],
+    },
+    beats: (s) => (s.messages ?? s.items ?? []).length,
+  },
+  browser: {
+    fields: {
+      url: ["text", true, 60],
+      title: ["text", false, 60],
+      items: ["items", false, 5],
+      image: ["file", false],
+    },
+    beats: (s) => 1 + (s.items ?? []).length,
+  },
+  logo: {
+    fields: {
+      name: ["text", true, 24],
+      tagline: ["text", false, 80],
+      icon: ["icon", false],
+      image: ["file", false],
+      bot: ["text", false, 24],
+      color: ["color", false],
+    },
+    beats: () => 0,
+  },
+  grid: {
+    fields: { items: ["tiles", true, 6], title: ["text", false, 60] },
+    beats: (s) => s.items.length,
+  },
+  lower: {
+    fields: { name: ["text", true, 40], role: ["text", false, 60] },
+    beats: () => 0,
+  },
+  beforeafter: {
+    fields: {
+      before: ["file", true],
+      after: ["file", true],
+      beforeLabel: ["text", false, 20],
+      afterLabel: ["text", false, 20],
+      ratio: ["ratio", false],
+    },
+    beats: () => 1,
+  },
 };
 
 // What every scene may carry beside its part's own fields
-const COMMON = ["kind", "say", "dur", "at", "until", "times", "area", "voice"];
+const COMMON = [
+  "kind",
+  "say",
+  "dur",
+  "at",
+  "until",
+  "times",
+  "area",
+  "voice",
+  "enter",
+];
 
 const isText = (v) => typeof v === "string" && v.trim().length > 0;
 const isNum = (v) => typeof v === "number" && Number.isFinite(v);
@@ -241,6 +414,15 @@ export function check(spec, { exists = () => true } = {}) {
       "lang",
       'the language the words are in, as a tag like "en", "ko" or "pt-BR".',
     );
+  if (spec.backdrop !== undefined && !BACKDROPS.includes(spec.backdrop))
+    say("backdrop", `one of ${BACKDROPS.join(", ")}.`);
+  if (spec.enter !== undefined && !ENTERS.includes(spec.enter))
+    say("enter", `how scenes come in: ${ENTERS.join(", ")}.`);
+  if (spec.sfx !== undefined && typeof spec.sfx !== "boolean")
+    say(
+      "sfx",
+      "true or false: a tick for each press and a rush of air for a scene thrown out.",
+    );
   if (spec.captions !== undefined && typeof spec.captions !== "boolean")
     say("captions", "true or false.");
 
@@ -293,6 +475,8 @@ export function check(spec, { exists = () => true } = {}) {
       const why = field(type, s[key], most, s, exists, h > w);
       if (why) say(where, `"${key}" ${why}`);
     }
+    if (s.enter !== undefined && !ENTERS.includes(s.enter))
+      say(where, `"enter" is how it comes in: ${ENTERS.join(", ")}.`);
     if (s.say !== undefined && !(isText(s.say) && s.say.length <= 400))
       say(
         where,
@@ -349,10 +533,10 @@ export function check(spec, { exists = () => true } = {}) {
           where,
           '"at" and "until" are times on a recording, and this video has none (motion.mjs track).',
         );
-      if (!s.voice && !(isNum(s.dur) && s.dur >= 0.5 && s.dur <= 60))
+      if (s.dur !== undefined && !(isNum(s.dur) && s.dur >= 0.5 && s.dur <= 60))
         say(
           where,
-          'needs "dur": how many seconds it holds, 0.5 to 60 (a voice\'s own length replaces it).',
+          '"dur" is how many seconds it holds, 0.5 to 60: 3 when it is left out, and a voice\'s own length replaces it.',
         );
     }
     if (s.area !== undefined) {
@@ -379,7 +563,7 @@ export function check(spec, { exists = () => true } = {}) {
     }
     if (s.times !== undefined) {
       const n = beatsOf(s);
-      const len = track ? null : (s.voice?.length ?? s.dur);
+      const len = track ? null : (s.voice?.length ?? s.dur ?? 3);
       const ok =
         Array.isArray(s.times) &&
         s.times.length === n &&
@@ -520,7 +704,105 @@ function field(type, v, most, s, exists, tall) {
         `line numbers in its code, from 1 to ${n}`,
       );
     }
+    case "color":
+      return HEX.test(v) ? null : 'is a colour as "#rrggbb".';
+    case "numbers":
+      return Array.isArray(v) &&
+        v.length >= 2 &&
+        v.length <= most &&
+        v.every(isNum)
+        ? null
+        : `is a list of 2 to ${most} numbers.`;
+    case "faces":
+      return list(
+        (x) =>
+          x &&
+          text(x.name, 24) &&
+          (x.role === undefined || text(x.role, 32)) &&
+          (x.color === undefined || HEX.test(x.color)),
+        'bots, each { "name", "role", "color" }',
+      );
+    case "cards":
+      return list(
+        (x) =>
+          x &&
+          text(x.bot, 24) &&
+          text(x.title, 48) &&
+          (x.text === undefined || text(x.text, 120)) &&
+          (x.color === undefined || HEX.test(x.color)),
+        'cards, each { "bot", "title", "text" }',
+      );
+    case "stats":
+      return list(
+        (x) =>
+          x &&
+          isNum(x.value) &&
+          text(x.label, 40) &&
+          (x.prefix === undefined || text(x.prefix, 4)) &&
+          (x.suffix === undefined || text(x.suffix, 8)) &&
+          (x.from === undefined || isNum(x.from)) &&
+          (x.decimals === undefined || isNum(x.decimals)),
+        'figures, each { "value", "label", "prefix", "suffix" }',
+      );
+    case "rows": {
+      const n = Array.isArray(s.columns) ? s.columns.length : 0;
+      return list(
+        (r) =>
+          Array.isArray(r) && r.length === n && r.every((x) => text(x, 24)),
+        `rows, each a list of ${n} short texts, one per column`,
+      );
+    }
+    case "events":
+      return list(
+        (x) => x && text(x.when, 16) && text(x.what, 48),
+        'events, each { "when", "what" }',
+      );
+    case "tiles":
+      return list(
+        (x) =>
+          x &&
+          text(x.title, 32) &&
+          (x.text === undefined || text(x.text, 80)) &&
+          (x.icon === undefined || text(x.icon, 24)),
+        'tiles, each { "title", "text", "icon" }',
+      );
     default:
+      if (type.startsWith("enum:")) {
+        const ok = type.slice(5).split(",");
+        return ok.includes(v) ? null : `is one of ${ok.join(", ")}.`;
+      }
       return null;
   }
+}
+
+// Field types that are not words someone reads
+const UNREAD = [
+  "file",
+  "icon",
+  "color",
+  "fit",
+  "ratio",
+  "number",
+  "numbers",
+  "bool",
+  "picks",
+  "lines",
+];
+
+/** The words a scene puts on screen, not counting what is said: what a viewer must read. */
+export function wordsOf(scene) {
+  const kind = KINDS[scene.kind];
+  if (!kind) return 0;
+  let n = 0;
+  const count = (v) => {
+    if (typeof v === "string") n += v.split(/\s+/).filter(Boolean).length;
+    else if (Array.isArray(v)) v.forEach(count);
+    else if (v && typeof v === "object")
+      for (const [k, x] of Object.entries(v))
+        if (!["icon", "color", "from", "on"].includes(k)) count(x);
+  };
+  for (const [key, [type]] of Object.entries(kind.fields))
+    if (!UNREAD.includes(type) && !type.startsWith("enum:") && key !== "locale")
+      count(scene[key]);
+  return n;
 }

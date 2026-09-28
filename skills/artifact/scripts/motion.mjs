@@ -27,7 +27,8 @@ import { basename, dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { serveFolder } from "../../browser/scripts/serve.mjs";
 import { apart, parseArgs } from "../../browser/scripts/session.mjs";
-import { check } from "../runtime/motion/schema.mjs";
+import { CATALOG } from "../runtime/motion/catalog.mjs";
+import { check, KINDS, wordsOf } from "../runtime/motion/schema.mjs";
 import {
   ARTIFACTS,
   NAME,
@@ -98,7 +99,17 @@ function page(spec, title) {
   const css = read("motion.css")
     .replace("__GEIST__", () => font("Geist-Variable.woff2"))
     .replace("__GEISTMONO__", () => font("GeistMono-Medium.woff2"));
-  const js = ["engine.js", "parts.js", "stage.js"].map(read).join("\n");
+  const js = [
+    "engine.js",
+    "parts.js",
+    "parts-text.js",
+    "parts-app.js",
+    "parts-data.js",
+    "parts-media.js",
+    "stage.js",
+  ]
+    .map(read)
+    .join("\n");
   // JSON inside a <script>: nothing in it may close the tag or open a comment
   const json = JSON.stringify(spec, null, 1)
     .replace(/</g, "\\u003c")
@@ -131,7 +142,7 @@ function write(file, spec) {
 function lengthOf(spec) {
   if (spec.track) return spec.track.length;
   return spec.scenes.reduce(
-    (a, s) => a + (s.voice ? s.voice.length + 0.45 : (s.dur ?? 0)),
+    (a, s) => a + (s.voice ? s.voice.length + 0.45 : (s.dur ?? 3)),
     0,
   );
 }
@@ -174,7 +185,54 @@ function put(name, from) {
   console.log(
     `${shown(file)}: ${spec.scenes.length} scene(s), ${secs.toFixed(1)}s. It plays when opened. Look at it: node ${SCRIPT} shots ${name}; make the mp4: node ${SCRIPT} render ${name}`,
   );
-  for (const note of notes) console.log(note);
+  for (const note of [...notes, ...tooMuch(spec)]) console.log(note);
+}
+
+// Words a viewer reads in a second, on a card or in a caption, before a scene is too fast
+const READ_PER_S = 3;
+
+/** Scenes that show or say more words than their time lets anyone read. */
+function tooMuch(spec) {
+  if (spec.track) return [];
+  return spec.scenes.flatMap((s, i) => {
+    const len = s.voice ? s.voice.length : (s.dur ?? 3);
+    const shown = wordsOf(s);
+    const said = s.voice
+      ? 0
+      : (s.say ?? "").split(/\s+/).filter(Boolean).length;
+    const most = Math.max(shown, said);
+    const needs = Math.ceil((most / READ_PER_S) * 2) / 2;
+    return needs > len + 0.25
+      ? [
+          `Scene ${i + 1} (${s.kind}) has ${most} words to read in ${len}s: give it "dur": ${needs}, or fewer words.`,
+        ]
+      : [];
+  });
+}
+
+/** The kinds of scene: all in a line each, or one with its fields and an example to copy. */
+function kinds(kind) {
+  if (!kind) {
+    for (const [k, { about }] of Object.entries(CATALOG))
+      console.log(`${k.padEnd(12)} ${about}`);
+    console.log(
+      `\nOne kind's fields and an example: node ${SCRIPT} kinds <kind>. Every scene also takes "say", "dur" (3 when left out), "enter" and "times".`,
+    );
+    return;
+  }
+  const entry = CATALOG[kind];
+  if (!entry)
+    throw new Stop(
+      `No kind "${kind}". The kinds: ${Object.keys(CATALOG).join(", ")}`,
+    );
+  console.log(`${kind}: ${entry.about}\n`);
+  for (const [field, [type, required, most]] of Object.entries(
+    KINDS[kind].fields,
+  ))
+    console.log(
+      `  ${field.padEnd(12)} ${type.replace(/^enum:/, "one of ")}${most ? ` (up to ${most})` : ""}${required ? ", required" : ""}`,
+    );
+  console.log(`\n${JSON.stringify({ kind, ...entry.example, dur: 3 })}`);
 }
 
 function get(name, to) {
@@ -312,6 +370,7 @@ async function shots(name, ...rest) {
           await tab.setViewportSize({ width: w, height: h });
           await tab.goto(url, { waitUntil: "load" });
           await tab.evaluate(async () => {
+            await window.motionReady;
             await document.fonts.ready;
             await Promise.all(
               [...document.images].map((i) => i.decode().catch(() => {})),
@@ -339,8 +398,16 @@ async function shots(name, ...rest) {
           for (const [i, t] of times.entries()) {
             await tab.evaluate((t) => window.seek(t), t);
             const path = `${out}/shot-${String(i + 1).padStart(2, "0")}.png`;
+            await tab.screenshot({ path, scale: "css" });
+            // The sheet takes a lighter copy: thirty full pictures in one page do not decode
             pngs.push(
-              (await tab.screenshot({ path, scale: "css" })).toString("base64"),
+              (
+                await tab.screenshot({
+                  type: "jpeg",
+                  quality: 72,
+                  scale: "css",
+                })
+              ).toString("base64"),
             );
           }
           const cols = w > h ? 3 : 5;
@@ -348,7 +415,7 @@ async function shots(name, ...rest) {
           const cells = pngs
             .map(
               (png, i) =>
-                `<figure><figcaption>${i + 1} · ${times[i].toFixed(2)}s</figcaption><img src="data:image/png;base64,${png}"></figure>`,
+                `<figure><figcaption>${i + 1} · ${times[i].toFixed(2)}s</figcaption><img src="data:image/jpeg;base64,${png}"></figure>`,
             )
             .join("");
           await tab.setViewportSize({
@@ -359,7 +426,10 @@ async function shots(name, ...rest) {
             `<!doctype html><style>body{margin:0;background:#e8e8e8}#sheet{display:inline-grid;grid-template-columns:repeat(${cols},${cell}px);gap:20px 16px;padding:16px}figure{margin:0}figcaption{font:600 16px/1.4 system-ui,sans-serif;color:#1b1b1b;padding-bottom:6px}img{display:block;width:${cell}px;box-shadow:0 0 0 1px #0002}</style><div id="sheet">${cells}</div>`,
           );
           await tab.evaluate(() =>
-            Promise.all([...document.images].map((i) => i.decode())),
+            // One at a time: thirty decoded at once run out of room
+            (async () => {
+              for (const i of document.images) await i.decode().catch(() => {});
+            })(),
           );
           await tab.locator("#sheet").screenshot({ path: `${out}/sheet.png` });
           await tab.close();
@@ -422,6 +492,7 @@ async function render(name, ...rest) {
             await tab.goto(url, { waitUntil: "load" });
             broken.push(
               ...(await tab.evaluate(async () => {
+                await window.motionReady;
                 await document.fonts.ready;
                 await Promise.all(
                   [...document.images].map((i) => i.decode().catch(() => {})),
@@ -606,6 +677,46 @@ function encodePiece(ffmpeg, { work, f0, f1, sub, fps, alpha, draft }) {
   });
 }
 
+/**
+ * A tick and a rush of air as sound files, synthesized: a short tone that dies fast, and pink
+ * noise swept through a band that opens as it passes. Quiet, under any voice.
+ */
+function cueSounds(ffmpeg, work) {
+  const make = (name, source) => {
+    const file = join(work, `${name}.wav`);
+    const made = spawnSync(
+      ffmpeg,
+      [
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-y",
+        "-f",
+        "lavfi",
+        "-i",
+        source,
+        file,
+      ],
+      { encoding: "utf8" },
+    );
+    if (made.status !== 0)
+      throw new Stop(
+        `ffmpeg could not make the ${name} sound:\n${made.stderr}`,
+      );
+    return file;
+  };
+  return {
+    click: make(
+      "click",
+      "aevalsrc='0.22*sin(2*PI*1800*t)*exp(-t*120)+0.08*sin(2*PI*3600*t)*exp(-t*200)':d=0.07:s=48000",
+    ),
+    whoosh: make(
+      "whoosh",
+      "anoisesrc=d=0.42:c=pink:a=0.5:r=48000,highpass=f=350,lowpass=f=4200,afade=t=in:d=0.24:curve=exp,afade=t=out:st=0.24:d=0.18,volume=0.45",
+    ),
+  };
+}
+
 /** The pieces joined, with the sound: the voices where their scenes start, or the recording. */
 function finish(ffmpeg, { info, pieces, spec, dir, work, out, fps, draft }) {
   const list = join(work, "pieces.txt");
@@ -615,11 +726,19 @@ function finish(ffmpeg, { info, pieces, spec, dir, work, out, fps, draft }) {
   );
   const args = ["-hide_banner", "-loglevel", "error", "-y"];
   const video = spec.track?.kind === "video";
-  const sounds = info.audio.filter((a) => !a.video);
+  const sounds = info.audio
+    .filter((a) => !a.video)
+    .map((a) => ({ file: join(dir, a.src), at: a.at, gain: 1 }));
+  // The ticks and rushes of air, made here from nothing and laid under the voices
+  if (info.cues.length) {
+    const made = cueSounds(ffmpeg, work);
+    for (const c of info.cues)
+      sounds.push({ file: made[c.sound], at: Math.max(0, c.at), gain: 1 });
+  }
   if (video) args.push("-i", join(dir, spec.track.file));
   args.push("-f", "concat", "-safe", "0", "-i", list);
   const first = video ? 2 : 1;
-  for (const a of sounds) args.push("-i", join(dir, a.src));
+  for (const a of sounds) args.push("-i", a.file);
   const filters = [];
   const map = video ? "[v]" : `${first - 1}:v`;
   if (video) {
@@ -635,7 +754,7 @@ function finish(ffmpeg, { info, pieces, spec, dir, work, out, fps, draft }) {
   else if (sounds.length) {
     const lanes = sounds.map((a, i) => {
       const ms = Math.round(a.at * 1000);
-      return `[${first + i}:a]aformat=sample_rates=48000:channel_layouts=stereo,adelay=${ms}|${ms}[a${i}]`;
+      return `[${first + i}:a]aformat=sample_rates=48000:channel_layouts=stereo,volume=${a.gain},adelay=${ms}|${ms}[a${i}]`;
     });
     filters.push(
       ...lanes,
@@ -676,12 +795,12 @@ function finish(ffmpeg, { info, pieces, spec, dir, work, out, fps, draft }) {
       rmSync(join(dir, f), { recursive: true, force: true });
 }
 
-const commands = { put, get, voices, track, shots, render };
+const commands = { put, get, voices, track, shots, render, kinds };
 const [command, ...rest] = process.argv.slice(2);
 try {
   if (!commands[command])
     throw new Stop(
-      "Usage: motion.mjs put <name|path> <video.json> | get <name|path> <file.json> | voices <name|path> <audio>... | track <name|path> <file> | shots <name|path> [--at 1.2,3] | render <name|path> [--draft]",
+      "Usage: motion.mjs kinds [kind] | put <name|path> <video.json> | get <name|path> <file.json> | voices <name|path> <audio>... | track <name|path> <file> | shots <name|path> [--at 1.2,3] | render <name|path> [--draft]",
     );
   await commands[command](...rest);
 } catch (error) {

@@ -16,6 +16,9 @@ await writeFile(join(home, "pnpm-workspace.yaml"), "");
 const { check, KINDS } = await import(
   "../skills/artifact/runtime/motion/schema.mjs"
 );
+const { CATALOG } = await import(
+  "../skills/artifact/runtime/motion/catalog.mjs"
+);
 const SKILL = join(import.meta.dirname, "..", "skills", "artifact");
 const SCRIPT = join(SKILL, "scripts", "motion.mjs");
 
@@ -33,52 +36,33 @@ const specIn = async (name: string) =>
     )?.[1] ?? "null",
   );
 
-/** One scene of every kind, each as small as it may be. */
-const every = {
-  title: { title: "A title" },
-  end: { title: "The end" },
-  chapter: { title: "Part two", number: "02" },
-  pill: { label: "Press" },
-  options: { options: ["A", "B", "C"], pick: [1, 2] },
-  list: { items: ["One", { text: "Two", icon: "star" }] },
-  bars: {
-    bars: [
-      { label: "A", value: 2 },
-      { label: "B", value: 3 },
-    ],
-  },
-  number: { value: 42 },
-  terminal: { lines: ["$ ls", "a.txt", "$ cat a.txt"] },
-  chat: {
-    messages: [
-      { from: "me", text: "Hi" },
-      { from: "them", text: "Hello" },
-    ],
-  },
-  search: { query: "ch", items: ["Chart", "Title"] },
-  toggles: { items: [{ label: "One" }, { label: "Two", on: true }], flip: [0] },
-  progress: { items: ["Read", "Write"] },
-  compare: { left: { title: "Old" }, right: { title: "New" }, pick: "right" },
-  steps: { items: ["Write", "Look", "Render"] },
-  quote: { text: "A line worth quoting." },
-  image: { src: "pictures/a.png" },
-  code: { code: "a\nb\nc", highlight: [2, 3] },
-  toast: { title: "Done" },
-  slider: { from: 10, to: 80 },
-};
-const scenes = Object.entries(every).map(([kind, fields]) => ({
+/** One scene of every kind: the example `motion.mjs kinds` gives for it. */
+const scenes = Object.entries(CATALOG).map(([kind, { example }]) => ({
   kind,
-  ...fields,
+  ...example,
   dur: 3,
 }));
+/** The pictures the examples name, which a video's folder must hold. */
+const PICTURES = [
+  "pictures/shot.png",
+  "pictures/before.png",
+  "pictures/after.png",
+];
 
-test("every kind the schema knows has a scene here, and they all pass", () => {
-  assert.deepEqual(Object.keys(every).sort(), Object.keys(KINDS).sort());
+test("every kind has an example in the catalog, and every example passes", () => {
+  assert.deepEqual(Object.keys(CATALOG).sort(), Object.keys(KINDS).sort());
   assert.deepEqual(check({ scenes }), []);
 });
 
 test("the page's parts make as many changes as the schema says a scene's times must name", async () => {
-  const code = ["engine.js", "parts.js"]
+  const code = [
+    "engine.js",
+    "parts.js",
+    "parts-text.js",
+    "parts-app.js",
+    "parts-data.js",
+    "parts-media.js",
+  ]
     .map((f) => join(SKILL, "runtime", "motion", f))
     .map((f) => readFile(f, "utf8"));
   const PARTS = runInNewContext(
@@ -86,12 +70,44 @@ test("the page's parts make as many changes as the schema says a scene's times m
     {},
   );
   assert.deepEqual(Object.keys(PARTS).sort(), Object.keys(KINDS).sort());
-  for (const scene of scenes)
+  const variants = [
+    ...scenes,
+    { kind: "text", text: "Every word on a beat", style: "slam" },
+    { kind: "bots", bots: [{ name: "A" }] },
+    { kind: "compare", left: { title: "A" }, right: { title: "B" } },
+  ];
+  for (const scene of variants)
     assert.equal(
       PARTS[scene.kind].beats(scene),
       KINDS[scene.kind as keyof typeof KINDS].beats(scene as never),
       scene.kind,
     );
+});
+
+test("a scene with too many words for its time is named, with the time it needs", async () => {
+  const json = join(home, "wordy.json");
+  await writeFile(
+    json,
+    JSON.stringify({
+      scenes: [
+        {
+          kind: "list",
+          items: [
+            "One two three four",
+            "Five six seven eight",
+            "Nine ten eleven twelve",
+          ],
+          dur: 2,
+        },
+      ],
+    }),
+  );
+  const put = run("put", "wordy", json);
+  assert.equal(put.status, 0, put.stderr);
+  assert.match(
+    put.stdout,
+    /Scene 1 \(list\) has 12 words to read in 2s: give it "dur": 4/,
+  );
 });
 
 test("each mistake is named with the scene it is in", () => {
@@ -101,8 +117,8 @@ test("each mistake is named with the scene it is in", () => {
     /scene 1 \(poster\): no such kind "poster"/,
   );
   assert.match(
-    problems({ scenes: [{ kind: "title", title: "No length" }] }),
-    /scene 1 \(title\): needs "dur"/,
+    problems({ scenes: [{ kind: "title", title: "Too short", dur: 0.1 }] }),
+    /scene 1 \(title\): "dur" is how many seconds it holds, 0\.5 to 60: 3 when it is left out/,
   );
   assert.match(
     problems({
@@ -196,15 +212,19 @@ test("scenes on a recording are timed to it, in order, and only a video leaves g
 
 test("put writes a page that holds its JSON, and refuses a mistake without writing", async () => {
   await mkdir(join(home, "artifacts", "demo", "pictures"), { recursive: true });
-  await writeFile(join(home, "artifacts", "demo", "pictures", "a.png"), "");
+  for (const picture of PICTURES)
+    await writeFile(join(home, "artifacts", "demo", picture), "");
   const json = join(home, "demo.json");
   await writeFile(json, JSON.stringify({ size: "1080x1920", scenes }));
   const made = run("put", "demo", json);
   assert.equal(made.status, 0, made.stderr);
-  assert.match(made.stdout, /20 scene\(s\), 60\.0s/);
+  assert.match(
+    made.stdout,
+    new RegExp(`${scenes.length} scene\\(s\\), ${scenes.length * 3}\\.0s`),
+  );
   const spec = await specIn("demo");
   assert.equal(spec.size, "1080x1920");
-  assert.equal(spec.scenes.length, 20);
+  assert.equal(spec.scenes.length, scenes.length);
   // Nothing in a scene's words can close the script that holds them
   const html = await readFile(
     join(home, "artifacts", "demo", "demo.html"),
@@ -215,7 +235,7 @@ test("put writes a page that holds its JSON, and refuses a mistake without writi
   const bad = join(home, "bad.json");
   await writeFile(
     bad,
-    JSON.stringify({ scenes: [{ kind: "title", title: "T" }] }),
+    JSON.stringify({ scenes: [{ kind: "title", title: "T", dur: 0.1 }] }),
   );
   const refused = run("put", "fresh", bad);
   assert.equal(refused.status, 1);

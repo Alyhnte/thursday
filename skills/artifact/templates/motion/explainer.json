@@ -1,53 +1,70 @@
 {
   "size": "1920x1080",
-  "theme": "paper",
+  "theme": "thursday",
+  "backdrop": "dots",
   "scenes": [
     {
-      "kind": "title",
+      "kind": "text",
       "kicker": "How it works",
-      "title": "Invoices that pay themselves",
-      "dur": 3,
+      "text": "Invoices that *pay themselves*",
+      "style": "rise",
+      "mark": "marker",
       "say": "Here is how invoices pay themselves."
     },
     {
-      "kind": "pill",
-      "icon": "upload",
-      "label": "Upload an invoice",
-      "dur": 2.4,
-      "say": "You upload an invoice."
+      "kind": "prompt",
+      "text": "Pay this month's invoices",
+      "result": "[N] invoices paid",
+      "detail": "[date]",
+      "icon": "check",
+      "dur": 4.5,
+      "enter": "push",
+      "say": "You ask once."
     },
     {
-      "kind": "progress",
-      "title": "Reading it",
-      "items": ["Supplier", "Amount", "Due date"],
-      "dur": 3.4,
-      "say": "It reads the supplier, the amount and the due date."
+      "kind": "agent",
+      "bot": "[BOT]",
+      "steps": [
+        "Read each invoice",
+        "Checked the rules",
+        "Paid on the due date"
+      ],
+      "done": "Finished",
+      "dur": 4.5,
+      "say": "It reads each one, checks your rules and pays on the due date."
     },
     {
       "kind": "toggles",
       "title": "Rules",
       "items": [
-        { "label": "Pay known suppliers", "on": false },
-        { "label": "Ask me above a limit", "on": false }
+        {
+          "label": "Pay known suppliers"
+        },
+        {
+          "label": "Ask me above a limit"
+        }
       ],
       "flip": [0, 1],
-      "dur": 3,
       "say": "You set the rules once."
     },
     {
-      "kind": "toast",
-      "icon": "check",
-      "title": "Paid on the due date",
-      "text": "And never twice",
-      "dur": 2.8,
-      "say": "It pays on the due date, and never twice."
+      "kind": "notify",
+      "cards": [
+        {
+          "bot": "[BOT]",
+          "title": "Paid, and never twice",
+          "text": "Every payment is in your ledger."
+        }
+      ],
+      "dur": 4,
+      "say": "And it tells you when it is done."
     },
     {
-      "kind": "end",
+      "kind": "logo",
+      "name": "[PRODUCT]",
+      "tagline": "[their address]",
       "icon": "bolt",
-      "title": "[PRODUCT NAME]",
-      "sub": "[their address]",
-      "dur": 3
+      "enter": "zoom"
     }
   ]
 }

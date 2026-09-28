@@ -118,6 +118,10 @@ M.text = (el, value) => {
   el.textContent = value;
   writes++;
 };
+/** A change drawn some other way (a canvas's pixels): the frame is new. */
+M.touch = () => {
+  writes++;
+};
 /** `el` moved into `parent`, when it is not there already. */
 M.move = (el, parent) => {
   if (el.parentNode === parent) return;
@@ -175,6 +179,16 @@ M.presses = (clicks = [], holds = []) => {
 M.typed = (s, t, t0, cps = 28) => {
   const chars = [...s];
   return chars.slice(0, Math.max(0, Math.floor((t - t0) * cps))).join("");
+};
+
+/** A number from 0 to 1 that is the same for the same seeds, every time. */
+M.hash = (a, b = 0) => {
+  let h =
+    Math.imul(a ^ 0x9e3779b9, 0x85ebca6b) ^
+    Math.imul(b + 0x632be5ab, 0xc2b2ae35);
+  h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d);
+  h = Math.imul(h ^ (h >>> 12), 0x297a2d39);
+  return ((h ^ (h >>> 15)) >>> 0) / 4294967296;
 };
 
 /** An element from HTML, or with a class and text. */

@@ -48,6 +48,13 @@ now only run the chart, the document script and the camera the artifact skill ho
   scenes are JSON drawn by the parts in `parts.js` instead of HTML written for each clip, one card
   runs through the whole video, and the player, captions, voices, recordings and reuse of still
   frames are this app's own. Its fonts are Geist and Geist Mono (OFL, `runtime/motion/fonts/OFL.txt`).
+  Its timings and rules of choreography — words ~70 ms apart and letters ~25 ms, a scene that
+  leaves by its transition rather than an exit of its own, one way in for most cuts, three words
+  a second to read — are numbers from [heygen-com/hyperframes](https://github.com/heygen-com/hyperframes)
+  (Apache-2.0), [LottieFiles/motion-design-skill](https://github.com/LottieFiles/motion-design-skill)
+  (MIT) and [pixel-point/animate-text](https://github.com/pixel-point/animate-text); no text or
+  code is copied from any of them. Its `thursday` and `night` themes, her letter orb, the bots'
+  faces and the letter-by-letter captions are drawn after this app's own screens.
 - **`find-skills`** is adapted from vercel-labs/skills' find-skills at 7407f38 (MIT, `LICENSE` in
   the folder), and **`skill-creator`** from Anthropic's skill-creator at anthropics/skills 34040c9
   (Apache-2.0, `LICENSE.txt`); each ends with a line saying what changed. Both have the bot at

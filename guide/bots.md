@@ -174,8 +174,11 @@ no PowerPoint file; a handout prints to PDF. **Edit** changes words and notes in
 duplicates or deletes the open slide, or changes the palette; ⌘Z undoes.
 
 A **motion video** is a short animated video — an explainer, a launch clip, a tall clip for a
-phone, or scenes cut in over a recording of the user's own. Any bot can make one: one card moves
-from scene to scene, a pointer clicks what is clicked, and what is said shows as captions. It comes
+phone, or scenes cut in over a recording of the user's own. Any bot can make one, in the app's own
+look or a darker, warmer or cooler one: one card moves from scene to scene, lines build themselves
+word by word, a pointer clicks what is clicked with a small tick, and what is said shows as
+captions. Scenes can show her orb and a call, the bots at work, a prompt and what it made,
+figures and charts, a phone or a browser, and pictures before and after. It comes
 back as an .mp4, beside a player that opens in the app: space plays and pauses, the arrow keys
 step a second, and dragging the bar scrubs, with its sound. Words on screen need nothing more; a
 voice reading it needs a speech model in **Settings › Models**, and timing it to a recording a
