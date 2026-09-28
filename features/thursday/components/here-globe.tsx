@@ -518,9 +518,11 @@ class Globe {
    */
   warm(ctx: CanvasRenderingContext2D) {
     if (this.letters) return;
+    // every half pixel a glyph is drawn at: the weather's are 0.8 to 1.15 of their level's size,
+    // stars anywhere between
     const sizes = new Set<number>();
     for (let level = 1; level <= TOP; level++)
-      for (const big of [0.8, 0.85, 1, 1.15])
+      for (let big = 0.8; big <= 1.151; big += 0.01)
         sizes.add(Math.round(emojiPx(GLYPH_PX, level, TOP) * big * 2) / 2);
     const g = this.grid;
     for (const size of sizes) {
@@ -529,11 +531,17 @@ class Globe {
         for (const glyph of set.emoji)
           ctx.fillText(glyph, g.width / 2, g.height / 2);
     }
-    for (const size of [Math.round(g.p * 3), Math.round(g.p * 3.6)]) {
+    // the pin grows by up to a third as it lands (marks), at every whole pixel on the way
+    for (
+      let size = Math.round(g.p * 3);
+      size <= Math.round(g.p * 3 * 1.3);
+      size++
+    ) {
       ctx.font = GLYPH_FONT(size);
       ctx.fillText(MARKS.pin[0], g.width / 2, g.height / 2);
-      ctx.fillText(MARKS.storm[0], g.width / 2, g.height / 2);
     }
+    ctx.font = GLYPH_FONT(Math.round(g.p * 3.6));
+    ctx.fillText(MARKS.storm[0], g.width / 2, g.height / 2);
     ctx.clearRect(0, 0, g.width, g.height);
   }
 

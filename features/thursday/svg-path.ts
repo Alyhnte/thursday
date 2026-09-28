@@ -1,7 +1,8 @@
 /**
  * An SVG path (its `d`) as the lines she draws it along (`draw`, her-drawing): each piece it lifts
  * the pen between, as points, curves and arcs walked in short straight steps. Every command the
- * format has, absolute and relative; what cannot be read is skipped, as a browser skips it.
+ * format has, absolute and relative, arc flags written together included; where it stops making
+ * sense, it ends there, as a browser draws a path up to its first error.
  */
 
 type Point = [number, number];
@@ -11,6 +12,19 @@ const CUBIC_STEPS = 16;
 const QUADRATIC_STEPS = 12;
 /** Degrees an arc turns in one step. */
 const ARC_STEP = 15;
+
+/** The numbers each command takes (an arc's two flags are read on their own). */
+const NEEDS: Record<string, number> = {
+  M: 2,
+  L: 2,
+  T: 2,
+  H: 1,
+  V: 1,
+  C: 6,
+  S: 4,
+  Q: 4,
+  A: 3,
+};
 
 export function parsePath(d: string): Point[][] {
   const tokens =
@@ -29,6 +43,22 @@ export function parsePath(d: string): Point[][] {
   let piece: Point[] | null = null;
   const isCommand = (token: string) => /^[a-zA-Z]$/.test(token);
   const number = () => Number.parseFloat(tokens[i++]);
+  /** Whether the next `n` tokens are numbers. */
+  const has = (n: number) => {
+    for (let k = 0; k < n; k++) {
+      const token = tokens[i + k];
+      if (token === undefined || isCommand(token)) return false;
+    }
+    return true;
+  };
+  /** An arc flag, which may be written with what follows it ("1150" is 1, 1, 50); null if none. */
+  const flag = (): 0 | 1 | null => {
+    const token = tokens[i];
+    if (token === undefined || !/^[01]/.test(token)) return null;
+    if (token.length === 1) i++;
+    else tokens[i] = token.slice(1);
+    return token[0] === "1" ? 1 : 0;
+  };
   const to = (nx: number, ny: number) => {
     if (!piece) {
       piece = [[x, y]];
@@ -41,10 +71,8 @@ export function parsePath(d: string): Point[][] {
 
   while (i < tokens.length) {
     if (isCommand(tokens[i])) command = tokens[i++];
-    else if (!command) {
-      i++;
-      continue;
-    }
+    // a path begins with a command
+    else if (!command) break;
     const relative: boolean = command === command.toLowerCase();
     const kind = command.toUpperCase();
     if (kind === "Z") {
@@ -57,7 +85,9 @@ export function parsePath(d: string): Point[][] {
       quadratic = null;
       continue;
     }
-    if (i >= tokens.length || isCommand(tokens[i])) continue;
+    // not a command, or short of its numbers: the path ends here
+    const needs = NEEDS[kind];
+    if (needs === undefined || !has(needs)) break;
     const bx = relative ? x : 0;
     const by = relative ? y : 0;
     if (kind !== "C" && kind !== "S") cubic = null;
@@ -132,8 +162,9 @@ export function parsePath(d: string): Point[][] {
       let rx = Math.abs(number());
       let ry = Math.abs(number());
       const turn = (number() * Math.PI) / 180;
-      const large = number() ? 1 : 0;
-      const sweep = number() ? 1 : 0;
+      const large = flag();
+      const sweep = flag();
+      if (large === null || sweep === null || !has(2)) break;
       const ex = number() + bx;
       const ey = number() + by;
       if (!rx || !ry) {
@@ -186,7 +217,7 @@ export function parsePath(d: string): Point[][] {
           cy + rx * Math.cos(th) * sin + ry * Math.sin(th) * cos,
         );
       }
-    } else i++;
+    }
   }
   return pieces.filter((one) => one.length > 1);
 }

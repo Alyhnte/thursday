@@ -92,8 +92,10 @@ export async function loadLivePrompt(options: {
       : introduces
         ? `The call has just started. It is ${clockNow()} for them. Speak first: greet the user in one line, say you are Thursday, and ask what to call them.`
         : here
-          ? // The weather is already in her prompt (whereLine): this says only that it is the greeting
-            `The call has just started. It is ${clockNow()} for them, and their screen is showing where they are with the sky over it now. Speak first: greet the user in one line, with the weather there — never work.`
+          ? // The weather is already in her prompt (whereLine): this says only that it is the
+            // greeting. Nothing about the screen: the globe can still fail to come up once the
+            // line is open (a page hidden by then), and she spoke of a globe nobody saw
+            `The call has just started. It is ${clockNow()} for them. Speak first: greet the user in one line, with the weather there — never work.`
           : // The hour is a fact of the moment, so it rides on the opening and not in the prompt.
             // One thing about them, never work: the threads are what opened every call before
             `The call has just started. It is ${clockNow()} for them. Speak first: greet the user naturally, in one line. You may pick up one thing from what you know about them — never a list, never work.`,
@@ -150,7 +152,7 @@ Backend tools:
 - Memory: keeps what the user tells you about themselves, and looks it up.
 - This computer and the web: runs a command, searches.
 - What they show you: looks at a picture they give you, or at what they share with you — a screen, a window or a tab — as it is when they ask.
-- Your face: draws a small picture on it — a heart, a star, a check.
+- Your face: a short word or a small drawing on it, when you want to show or express something.
 
 Delegate to the backend when:
 - They say goodbye or good night, in whatever words, or want the call to end.

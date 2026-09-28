@@ -124,9 +124,11 @@ function passOf(
   reach: number,
 ): Pass {
   const stepMs = step * 60_000;
-  let top = altitudeAt(ms);
+  const here = altitudeAt(ms);
+  let top = here;
   const walk = (direction: -1 | 1) => {
-    let before = top;
+    // from the altitude now: the walk back has already raised `top` to the pass's highest
+    let before = here;
     for (let minute = step; minute <= reach; minute += step) {
       const at = ms + direction * minute * 60_000;
       const now = altitudeAt(at);

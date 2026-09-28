@@ -70,7 +70,8 @@ touch), with her glyph ramp, emoji pool, eyes and washes.
   split into white and black, the many-coloured one as rainbow. `svg-path.ts` reads every path
   command. Her face gives way to her body drawn on the grid, which shrinks into a pen, draws the
   line (3.8 s), rests (config `DRAW.holdMs`), goes home as the line fades; about 10 s. The
-  voice's delegation list names it ("Your face: draws a small picture on it").
+  voice's delegation list names her face with `emote`, as hers to express with: "Your face: a
+  short word or a small drawing on it, when you want to show or express something."
 - Yours: the brush on the write line opens a pad (a dialog); pens are her ink and the bot marks'
   colours. "Show Thursday" on a spoken call, "Add to the message" otherwise, keeps the drawing
   as a PNG cropped to it on the pad's colour (config `DRAW_PAD.longestSide`) and puts it on the

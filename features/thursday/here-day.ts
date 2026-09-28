@@ -16,10 +16,12 @@ let shownOn: string | null = null;
 /** Whether the globe has yet to play today on this browser. */
 export function hereDue(now = new Date()): boolean {
   const today = hereDay(now);
+  // kept here when the browser would not keep it: a full storage still reads, and reads no day
+  if (shownOn === today) return false;
   try {
     return window.localStorage.getItem(SHOWN_KEY) !== today;
   } catch {
-    return shownOn !== today;
+    return true;
   }
 }
 

@@ -266,7 +266,7 @@ test("a picture the connection will not carry is said to the backend and the use
   )?.item as { content: { text: string }[] };
   assert.match(note.content[0].text, /did not go through.*Message too large/);
   assert.equal(warnings.length, 1);
-  assert.match(warnings[0], /picture of your screen did not go through/);
+  assert.match(warnings[0], /A picture for her did not go through/);
 });
 
 test("an incomplete response that asked for tools is continued once, and a second in a row only warns", async () => {
@@ -1238,7 +1238,7 @@ test("both call prompts open as one Thursday: the voice gets the guide's delegat
     assert.equal(shown.here, true);
     assert.match(
       shown.opening,
-      /^The call has just started\. It is [^\n]+ for them, and their screen is showing where they are with the sky over it now\. Speak first: greet the user in one line, with the weather there — never work\.$/,
+      /^The call has just started\. It is [^\n]+ for them\. Speak first: greet the user in one line, with the weather there — never work\.$/,
     );
     assert.equal(shown.opening.includes("Lisbon"), false);
     // Never without the weather to greet them with, and never over a call-back's reason

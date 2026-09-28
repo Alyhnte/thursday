@@ -40,6 +40,22 @@ test("a path is read as the lines her pen draws, absolute and relative", () => {
   near(s.at(-1)?.[0] ?? 0, 20);
 });
 
+test("a path ends where it stops making sense, as a browser draws it", () => {
+  // short of its numbers: what came before is kept
+  const cut = parsePath("M10 10 L20 20 L30");
+  assert.deepEqual(cut, [
+    [
+      [10, 10],
+      [20, 20],
+    ],
+  ]);
+  near(pathLength(cut), Math.hypot(10, 10));
+  // arc flags written together with what follows them
+  const packed = parsePath("M10,10 a25,25 0 1150,50")[0];
+  near(packed.at(-1)?.[0] ?? 0, 60);
+  near(packed.at(-1)?.[1] ?? 0, 60);
+});
+
 test("what draws no line is said to draw nothing", () => {
   assert.equal(pathLength(parsePath("hello")), 0);
   assert.equal(pathLength(parsePath("M10 10")), 0);

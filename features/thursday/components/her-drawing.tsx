@@ -194,23 +194,24 @@ class Drawing {
     const g = this.grid;
     const line = this.line;
     const start = line.pts[0] ?? [0, 0];
-    const end = line.pts[line.pts.length - 1] ?? [0, 0];
-    const shrink = ss(AT.shrink[0], AT.shrink[1], tt);
-    const home = ss(backAt, backAt + AT.home, tt);
     const drawn =
       line.total * inOut(ss(AT.draw[0], AT.draw[1], Math.min(tt, backAt)));
-    const [cx, cy] =
-      tt < AT.shrink[1]
+    // where the pen is and how large, until she is sent back; from there she goes home, so a tap
+    // mid-line takes her back from where she is
+    const at = Math.min(tt, backAt);
+    const shrink = ss(AT.shrink[0], AT.shrink[1], at);
+    const [px, py] =
+      at < AT.shrink[1]
         ? [start[0] * shrink, start[1] * shrink]
-        : tt < backAt
-          ? pointAt(line, drawn)
-          : [end[0] * (1 - home), end[1] * (1 - home)];
-    const R =
-      tt < AT.shrink[1]
+        : pointAt(line, drawn);
+    const pr =
+      at < AT.shrink[1]
         ? REST_R + (PEN_R - REST_R) * shrink
-        : tt < backAt
-          ? PEN_R * (1 + 0.12 * Math.sin(t * 6))
-          : PEN_R + (REST_R - PEN_R) * home;
+        : PEN_R * (1 + 0.12 * Math.sin(t * 6));
+    const home = ss(backAt, backAt + AT.home, tt);
+    const cx = px * (1 - home);
+    const cy = py * (1 - home);
+    const R = pr + (REST_R - pr) * home;
     const fade = 1 - ss(backAt + AT.fade[0], backAt + AT.fade[1], tt);
     // her face gives way to the body drawn here as she becomes the pen, and takes it back
     const hide =

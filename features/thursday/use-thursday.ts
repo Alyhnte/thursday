@@ -1027,8 +1027,11 @@ export function useThursday(
                 return `Nothing was shown: your face is showing ${over === "here" ? "where they are" : over === "see" ? "the picture they gave you" : "your drawing"} for a few seconds more.`;
               if (call.name === TOOL_NAMES.draw) {
                 const { drawing, reply } = readDrawing(call.arguments);
-                if (drawing) faceMoment.show({ kind: "draw", ...drawing });
-                return reply;
+                if (!drawing) return reply;
+                // the page draws only while it is looked at, and not for someone who asked for less motion
+                return faceMoment.show({ kind: "draw", ...drawing })
+                  ? reply
+                  : "Nothing was drawn: their screen is not showing your face now, or it is set to show less motion.";
               }
               const { word, reply } = readFaceWord(call.arguments);
               if (word) setFaceWord({ text: word, at: Date.now() });
@@ -1436,7 +1439,7 @@ function readDrawing(args: string): {
   } catch {
     // not JSON: it named neither, and is told so below
   }
-  if (!(color in DRAW_COLORS))
+  if (!Object.hasOwn(DRAW_COLORS, color))
     return {
       drawing: null,
       reply: `Nothing was drawn: color is one of ${DRAW_COLOR_NAMES.join(", ")}.`,

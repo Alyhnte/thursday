@@ -4,9 +4,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Swatch } from "@/components/ui/swatch";
+import { toast } from "@/components/ui/toast";
 import { DRAW_PAD } from "@/config";
-import { MARK_INK } from "@/features/bot/mark.const";
+import { MARK_INK, markInk } from "@/features/bot/mark.const";
 import { useIsDark } from "@/hooks/use-theme";
+import { errorToString } from "@/lib/utils";
 import { ORB_INK } from "../ascii.const";
 
 /**
@@ -91,7 +93,9 @@ export function DrawPad({
   const inkOf = useCallback(
     (index: number) => {
       const [r, g, b] = dark ? ORB_INK.dark : ORB_INK.light;
-      return PENS[index]?.color ?? `rgb(${r},${g},${b})`;
+      const color = PENS[index]?.color;
+      // a mark's colour as it is drawn on this theme: the light ones darkened on paper
+      return color ? markInk(color, dark) : `rgb(${r},${g},${b})`;
     },
     [dark],
   );
@@ -189,6 +193,13 @@ export function DrawPad({
       if (!blob) throw new Error("This browser could not keep the drawing.");
       onDone(new File([blob], "drawing.png", { type: "image/png" }));
       clear();
+    } catch (cause) {
+      // what is drawn stays on the pad, to be handed over again
+      toast.add({
+        type: "error",
+        title: "The drawing could not be kept",
+        description: errorToString(cause),
+      });
     } finally {
       setKeeping(false);
     }
@@ -236,7 +247,7 @@ export function DrawPad({
             {PENS.map((one, index) => (
               <Swatch
                 key={one.label}
-                color={one.color}
+                color={one.color && markInk(one.color, dark)}
                 label={one.label}
                 picked={pen === index}
                 onPick={() => setPen(index)}
