@@ -38,11 +38,9 @@ meanwhile is heard and answered once she is done, so there is no need to repeat 
 
 **Share screen**, on that line during a spoken call, shows her a screen, a window or a tab; the
 browser asks which. **Camera** shows her your camera instead — one or the other, not both. A small
-copy stands at the top right while it is on, and its caption says when she gets it. Nothing is
-streamed: a picture of it as it is at that moment goes to the model behind her, nowhere else. On
-the GPT Subscription one goes along each time she takes something on while it is on, so she sees
-it as she starts; with an OpenAI key she takes one when what you ask needs it — "what does this error
-say?", "what am I holding?". **Stop** on the line, the browser's own bar, or the end of the call
+copy stands at the top right while it is on. Nothing of it is sent while it is only on: she looks
+when what they ask needs it — "what does this error say?", "what am I holding?" — and then a
+picture of it as it is at that moment goes to the model behind her, nowhere else. **Stop** on the line, the browser's own bar, or the end of the call
 stops it. When the browser refuses — on a Mac, the browser needs Screen Recording, or Camera, in
 System Settings › Privacy & Security — its reason shows, and nothing is shown.
 

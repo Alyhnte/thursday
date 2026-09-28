@@ -6,9 +6,8 @@ import { SHOWING } from "@/config";
 /**
  * What the user shows a spoken call — a screen, a window or a tab, or their camera — held in
  * the page until they stop or the call ends. One at a time. Nothing streams while it is shown:
- * a picture of it is taken when the backend asks for one (`look_at_shared`, use-thursday) or,
- * on the plan's line, as the voice hands work over (thursday.plan), and goes to the backend
- * alone. The browser asks which screen, or for the camera, and only from a press: `show` is
+ * a picture of it is taken only when the backend asks for one (`look_at_shared`, use-thursday),
+ * and goes to the backend alone. The browser asks which screen, or for the camera, and only from a press: `show` is
  * called from a click.
  */
 
@@ -27,18 +26,11 @@ let shown: Shown | null = null;
  * no Stop but the browser's own bar.
  */
 let asking: { wanted: boolean } | null = null;
-/**
- * Whether a picture goes with each hand-over (the plan's line) rather than only when she
- * looks: what the preview's caption says, set by the call as its line comes up.
- */
-let eachHandOver = false;
-type View = { kind: ShownKind; stream: MediaStream; eachHandOver: boolean };
+type View = { kind: ShownKind; stream: MediaStream };
 let view: View | null = null;
 const listeners = new Set<() => void>();
 const changed = () => {
-  view = shown
-    ? { kind: shown.kind, stream: shown.stream, eachHandOver }
-    : null;
+  view = shown ? { kind: shown.kind, stream: shown.stream } : null;
   for (const listener of listeners) listener();
 };
 
@@ -55,13 +47,6 @@ export function useShown(): View | null {
 }
 
 export const shownKind = (): ShownKind | null => shown?.kind ?? null;
-
-/** Says whether this call's line sends a picture with each hand-over. */
-export function seenEachHandOver(each: boolean): void {
-  if (eachHandOver === each) return;
-  eachHandOver = each;
-  changed();
-}
 
 /** Hears what is shown change, and what was shown before; the call tells her (use-thursday). */
 export function onShownChange(

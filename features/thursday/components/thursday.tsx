@@ -1653,9 +1653,8 @@ function ShowOnLine() {
 }
 
 /**
- * What is shown to her, small, while it is. The caption says when a picture of it leaves the
- * page, as the call's line has it: with each hand-over on the plan's, and only when her backend
- * looks on a key's.
+ * What is shown to her, small, while it is. Nothing of it leaves the page until she looks,
+ * which the backend decides, most often when asked: the caption says only what the code holds.
  */
 function ShownPreview() {
   const shown = useShown();
@@ -1682,9 +1681,7 @@ function ShownPreview() {
         )}
       />
       <figcaption className="font-mono text-[11px] text-muted-foreground">
-        {shown.eachHandOver
-          ? "Sent when you ask her something"
-          : "Sent only when she looks"}
+        Sent only when she looks
       </figcaption>
     </figure>
   );

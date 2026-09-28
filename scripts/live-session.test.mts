@@ -3,7 +3,6 @@ import { afterEach, mock, test } from "node:test";
 import { HERE, LIVE_CALL } from "../config.ts";
 import type {
   LiveActivity,
-  LivePicture,
   LiveReasoning,
   LiveSearch,
   LiveSource,
@@ -23,8 +22,6 @@ let sent: Record<string, unknown>[] = [];
 let released = false;
 /** A message the data channel throws on, as it does on one past its limit. */
 let refuses: ((event: Record<string, unknown>) => boolean) | null = null;
-/** Whether the call's events go through the app, as on the plan's line. */
-let relayed = false;
 mock.module("../lib/live/live.transport.ts", {
   namedExports: {
     createWebRtcTransport: (options: typeof wire) => {
@@ -39,8 +36,8 @@ mock.module("../lib/live/live.transport.ts", {
           sent.push(event);
         },
         limit: () => 262_144,
-        // A key's call unless a test says otherwise: its events ride the media connection
-        relayed: () => relayed,
+        // A key's call: its events ride the media connection
+        relayed: () => false,
         close: () => {
           released = true;
         },
@@ -67,16 +64,13 @@ afterEach(async () => {
     await closed;
   }
   refuses = null;
-  relayed = false;
   mock.restoreAll();
 });
 
 async function connect({
   runTool = async () => "ok",
-  picture,
 }: {
   runTool?: (call: LiveToolCall) => Promise<string | LiveToolResult>;
-  picture?: () => Promise<LivePicture>;
 } = {}) {
   sent = [];
   released = false;
@@ -101,7 +95,6 @@ async function connect({
     },
     on: {
       runTool,
-      picture,
       reasoning: (part) => reasonings.push(part),
       search: (search) => searches.push(search),
       cited: (responseId, sources) => citations.push([responseId, sources]),
@@ -276,68 +269,6 @@ test("a picture the connection will not carry is said to the backend and the use
   assert.match(note.content[0].text, /did not go through.*Message too large/);
   assert.equal(warnings.length, 1);
   assert.match(warnings[0], /picture of what you show did not go through/);
-});
-
-test("on the plan's line, what is shown is told to the app, and a hand-over's request for its picture is answered", async () => {
-  relayed = true;
-  const image = "data:image/jpeg;base64,AAAA";
-  let answer: LivePicture = { image, kind: "camera" };
-  const { session } = await connect({ picture: async () => answer });
-  assert.equal(session.relayed(), true);
-  session.showing("camera");
-  assert.deepEqual(sent.at(-1), { type: "thursday.showing", kind: "camera" });
-
-  wire.on.event({ type: "thursday.picture.requested", request_id: "look-1" });
-  await tick();
-  assert.deepEqual(sent.at(-1), {
-    type: "thursday.picture",
-    request_id: "look-1",
-    image,
-    kind: "camera",
-  });
-
-  // Why none was taken, and nothing shown by the time it asked
-  answer = { failed: "Their camera has not shown anything yet." };
-  wire.on.event({ type: "thursday.picture.requested", request_id: "look-2" });
-  await tick();
-  assert.deepEqual(sent.at(-1), {
-    type: "thursday.picture",
-    request_id: "look-2",
-    failed: "Their camera has not shown anything yet.",
-  });
-  answer = null;
-  wire.on.event({ type: "thursday.picture.requested", request_id: "look-3" });
-  await tick();
-  assert.deepEqual(sent.at(-1), {
-    type: "thursday.picture",
-    request_id: "look-3",
-  });
-  session.showing(null);
-  assert.deepEqual(sent.at(-1), { type: "thursday.showing", kind: null });
-});
-
-test("a picture that could not be taken for the plan's line is answered with why", async () => {
-  relayed = true;
-  await connect({
-    picture: async () => {
-      throw new Error("The capture stopped.");
-    },
-  });
-  wire.on.event({ type: "thursday.picture.requested", request_id: "look-1" });
-  await tick();
-  assert.deepEqual(sent.at(-1), {
-    type: "thursday.picture",
-    request_id: "look-1",
-    failed: "The capture stopped.",
-  });
-});
-
-test("on a key's line nothing about what is shown goes to Live: its backend looks when it needs to", async () => {
-  const { session } = await connect();
-  const before = sent.length;
-  session.showing("screen");
-  assert.equal(sent.length, before);
-  assert.equal(session.relayed(), false);
 });
 
 test("an incomplete response that asked for tools is continued once, and a second in a row only warns", async () => {

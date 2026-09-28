@@ -36,9 +36,9 @@ she answers what takes a glance on the spot and hands anything longer to a bot.
 A spoken call is two models on one Live connection: `openCallAction` builds the voice's prompt,
 the backend's prompt and the tool manifest on the server, and the backend's tool calls arrive in
 the page and run through `/api/thursday/tool-call`, but for `end_call`, `emote` and
-`look_at_shared` (a picture of what they show, `show.ts`), which `use-thursday`
-runs. On the GPT Subscription (`liveLineOf`), whose voice has no backend, `thursday.plan` runs
-hers, relays it to the page in the key's wire, takes that picture at each hand-over. A call in writing
+`look_at_shared` (a picture of the screen or camera they show, `features/thursday/show.ts`),
+which `use-thursday` runs. On the GPT Subscription (`liveLineOf`), whose voice has no backend,
+`thursday.plan` runs hers and relays it to the page in the key's wire. A call in writing
 (`use-text-call` → `/api/thursday/text`) and a phone (`reach.ts` → `answerInWriting`) are that
 backend with no voice, run by `thursday.text`. Every way in reads the one `LiveSettings` row
 (`readLiveSettings`) and is kept as a call row that the next call's prompts read back; the

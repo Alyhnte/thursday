@@ -47,15 +47,10 @@ export const LIVE_CALL = {
  *   page sends her backend on this line, where it goes over HTTP instead of a data channel with
  *   a limit of its own: about what Chrome's channel takes on a key's call. More costs the
  *   backend more to read, less blurs small text.
- * - `pictureMs`  how long a hand-over waits for the page's picture of what is shown before her
- *   backend starts without it, told that it did not come. It covers a share that has not shown
- *   a frame yet (SHOWING.firstFrameMs) and the picture's trip; longer holds a page that stopped
- *   answering against every hand-over, shorter cuts off a share just started.
  */
 export const PLAN_CALL = {
   delegationBytes: 4 * 1024,
   pictureBytes: 262_144,
-  pictureMs: 5_000,
 };
 
 /**

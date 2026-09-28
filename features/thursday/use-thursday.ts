@@ -65,7 +65,6 @@ import { screenActLine } from "./screen-act";
 import {
   canShow,
   onShownChange,
-  seenEachHandOver,
   shownKind,
   stopShowing,
   takePicture,
@@ -689,8 +688,6 @@ export function useThursday(
     afterReading.current = tell;
     const stop = onShownChange((now, before) => {
       if (!calling.current) return;
-      // The plan's line asks for a picture with a hand-over only while something is shown
-      session.current?.showing(now);
       shareNews.current = now
         ? `The user started showing you their ${now}. What is on it now is known only by looking at it; what was said about it before may not be what is there.`
         : `The user stopped showing you their ${before ?? "screen"}.`;
@@ -720,7 +717,6 @@ export function useThursday(
       // What is shown is shown to a call, and goes with it; nothing about it is left to tell
       shareNews.current = null;
       stopShowing();
-      seenEachHandOver(false);
       rang.current = false;
       // What she did not voice goes in again next call; unsent context goes with the session
       for (const key of unvoiced.current) told.current.delete(key);
@@ -995,14 +991,6 @@ export function useThursday(
         },
         audio: tap.current,
         on: {
-          // The plan's line asks as the voice hands work over, while something is shown
-          picture: async () => {
-            if (!shownKind()) return null;
-            const taken = await pictureFor(session.current?.messageLimit());
-            return "failed" in taken
-              ? taken
-              : { image: taken.url, kind: taken.kind };
-          },
           // the backend calls tools; the page forwards them to the server
           runTool: async (call) => {
             // end_call and emote are the page's own tools. The line goes down once
@@ -1237,8 +1225,6 @@ export function useThursday(
 
       session.current = live;
       opening.current = false;
-      // The preview says when what is shown reaches her, which differs by line
-      seenEachHandOver(live.relayed());
       rang.current = calledBack;
       stood.current = calledBack
         ? new Set()
