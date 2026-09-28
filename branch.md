@@ -1,34 +1,32 @@
 # claude/wonderful-brown-9b9pgz
 
-Motion videos as a new kind in the `artifact` skill: a bot writes scenes as JSON, the engine
-draws them as one card that morphs from scene to scene, the app plays it, and it renders to mp4.
+Motion videos as a kind in the `artifact` skill: a short hand-drawn film with music — a birthday
+or anniversary gift, a thank-you, a farewell, a small story. A bot writes each scene as a few
+lines of code with a drawing kit; the page plays it in the app and renders it to mp4.
 
-- `skills/artifact/runtime/motion/` — the engine (`engine.js`), 20 scene kinds (`parts.js`), the
-  timeline, camera, cursor, captions and player (`stage.js`), styles, the page template, the JSON
-  checks (`schema.mjs`), Geist fonts.
-- `skills/artifact/scripts/motion.mjs` — `put`, `get`, `voices`, `track`, `shots`, `render`.
-- Timed three ways: each scene's `dur` (captions only), one voice per scene (`voices`), or a
-  recording of the user's own (`track`; scenes cut in over their video or sit in an `area`).
-- 16:9, 9:16 and 1:1; themes `paper`, `ink`, `mist`; `lang` (Korean breaks lines between words).
-- Render: frames through the browser skill's `apart` session (added to `session.mjs`), four
-  subframes blended for motion blur (`--draft` takes one), still frames reused, pieces encoded
-  while the next is drawn. ffmpeg helpers moved from `book-video.mjs` to `scripts/media.mjs`.
-- `references/motion.md`, `templates/motion/`, SKILL.md row and description, guide, README credit
-  (after Barty-Bart/motion-graphics, MIT), skills map, pack REQUIRED, `scripts/motion.test.mts`.
+Round three replaced the JSON scenes of rounds one and two (40 kinds of card in the app's look):
+those made every video look the same. Now:
 
-Round two (this app's look, more kinds, easier):
-- 40 kinds (`motion.mjs kinds` prints them, `kinds <kind>` an example; `runtime/motion/catalog.mjs`),
-  in `parts.js`, `parts-text.js` (text styles rise/blur/type/slam/mask/decode, `*marks*`, swap),
-  `parts-app.js` (her orb, call, bots' faces, notify, agent, prompt), `parts-data.js` (stats,
-  line, ring, table, timeline, hub), `parts-media.js` (phone, browser, logo, grid, lower,
-  beforeafter).
-- Themes `thursday` (default) and `night` from app/globals.css; backdrops dots/grid/glyphs;
-  transitions morph/push/zoom/rise/cut; captions letter by letter on the app's themes.
-- Synthesized sfx (tick on presses, whoosh on thrown scenes) in the render and the player.
-- `dur` optional (3 s); `put` warns when a scene has more than 3 words a second to read.
-- Layout waits for the fonts (`window.motionReady`); `cut` measured once a scene settles.
-- Timings from hyperframes (Apache-2.0), LottieFiles motion-design-skill (MIT), animate-text;
-  numbers only, credited in skills/README.md.
+- `skills/artifact/runtime/motion/` — the kit: `kit-core.js` (crayon textures, torn paper,
+  crayon lines, shapes, handwriting written a letter at a time), `kit-people.js` (people of any
+  skin, hair, clothes and age in 14 poses and 14 faces, Thursday, her bots, a dog, a cat),
+  `kit-things.js` (25 things: cake, gift, balloons, flowers, letter, photo, ring, …),
+  `kit-places.js` (sky at four hours, eight grounds, a room, a desk, weather, sparkles, hearts,
+  confetti, fireworks, notes and cards); `film.js` (scenes on the music's beat, seven
+  transitions, motion blur within a scene, the player, a dry pass that hears the sounds and
+  checks the words); `score.js` (music in five moods from sine partials, the scenes' sounds, a
+  small hall); `page.mjs`, `motion.html`; Gaegu Bold (OFL) for Hangul and Latin.
+- Anything the kit has not got is cut from paper with `d.paper`/`d.crayon` and the shapes, and
+  looks like the rest.
+- `skills/artifact/scripts/motion.mjs` — `put` (runs every scene in a browser: errors with their
+  scene and line, words off the frame, too small or read too late), `get`, `shots` (three
+  moments a scene on one picture), `render` (frames through the browser skill's `apart`
+  session, four subframes blended, music made by the same `score.js` the player plays).
+- `references/motion.md` (the story first, the kit, look-fix-render), `templates/motion/birthday.js`
+  (30 s, six scenes), SKILL.md row and description, guide, README credit, skills map, pack
+  REQUIRED, biome override for the kit's shared scope, `scripts/motion.test.mts` (the example
+  runs clean in a fake canvas, errors are named, the music is whole and seeded, the page holds
+  its code).
 
-Open: motion video sits under "To keep and look at" in SKILL.md, but has no app head or in-app
-edit; not yet run end to end by a bot in the real app.
+Open: not yet run end to end by a bot in the real app; a 30 s film takes about 3.5 minutes to
+render here.

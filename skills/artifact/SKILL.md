@@ -1,6 +1,6 @@
 ---
 name: artifact
-description: "Makes what the user keeps or uses: a document, canvas, picture book, deck, motion video, sheet, page or app. Use it for a report or memo, options or a mockup at real size, an explanation in pictures, slides, a short animated video or clip over their recording, an Excel sheet or reading one, a tool such as a calculator or a tracker, numbers as a chart, or a diagram of how something is built."
+description: "Makes what the user keeps or uses: a document, canvas, picture book, deck, motion video, sheet, page or app. Use it for a report or memo, options or a mockup at real size, an explanation in pictures, slides, a short hand-drawn film for a birthday, a thank-you or a small story, an Excel sheet or reading one, a tool such as a calculator or a tracker, numbers as a chart, or a diagram of how something is built."
 license: Complete terms in LICENSE.txt
 ---
 
@@ -20,7 +20,7 @@ the type, light and dark, a head that names it with Edit and Export, and the pic
 | choose between ways something could look, or see it at its real size — an app or phone screen, a landing page, a poster, a post | canvas | `node $S/canvas.mjs new <name>` | `references/canvas.md`, then `references/craft.md` |
 | understand one thing simply — a picture and a line or two a page, to swipe, as a PDF or read aloud | picture book | `node $S/book.mjs new <name>`, then its pages: `book.mjs put <name> <pages.html>` | `references/book.md` |
 | watch it presented | deck | the `make_deck` tool | `references/deck.md` |
-| watch a short video — an explainer, a launch clip, a vertical clip for a phone, scenes over their own recording | motion video | write its scenes as JSON, then `node $S/motion.mjs put <name> <video.json>` | `references/motion.md` |
+| watch a short hand-drawn film — a birthday or anniversary gift, a thank-you, a farewell, a small story, with music | motion video | write the film as code with the kit, from `templates/motion/birthday.js`, then `node $S/motion.mjs put <name> <film.js>` | `references/motion.md` |
 
 - **Write the content, never the file around it.** Each script makes its file and puts what you
   wrote into it; a file you write whole yourself loses its head, its editing and its check.

@@ -173,16 +173,13 @@ as a picture**, **Download this file**). Presenting shows the slide alone, never
 no PowerPoint file; a handout prints to PDF. **Edit** changes words and notes in place, moves,
 duplicates or deletes the open slide, or changes the palette; ⌘Z undoes.
 
-A **motion video** is a short animated video — an explainer, a launch clip, a tall clip for a
-phone, or scenes cut in over a recording of the user's own. Any bot can make one, in the app's own
-look or a darker, warmer or cooler one: one card moves from scene to scene, lines build themselves
-word by word, a pointer clicks what is clicked with a small tick, and what is said shows as
-captions. Scenes can show her orb and a call, the bots at work, a prompt and what it made,
-figures and charts, a phone or a browser, and pictures before and after. It comes
-back as an .mp4, beside a player that opens in the app: space plays and pauses, the arrow keys
-step a second, and dragging the bar scrubs, with its sound. Words on screen need nothing more; a
-voice reading it needs a speech model in **Settings › Models**, and timing it to a recording a
-transcription model. Ask the bot for changes; it makes the .mp4 again.
+A **motion video** is a short hand-drawn film with music — a birthday or anniversary gift, a
+thank-you to a parent, a farewell, a small story. Any bot can make one: tell it who it is for and
+something only you two share, and it draws the people in cut paper and crayon (their hair,
+clothes and age as you describe them), the room or the street, a cake or a letter, and writes the
+words by hand, a letter at a time. A picture you give it can sit in a paper frame. It comes back
+as an .mp4, beside a player that opens in the app: space plays and pauses, and dragging the bar
+scrubs, with its music. Ask the bot for changes; it makes the .mp4 again.
 
 A **sheet** is for numbers to keep working on — a budget, a ledger, a list of clients. It is a real
 Excel file (.xlsx) with a page that shows it in the app: a tab per sheet, the picked cell's formula

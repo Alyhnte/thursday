@@ -1,26 +1,26 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
 import { runInNewContext } from "node:vm";
 
+const { codeOf, kitScript, page } = await import(
+  "../skills/artifact/runtime/motion/page.mjs"
+);
+const SKILL = join(import.meta.dirname, "..", "skills", "artifact");
+const SCRIPT = join(SKILL, "scripts", "motion.mjs");
+const EXAMPLE = await readFile(
+  join(SKILL, "templates", "motion", "birthday.js"),
+  "utf8",
+);
+
 // A workspace of its own: the kit script finds it from where it runs
 const home = await mkdtemp(join(tmpdir(), "thursday-motion-"));
 after(() => rm(home, { recursive: true, force: true }));
 await mkdir(join(home, "projects"));
 await writeFile(join(home, "pnpm-workspace.yaml"), "");
-
-const { check, KINDS } = await import(
-  "../skills/artifact/runtime/motion/schema.mjs"
-);
-const { CATALOG } = await import(
-  "../skills/artifact/runtime/motion/catalog.mjs"
-);
-const SKILL = join(import.meta.dirname, "..", "skills", "artifact");
-const SCRIPT = join(SKILL, "scripts", "motion.mjs");
 
 /** motion.mjs run as a bot's shell runs it, in the test's workspace. */
 const run = (...args: string[]) =>
@@ -29,282 +29,244 @@ const run = (...args: string[]) =>
     encoding: "utf8",
     env: { ...process.env, THURSDAY_ARTIFACTS: "artifacts" },
   });
-const specIn = async (name: string) =>
-  JSON.parse(
-    /<script type="application\/json" id="motion-spec">([\s\S]*?)<\/script>/.exec(
-      await readFile(join(home, "artifacts", name, `${name}.html`), "utf8"),
-    )?.[1] ?? "null",
-  );
 
-/** One scene of every kind: the example `motion.mjs kinds` gives for it. */
-const scenes = Object.entries(CATALOG).map(([kind, { example }]) => ({
-  kind,
-  ...example,
-  dur: 3,
-}));
-/** The pictures the examples name, which a video's folder must hold. */
-const PICTURES = [
-  "pictures/shot.png",
-  "pictures/before.png",
-  "pictures/after.png",
-];
-
-test("every kind has an example in the catalog, and every example passes", () => {
-  assert.deepEqual(Object.keys(CATALOG).sort(), Object.keys(KINDS).sort());
-  assert.deepEqual(check({ scenes }), []);
+type M = { a: number; b: number; c: number; d: number; e: number; f: number };
+const mul = (m: M, n: M): M => ({
+  a: m.a * n.a + m.c * n.b,
+  b: m.b * n.a + m.d * n.b,
+  c: m.a * n.c + m.c * n.d,
+  d: m.b * n.c + m.d * n.d,
+  e: m.a * n.e + m.c * n.f + m.e,
+  f: m.b * n.e + m.d * n.f + m.f,
+});
+const matrix = (m: M) => ({
+  ...m,
+  inverse() {
+    const det = m.a * m.d - m.b * m.c;
+    return matrix({
+      a: m.d / det,
+      b: -m.b / det,
+      c: -m.c / det,
+      d: m.a / det,
+      e: (m.c * m.f - m.d * m.e) / det,
+      f: (m.b * m.e - m.a * m.f) / det,
+    });
+  },
+  transformPoint: (p: { x: number; y: number }) => ({
+    x: m.a * p.x + m.c * p.y + m.e,
+    y: m.b * p.x + m.d * p.y + m.f,
+  }),
 });
 
-test("the page's parts make as many changes as the schema says a scene's times must name", async () => {
-  const code = [
-    "engine.js",
-    "parts.js",
-    "parts-text.js",
-    "parts-app.js",
-    "parts-data.js",
-    "parts-media.js",
-  ]
-    .map((f) => join(SKILL, "runtime", "motion", f))
-    .map((f) => readFile(f, "utf8"));
-  const PARTS = runInNewContext(
-    `${(await Promise.all(code)).join("\n")}\nPARTS`,
-    {},
-  );
-  assert.deepEqual(Object.keys(PARTS).sort(), Object.keys(KINDS).sort());
-  const variants = [
-    ...scenes,
-    { kind: "text", text: "Every word on a beat", style: "slam" },
-    { kind: "bots", bots: [{ name: "A" }] },
-    { kind: "compare", left: { title: "A" }, right: { title: "B" } },
-  ];
-  for (const scene of variants)
-    assert.equal(
-      PARTS[scene.kind].beats(scene),
-      KINDS[scene.kind as keyof typeof KINDS].beats(scene as never),
-      scene.kind,
-    );
-});
-
-test("a scene with too many words for its time is named, with the time it needs", async () => {
-  const json = join(home, "wordy.json");
-  await writeFile(
-    json,
-    JSON.stringify({
-      scenes: [
-        {
-          kind: "list",
-          items: [
-            "One two three four",
-            "Five six seven eight",
-            "Nine ten eleven twelve",
-          ],
-          dur: 2,
-        },
-      ],
-    }),
-  );
-  const put = run("put", "wordy", json);
-  assert.equal(put.status, 0, put.stderr);
-  assert.match(
-    put.stdout,
-    /Scene 1 \(list\) has 12 words to read in 2s: give it "dur": 4/,
-  );
-});
-
-test("each mistake is named with the scene it is in", () => {
-  const problems = (spec: object, opts = {}) => check(spec, opts).join("\n");
-  assert.match(
-    problems({ scenes: [{ kind: "poster", dur: 2 }] }),
-    /scene 1 \(poster\): no such kind "poster"/,
-  );
-  assert.match(
-    problems({ scenes: [{ kind: "title", title: "Too short", dur: 0.1 }] }),
-    /scene 1 \(title\): "dur" is how many seconds it holds, 0\.5 to 60: 3 when it is left out/,
-  );
-  assert.match(
-    problems({
-      scenes: [{ kind: "title", title: "T", dur: 2, colour: "red" }],
-    }),
-    /"colour" is not a field of title/,
-  );
-  assert.match(
-    problems({
-      scenes: [{ kind: "steps", items: ["a", "b"], dur: 3, times: [1] }],
-    }),
-    /"times" is 2 second\(s\)/,
-  );
-  assert.match(
-    problems({
-      scenes: [{ kind: "options", options: ["a", "b"], pick: [2], dur: 3 }],
-    }),
-    /"pick" is a list of 1 to 6 indexes into its options/,
-  );
-  assert.match(
-    problems({ scenes: [{ kind: "image", src: "../../secret.png", dur: 3 }] }),
-    /a picture's path inside the video's folder/,
-  );
-  assert.match(
-    problems(
-      { scenes: [{ kind: "image", src: "gone.png", dur: 3 }] },
-      { exists: () => false },
-    ),
-    /gone.png, which is not in the video's folder/,
-  );
-  assert.match(
-    problems({
-      size: "1920x1081",
-      scenes: [{ kind: "title", title: "T", dur: 2 }],
-    }),
-    /^size:/,
-  );
-});
-
-test("scenes on a recording are timed to it, in order, and only a video leaves gaps", () => {
-  const track = { file: "track/a.m4a", kind: "audio", length: 20 };
-  const title = { kind: "title", title: "T" };
-  assert.deepEqual(
-    check({
-      track,
-      scenes: [
-        { ...title, at: 1 },
-        { ...title, at: 5 },
-      ],
-    }),
-    [],
-  );
-  assert.match(
-    check({ track, scenes: [{ ...title, dur: 2 }] }).join("\n"),
-    /needs "at"/,
-  );
-  assert.match(
-    check({
-      track,
-      scenes: [
-        { ...title, at: 5 },
-        { ...title, at: 2 },
-      ],
-    }).join("\n"),
-    /scenes go in the order they play/,
-  );
-  assert.match(
-    check({ track, scenes: [{ ...title, at: 1, until: 3 }] }).join("\n"),
-    /only a video recording fills/,
-  );
-  const video = { ...track, file: "track/a.mp4", kind: "video" };
-  assert.deepEqual(
-    check({
-      size: "1920x1080",
-      track: video,
-      scenes: [
-        { ...title, at: 1, until: 3 },
-        { ...title, at: 6, area: [1000, 100, 800, 800] },
-      ],
-    }),
-    [],
-  );
-  assert.match(
-    check({
-      track: video,
-      scenes: [{ ...title, at: 1, area: [1500, 0, 800, 800] }],
-    }).join("\n"),
-    /"area" is \[x, y, width, height\]/,
-  );
-});
-
-test("put writes a page that holds its JSON, and refuses a mistake without writing", async () => {
-  await mkdir(join(home, "artifacts", "demo", "pictures"), { recursive: true });
-  for (const picture of PICTURES)
-    await writeFile(join(home, "artifacts", "demo", picture), "");
-  const json = join(home, "demo.json");
-  await writeFile(json, JSON.stringify({ size: "1080x1920", scenes }));
-  const made = run("put", "demo", json);
-  assert.equal(made.status, 0, made.stderr);
-  assert.match(
-    made.stdout,
-    new RegExp(`${scenes.length} scene\\(s\\), ${scenes.length * 3}\\.0s`),
-  );
-  const spec = await specIn("demo");
-  assert.equal(spec.size, "1080x1920");
-  assert.equal(spec.scenes.length, scenes.length);
-  // Nothing in a scene's words can close the script that holds them
-  const html = await readFile(
-    join(home, "artifacts", "demo", "demo.html"),
-    "utf8",
-  );
-  assert.ok(html.includes('"kind": "title"'));
-
-  const bad = join(home, "bad.json");
-  await writeFile(
-    bad,
-    JSON.stringify({ scenes: [{ kind: "title", title: "T", dur: 0.1 }] }),
-  );
-  const refused = run("put", "fresh", bad);
-  assert.equal(refused.status, 1);
-  assert.match(refused.stderr, /Nothing was written/);
-  assert.equal(existsSync(join(home, "artifacts", "fresh")), false);
-});
-
-test("a scene's words close no tag, and get gives back what put was given", async () => {
-  const json = join(home, "words.json");
-  const say = "</script><script>alert(1)</script>";
-  await writeFile(
-    json,
-    JSON.stringify({ scenes: [{ kind: "title", title: "T", say, dur: 2 }] }),
-  );
-  assert.equal(run("put", "words", json).status, 0);
-  const html = await readFile(
-    join(home, "artifacts", "words", "words.html"),
-    "utf8",
-  );
-  assert.equal(html.includes("<script>alert(1)"), false);
-  const back = join(home, "back.json");
-  assert.equal(run("get", "words", back).status, 0);
-  assert.equal(JSON.parse(await readFile(back, "utf8")).scenes[0].say, say);
-});
-
-test("a voice stays with its scene while the words it reads stay the same", async () => {
-  const dir = join(home, "artifacts", "voiced");
-  await mkdir(join(dir, "voices"), { recursive: true });
-  await writeFile(join(dir, "voices", "scene-01.mp3"), "");
-  const voice = {
-    file: "voices/scene-01.mp3",
-    length: 2.5,
-    text: "Hello there.",
-  };
-  const json = join(home, "voiced.json");
-  const write = (say: string) =>
-    writeFile(
-      json,
-      JSON.stringify({
-        scenes: [
-          {
-            kind: "title",
-            title: "T",
-            say,
-            dur: 2,
-            voice: { ...voice, text: say },
-          },
-        ],
+/**
+ * A canvas that draws nothing but keeps its transforms, so the kit's words land where a
+ * browser would put them; letters are measured half as wide as they are tall.
+ */
+function fakeCanvas() {
+  let m: M = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
+  const stack: M[] = [];
+  let font = "64px Hand";
+  const ctx = new Proxy(
+    {
+      save: () => stack.push(m),
+      restore: () => {
+        m = stack.pop() ?? m;
+      },
+      translate: (x: number, y: number) => {
+        m = mul(m, { a: 1, b: 0, c: 0, d: 1, e: x, f: y });
+      },
+      scale: (x: number, y: number) => {
+        m = mul(m, { a: x, b: 0, c: 0, d: y, e: 0, f: 0 });
+      },
+      rotate: (r: number) => {
+        m = mul(m, {
+          a: Math.cos(r),
+          b: Math.sin(r),
+          c: -Math.sin(r),
+          d: Math.cos(r),
+          e: 0,
+          f: 0,
+        });
+      },
+      setTransform: (
+        a: number,
+        b: number,
+        c: number,
+        d: number,
+        e: number,
+        f: number,
+      ) => {
+        m = typeof a === "object" ? (a as M) : { a, b, c, d, e, f };
+      },
+      getTransform: () => matrix(m),
+      measureText: (s: string) => ({
+        width:
+          [...s].length *
+          Number.parseFloat(/(\d+(\.\d+)?)px/.exec(font)?.[1] ?? "64") *
+          0.5,
       }),
+      getImageData: (_x: number, _y: number, w: number, h: number) => ({
+        data: new Uint8ClampedArray(w * h * 4),
+      }),
+      createImageData: (w: number, h: number) => ({
+        data: new Uint8ClampedArray(w * h * 4),
+      }),
+      createPattern: () => ({}),
+      createRadialGradient: () => ({ addColorStop() {} }),
+      createLinearGradient: () => ({ addColorStop() {} }),
+    } as Record<string, unknown>,
+    {
+      get: (t, k: string) => (k in t ? t[k] : k === "font" ? font : () => {}),
+      set: (t, k: string, v) => {
+        if (k === "font") font = v;
+        else t[k] = v;
+        return true;
+      },
+    },
+  );
+  return { width: 0, height: 0, getContext: () => ctx, style: {} };
+}
+
+/** The film's code run with the kit, as the page runs it to render; its FILM once laid out. */
+async function laidOut(code: string) {
+  const main = fakeCanvas();
+  const window: Record<string, unknown> = {};
+  const context = {
+    window,
+    location: { search: "?render" },
+    document: {
+      title: "",
+      getElementById: () => main,
+      createElement: () => fakeCanvas(),
+      fonts: { load: async () => [], ready: Promise.resolve() },
+      body: { classList: { add() {} } },
+    },
+    Image: class {},
+    Path2D: class {
+      moveTo() {}
+      lineTo() {}
+    },
+    DOMPoint: class {
+      constructor(
+        public x = 0,
+        public y = 0,
+      ) {}
+    },
+    performance,
+    URLSearchParams,
+    requestAnimationFrame: () => 0,
+  };
+  runInNewContext(kitScript(), context);
+  // The kit hands `film` to the page's window; the film's code calls it by name
+  runInNewContext(code, { ...context, film: window.film });
+  for (let i = 0; i < 200 && !window.FILM; i++)
+    await new Promise((r) => setTimeout(r, 5));
+  assert.ok(window.FILM, "the film was never laid out");
+  // Made in the page's own realm: copied into this one to compare
+  return JSON.parse(JSON.stringify(window.FILM)) as {
+    duration: number;
+    seed: number;
+    width: number;
+    height: number;
+    scenes: { t0: number; t1: number; enter: string }[];
+    cues: { at: number; kind: string }[];
+    errors: { scene: number; message: string }[];
+    problems: string[];
+    words: {
+      text: string;
+      x0: number;
+      x1: number;
+      y0: number;
+      y1: number;
+      at: number;
+      sceneLen: number;
+    }[];
+  };
+}
+
+test("the example film runs every scene, its words inside the frame and read in time", async () => {
+  const film = await laidOut(EXAMPLE);
+  assert.deepEqual(film.problems, []);
+  assert.deepEqual(film.errors, []);
+  assert.equal(film.scenes.length, 6);
+  assert.ok(film.duration > 20 && film.duration < 45);
+  // Scenes follow one another with no gap
+  film.scenes.slice(1).forEach((s, i) => assert.equal(s.t0, film.scenes[i].t1));
+  assert.ok(film.words.length >= 6);
+  for (const w of film.words) {
+    assert.ok(w.x0 >= 0 && w.x1 <= film.width, `"${w.text}" is off the frame`);
+    assert.ok(w.y0 >= 0 && w.y1 <= film.height, `"${w.text}" is off the frame`);
+    assert.ok(
+      w.at < w.sceneLen,
+      `"${w.text}" is still being written as its scene ends`,
     );
-  await write("Hello there.");
-  assert.equal(run("put", "voiced", json).status, 0);
-  // Put again without the voice, as a bot's own JSON is: it is kept for the same words
-  await writeFile(
-    json,
-    JSON.stringify({
-      scenes: [{ kind: "title", title: "T", say: "Hello there.", dur: 2 }],
-    }),
+  }
+  // The pops, pens and changes of scene it asked for are heard, in order
+  const kinds = new Set(film.cues.map((c) => c.kind));
+  for (const k of ["write", "pop", "sparkle", "rustle"])
+    assert.ok(kinds.has(k), k);
+  assert.deepEqual(
+    film.cues.map((c) => c.at),
+    [...film.cues.map((c) => c.at)].sort((a, b) => a - b),
   );
-  assert.equal(run("put", "voiced", json).status, 0);
-  assert.equal((await specIn("voiced")).scenes[0].voice.length, 2.5);
-  // New words: the voice made for the old ones goes, and the scene says so
-  await writeFile(
-    json,
-    JSON.stringify({
-      scenes: [{ kind: "title", title: "T", say: "Goodbye.", dur: 2 }],
-    }),
+});
+
+test("a scene that throws is named with its scene, and a wrong setting with its field", async () => {
+  const film = await laidOut(`film({ mood: "sad", size: "800x600", scenes: [
+    { seconds: 3, draw(d) { d.sky({ time: "day" }); } },
+    { seconds: 3, enter: "spin", draw(d) { d.person("nobody", 100, 100, 400); } },
+    { seconds: 3, draw(d) { d.thing("unicorn", 100, 100, 100); } },
+  ] });`);
+  assert.equal(film.problems.length, 3);
+  assert.match(film.problems.join("\n"), /size "800x600"/);
+  assert.match(film.problems.join("\n"), /mood "sad"/);
+  assert.match(film.problems.join("\n"), /scene 2: enter "spin"/);
+  assert.deepEqual(
+    film.errors.map((e) => e.scene),
+    [2, 3],
   );
-  const put = run("put", "voiced", json);
-  assert.match(put.stdout, /Scene 1's words changed/);
-  assert.equal((await specIn("voiced")).scenes[0].voice, undefined);
+  assert.match(film.errors[0].message, /No one called "nobody" in the cast/);
+  assert.match(film.errors[1].message, /No thing "unicorn"/);
+});
+
+test("the music fills the film, is not silent, and is the same for the same seed", async () => {
+  const film = await laidOut(EXAMPLE);
+  const code = await readFile(
+    join(SKILL, "runtime", "motion", "score.js"),
+    "utf8",
+  );
+  const compose = runInNewContext(`${code}\ncomposeScore`, {
+    Math,
+    Float32Array,
+  });
+  const one = compose(film, 8000);
+  const two = compose(film, 8000);
+  assert.equal(one.left.length, Math.ceil((film.duration + 0.05) * 8000));
+  let loud = 0;
+  for (let i = 0; i < one.left.length; i++) {
+    assert.ok(Number.isFinite(one.left[i]) && Math.abs(one.left[i]) <= 1);
+    loud = Math.max(loud, Math.abs(one.left[i]));
+  }
+  assert.ok(loud > 0.5);
+  assert.deepEqual(one.left.slice(0, 4000), two.left.slice(0, 4000));
+  const other = compose({ ...film, seed: film.seed + 1 }, 8000);
+  assert.notDeepEqual(other.left.slice(0, 40000), one.left.slice(0, 40000));
+});
+
+test("the page holds the film's code whole, and nothing in it closes the page's script", () => {
+  const code = `film({ scenes: [{ seconds: 3, draw(d) { d.write("</script><b>", 960, 300); } }] });\n`;
+  const html = page(code, 'A "film" & <more>');
+  assert.equal((html.match(/<\/script>/g) ?? []).length, 2);
+  assert.match(html, /<title>A &quot;film&quot; &amp; &lt;more&gt;<\/title>/);
+  assert.equal(codeOf(html), code);
+  assert.equal(codeOf("<html></html>"), null);
+});
+
+test("put refuses a file that is not a film, before writing anything", () => {
+  const got = run("put", "demo", join(SKILL, "SKILL.md"));
+  assert.equal(got.status, 1);
+  assert.match(got.stderr, /does not call film/);
+  const usage = run();
+  assert.equal(usage.status, 1);
+  assert.match(usage.stderr, /put <name\|path> <film\.js>/);
 });

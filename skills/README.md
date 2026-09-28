@@ -40,21 +40,10 @@ now only run the chart, the document script and the camera the artifact skill ho
   shared by every app; recharts and react-markdown are in it.
 - **`artifact/scripts/archify`** is a trimmed copy of archify (MIT); its README says what was
   cut.
-- **`artifact`'s motion video** (`runtime/motion`, `scripts/motion.mjs`) follows the engine of
-  the motion-broll skill in [Barty-Bart/motion-graphics](https://github.com/Barty-Bart/motion-graphics)
-  at `e8d610a` (MIT, `runtime/motion/LICENSE.txt`): every style a function of time alone, a
-  value's changes summed as closed-form springs, a swap blurred out and in, and a frame blended
-  from four pictures across a half turn of the shutter. It is written again here, not copied:
-  scenes are JSON drawn by the parts in `parts.js` instead of HTML written for each clip, one card
-  runs through the whole video, and the player, captions, voices, recordings and reuse of still
-  frames are this app's own. Its fonts are Geist and Geist Mono (OFL, `runtime/motion/fonts/OFL.txt`).
-  Its timings and rules of choreography — words ~70 ms apart and letters ~25 ms, a scene that
-  leaves by its transition rather than an exit of its own, one way in for most cuts, three words
-  a second to read — are numbers from [heygen-com/hyperframes](https://github.com/heygen-com/hyperframes)
-  (Apache-2.0), [LottieFiles/motion-design-skill](https://github.com/LottieFiles/motion-design-skill)
-  (MIT) and [pixel-point/animate-text](https://github.com/pixel-point/animate-text); no text or
-  code is copied from any of them. Its `thursday` and `night` themes, her letter orb, the bots'
-  faces and the letter-by-letter captions are drawn after this app's own screens.
+- **`artifact`'s motion video** (`runtime/motion`, `scripts/motion.mjs`) is this app's own: the
+  cut paper, crayon, people, things and places are drawn in code, and the music is made from
+  sine partials; its reverb is the Freeverb layout of eight combs and four all-passes (Jezar,
+  public domain). Its handwriting is Gaegu Bold (OFL, `runtime/motion/fonts/OFL.txt`).
 - **`find-skills`** is adapted from vercel-labs/skills' find-skills at 7407f38 (MIT, `LICENSE` in
   the folder), and **`skill-creator`** from Anthropic's skill-creator at anthropics/skills 34040c9
   (Apache-2.0, `LICENSE.txt`); each ends with a line saying what changed. Both have the bot at

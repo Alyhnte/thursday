@@ -1,34 +1,30 @@
 #!/usr/bin/env node
-// A motion video: scenes written as JSON, drawn by one engine as a card that morphs from
-// scene to scene, played in the app and made into an mp4 frame by frame.
+// A motion video: a short hand-drawn film, its scenes written as code that draws them with a
+// kit of paper and crayon (people, things, places, handwriting), timed to music made for it.
+// It plays in the app and is made into an mp4 frame by frame.
 //
-//   node motion.mjs put <name|path> <video.json>     the scenes into the video, checked first
-//   node motion.mjs get <name|path> <file.json>      the video's JSON as it is now, into <file>
-//   node motion.mjs voices <name|path> <audio>...    one voice per scene that has "say", in order
-//   node motion.mjs track <name|path> <file>         a recording the scenes are timed to
-//   node motion.mjs shots <name|path> [--at 1.2,3]   the scenes as pictures, all on one, in scratch/
-//   node motion.mjs render <name|path> [--draft]     <name>.mp4 beside it
+//   node motion.mjs put <name|path> <film.js>      the film's code into the video, checked
+//   node motion.mjs get <name|path> <film.js>      the film's code as it is now, into <file>
+//   node motion.mjs shots <name|path> [--at 1,2.5]  moments of every scene, all on one picture
+//   node motion.mjs render <name|path> [--draft]    <name>.mp4 beside it, with its music
 import { spawn, spawnSync } from "node:child_process";
 import {
-  copyFileSync,
   existsSync,
-  linkSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
-  renameSync,
   rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
 import { availableParallelism } from "node:os";
-import { basename, dirname, extname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { runInNewContext } from "node:vm";
 import { serveFolder } from "../../browser/scripts/serve.mjs";
 import { apart, parseArgs } from "../../browser/scripts/session.mjs";
-import { CATALOG } from "../runtime/motion/catalog.mjs";
-import { check, KINDS, wordsOf } from "../runtime/motion/schema.mjs";
+import { page, codeOf as readCode } from "../runtime/motion/page.mjs";
 import {
   ARTIFACTS,
   NAME,
@@ -36,21 +32,25 @@ import {
   shown,
   WORKSPACE,
 } from "../runtime/shell/workspace.mjs";
-import { findFfmpeg, probe } from "./media.mjs";
+import { findFfmpeg } from "./media.mjs";
 
 const SKILL = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SCRIPT = join(SKILL, "scripts", "motion.mjs");
 const RUNTIME = join(SKILL, "runtime", "motion");
 
-// Pictures taken for each frame of the finished video, spread across the shutter's half
-// turn and blended: what makes a fast move blur the way a camera's does. A draft takes one.
+// Pictures averaged into each frame of the finished video, spread across the shutter's half
+// turn: what makes a fast move blur the way a camera's does. A draft takes one.
 const SUBFRAMES = 4;
 // Tabs drawing at once: past this the browser's one compositor is the limit
 const MOST_TABS = 4;
 // Frames drawn and encoded at a time, so the pictures on disk never outgrow one piece
 const PIECE_S = 2;
+// Letters a viewer reads in a second of handwriting, before a scene is too quick for its words
+const READ_PER_S = 12;
+// The smallest handwriting that reads on a phone, in pixels of a 1080-high frame
+const SMALLEST = 30;
 
-/** `<name>/<name>.html` in the bot's artifacts folder: the video, with what it plays beside it. */
+/** `<name>/<name>.html` in the bot's artifacts folder: the film, with its pictures beside it. */
 function fileFor(name) {
   if (!name || !NAME.test(name))
     throw new Stop(
@@ -73,286 +73,144 @@ function videoAt(arg, { made = true } = {}) {
   }
   if (made && !existsSync(file))
     throw new Stop(
-      `No video ${shown(file)}. Write its scenes as JSON and make it with: node ${SCRIPT} put <name> <video.json>`,
+      `No video ${shown(file)}. Write its film and make it with: node ${SCRIPT} put <name> <film.js>`,
     );
   return file;
 }
 
-const SPEC =
-  /<script type="application\/json" id="motion-spec">([\s\S]*?)<\/script>/;
-
-/** The JSON a video was made from, as the page holds it. */
-function specOf(file) {
-  const got = SPEC.exec(readFileSync(file, "utf8"));
-  if (!got)
-    throw new Stop(
-      `${shown(file)} is not a motion video, or it was written over whole. Make it again from its JSON: node ${SCRIPT} put <name> <video.json>`,
+/** The film as the page lays it out: its length, scenes, sounds, and what went wrong. */
+async function look(file, { w, h } = { w: 1920, h: 1080 }) {
+  const served = await serveFolder(dirname(file));
+  const url = `${served.url(basename(file))}?render`;
+  try {
+    return await apart((inPage) =>
+      inPage(
+        async (page, { url, w, h }) => {
+          const tab = await page.context().newPage();
+          const thrown = [];
+          tab.on("pageerror", (e) => thrown.push(String(e?.message ?? e)));
+          await tab.setViewportSize({ width: w, height: h });
+          await tab.goto(url, { waitUntil: "load" });
+          await tab
+            .waitForFunction(() => window.FILM || window.READY, null, {
+              timeout: 60000,
+            })
+            .catch(() => {});
+          const film = await tab.evaluate(() => window.FILM ?? null);
+          await tab.close();
+          return { film, thrown };
+        },
+        { url, w, h },
+      ),
     );
-  return JSON.parse(got[1]);
+  } finally {
+    served.close();
+  }
 }
 
-/** The page: the runtime around `spec`, one file that plays offline. */
-function page(spec, title) {
-  const read = (f) => readFileSync(join(RUNTIME, f), "utf8");
-  const font = (f) =>
-    readFileSync(join(RUNTIME, "fonts", f)).toString("base64");
-  const css = read("motion.css")
-    .replace("__GEIST__", () => font("Geist-Variable.woff2"))
-    .replace("__GEISTMONO__", () => font("GeistMono-Medium.woff2"));
-  const js = [
-    "engine.js",
-    "parts.js",
-    "parts-text.js",
-    "parts-app.js",
-    "parts-data.js",
-    "parts-media.js",
-    "stage.js",
-  ]
-    .map(read)
-    .join("\n");
-  // JSON inside a <script>: nothing in it may close the tag or open a comment
-  const json = JSON.stringify(spec, null, 1)
-    .replace(/</g, "\\u003c")
-    .replace(/>/g, "\\u003e");
-  const escape = (text) =>
-    String(text).replace(
-      /[&<>"]/g,
-      (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c],
-    );
-  return read("motion.html")
-    .replace("{{title}}", () => escape(title))
-    .replace("/* motion.css */", () => css)
-    .replace('"{{spec}}"', () => json)
-    .replace("// motion.js", () => js);
+/** What a viewer would trip on: words off the frame, too small, or gone before they are read. */
+function notes(film) {
+  const out = [];
+  const seen = new Set();
+  const k = 1080 / Math.min(film.width, film.height);
+  for (const w of film.words) {
+    const say = (line) => {
+      const key = `${w.scene}|${w.text}|${line.slice(0, 20)}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      out.push(line);
+    };
+    const words = w.text.length > 28 ? `${w.text.slice(0, 28)}…` : w.text;
+    const off = [
+      w.x0 < -4 && "left",
+      w.x1 > film.width + 4 && "right",
+      w.y0 < -4 && "top",
+      w.y1 > film.height + 4 && "bottom",
+    ].filter(Boolean);
+    if (off.length)
+      say(
+        `Scene ${w.scene}: "${words}" runs off the ${off.join(" and ")} of the frame: move it in, make it smaller, or give it a width to wrap in.`,
+      );
+    if (w.size * k < SMALLEST)
+      say(
+        `Scene ${w.scene}: "${words}" is ${Math.round(w.size)}px, too small to read on a phone: ${Math.ceil(SMALLEST / k)}px or more.`,
+      );
+    if (w.at > w.sceneLen - 0.1)
+      say(
+        `Scene ${w.scene}: "${words}" is still being written when the scene ends: start it earlier, or give the scene more seconds.`,
+      );
+    else {
+      const need = [...w.text].length / READ_PER_S;
+      if (w.sceneLen - w.at < need)
+        say(
+          `Scene ${w.scene}: "${words}" leaves ${(w.sceneLen - w.at).toFixed(1)}s to read it once written, and needs ${need.toFixed(1)}s: give the scene more seconds.`,
+        );
+    }
+  }
+  return out;
 }
 
-/** The spec checked against the folder it plays from, and written as the page. */
-function write(file, spec) {
-  const dir = dirname(file);
-  const errors = check(spec, { exists: (p) => existsSync(join(dir, p)) });
-  if (errors.length)
-    throw new Stop(
-      `Nothing was written. Fix these in the JSON and put it again:\n- ${errors.join("\n- ")}`,
-    );
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(file, page(spec, basename(file, ".html")));
-}
-
-/** Length in seconds of the video `spec` makes, the way stage.js lays it out. */
-function lengthOf(spec) {
-  if (spec.track) return spec.track.length;
-  return spec.scenes.reduce(
-    (a, s) => a + (s.voice ? s.voice.length + 0.45 : (s.dur ?? 3)),
-    0,
-  );
-}
-
-function put(name, from) {
+async function put(name, from) {
   if (!from || !existsSync(from))
     throw new Stop(
-      `Give the JSON file the scenes are written in: node ${SCRIPT} put ${name ?? "<name>"} <video.json>`,
+      `Give the file the film is written in: node ${SCRIPT} put ${name ?? "<name>"} <film.js>`,
     );
   const file = videoAt(name, { made: false });
-  let spec;
-  try {
-    spec = JSON.parse(readFileSync(from, "utf8"));
-  } catch (error) {
-    throw new Stop(`${from} is not JSON: ${error.message}`);
-  }
-  // What the other commands attached stays: the recording, and each voice while its
-  // scene still says the words it was made for
-  const had = existsSync(file) ? specOf(file) : null;
-  const notes = [];
-  if (had?.track && !spec.track) {
-    spec.track = had.track;
-    spec.size = had.size;
-    spec.fps = had.fps;
-  }
-  const voices = new Map(
-    (had?.scenes ?? []).filter((s) => s.voice).map((s) => [s.say, s.voice]),
-  );
-  spec.scenes?.forEach((s, i) => {
-    if (!s || typeof s !== "object") return;
-    if (!s.voice && voices.has(s.say)) s.voice = voices.get(s.say);
-    if (s.voice && s.voice.text !== s.say) delete s.voice;
-    if (!s.voice && had?.scenes?.[i]?.voice)
-      notes.push(
-        `Scene ${i + 1}'s words changed, so its voice was let go: make it again and run voices.`,
-      );
-  });
-  write(file, spec);
-  const secs = lengthOf(spec);
-  console.log(
-    `${shown(file)}: ${spec.scenes.length} scene(s), ${secs.toFixed(1)}s. It plays when opened. Look at it: node ${SCRIPT} shots ${name}; make the mp4: node ${SCRIPT} render ${name}`,
-  );
-  for (const note of [...notes, ...tooMuch(spec)]) console.log(note);
-}
-
-// Words a viewer reads in a second, on a card or in a caption, before a scene is too fast
-const READ_PER_S = 3;
-
-/** Scenes that show or say more words than their time lets anyone read. */
-function tooMuch(spec) {
-  if (spec.track) return [];
-  return spec.scenes.flatMap((s, i) => {
-    const len = s.voice ? s.voice.length : (s.dur ?? 3);
-    const shown = wordsOf(s);
-    const said = s.voice
-      ? 0
-      : (s.say ?? "").split(/\s+/).filter(Boolean).length;
-    const most = Math.max(shown, said);
-    const needs = Math.ceil((most / READ_PER_S) * 2) / 2;
-    return needs > len + 0.25
-      ? [
-          `Scene ${i + 1} (${s.kind}) has ${most} words to read in ${len}s: give it "dur": ${needs}, or fewer words.`,
-        ]
-      : [];
-  });
-}
-
-/** The kinds of scene: all in a line each, or one with its fields and an example to copy. */
-function kinds(kind) {
-  if (!kind) {
-    for (const [k, { about }] of Object.entries(CATALOG))
-      console.log(`${k.padEnd(12)} ${about}`);
-    console.log(
-      `\nOne kind's fields and an example: node ${SCRIPT} kinds <kind>. Every scene also takes "say", "dur" (3 when left out), "enter" and "times".`,
-    );
-    return;
-  }
-  const entry = CATALOG[kind];
-  if (!entry)
+  const code = readFileSync(from, "utf8");
+  if (!/\bfilm\s*\(/.test(code))
     throw new Stop(
-      `No kind "${kind}". The kinds: ${Object.keys(CATALOG).join(", ")}`,
+      `${from} does not call film({...}). Start from ${shown(join(SKILL, "templates", "motion", "birthday.js"))}.`,
     );
-  console.log(`${kind}: ${entry.about}\n`);
-  for (const [field, [type, required, most]] of Object.entries(
-    KINDS[kind].fields,
-  ))
-    console.log(
-      `  ${field.padEnd(12)} ${type.replace(/^enum:/, "one of ")}${most ? ` (up to ${most})` : ""}${required ? ", required" : ""}`,
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, page(code, basename(file, ".html")));
+  const got = await look(file);
+  const film = got.film;
+  if (!film)
+    throw new Stop(
+      `${shown(file)} was written, but its code did not run:\n- ${got.thrown.join("\n- ") || "film() was never called"}\nFix it and put it again.`,
     );
-  console.log(`\n${JSON.stringify({ kind, ...entry.example, dur: 3 })}`);
+  const bad = [
+    ...film.problems,
+    ...film.errors.map(
+      (e) =>
+        `Scene ${e.scene}, at ${e.at}s${e.line ? ` (line ${e.line} of the film's code)` : ""}: ${e.message}`,
+    ),
+    ...got.thrown.filter(
+      (t) => !film.errors.some((e) => t.includes(e.message)),
+    ),
+  ];
+  const secs = film.duration;
+  if (bad.length)
+    throw new Stop(
+      `${shown(file)} was written, but these must be fixed; put it again after:\n- ${bad.join("\n- ")}`,
+    );
+  console.log(
+    `${shown(file)}: ${film.scenes.length} scene(s), ${secs.toFixed(1)}s, ${film.mood} at ${film.bpm} bpm, ${film.cues.length} sound(s). It plays when opened. Look at it: node ${SCRIPT} shots ${name}`,
+  );
+  for (const line of notes(film)) console.log(line);
 }
 
 function get(name, to) {
   const file = videoAt(name);
   if (!to)
     throw new Stop(
-      `Give the file to write the JSON into: node ${SCRIPT} get ${name} <file.json>`,
+      `Give the file to write the film's code into: node ${SCRIPT} get ${name} <film.js>`,
     );
-  writeFileSync(to, `${JSON.stringify(specOf(file), null, 2)}\n`);
+  const code = readCode(readFileSync(file, "utf8"));
+  if (code === null)
+    throw new Stop(
+      `${shown(file)} is not a motion video, or it was written over whole. Make it again from its code: node ${SCRIPT} put <name> <film.js>`,
+    );
+  writeFileSync(to, code.endsWith("\n") ? code : `${code}\n`);
   console.log(
-    `The JSON of ${shown(file)} as it is now is in ${to}. Change it there, then: node ${SCRIPT} put ${name} ${to}`,
+    `The film's code of ${shown(file)} is in ${to}. Change it there, then: node ${SCRIPT} put ${name} ${to}`,
   );
 }
 
-/** Each voice to the scene that says it, moved beside the video; its length read off it. */
-function voices(name, ...files) {
-  const file = videoAt(name);
-  const spec = specOf(file);
-  if (spec.track)
-    throw new Stop(
-      "This video is timed to a recording (track), which is its sound: voices are for a video with none.",
-    );
-  const speaking = spec.scenes.filter((s) => s.say);
-  if (!speaking.length)
-    throw new Stop(
-      'No scene has "say": the words a voice reads are each scene\'s "say".',
-    );
-  const missing = files.filter((f) => !existsSync(f));
-  if (files.length !== speaking.length || missing.length)
-    throw new Stop(
-      missing.length
-        ? `No such audio: ${missing.join(", ")}`
-        : `${speaking.length} scene(s) have "say" and ${files.length} audio file(s) came: one per scene that has "say", in order.`,
-    );
-  const dir = dirname(file);
-  const ffmpeg = findFfmpeg(WORKSPACE, Stop);
-  mkdirSync(join(dir, "voices"), { recursive: true });
-  let n = 0;
-  spec.scenes.forEach((s, i) => {
-    if (!s.say) return;
-    const from = resolve(files[n++]);
-    const rel = `voices/scene-${String(i + 1).padStart(2, "0")}${extname(from)}`;
-    const to = join(dir, rel);
-    const { length } = probe(ffmpeg, from, Stop);
-    if (resolve(to) !== from) {
-      rmSync(to, { force: true });
-      renameSync(from, to);
-    }
-    s.voice = { file: rel, length: Number(length.toFixed(3)), text: s.say };
-  });
-  write(file, spec);
-  console.log(
-    `${n} voice(s) in ${shown(join(dir, "voices"))}, each scene as long as its voice: ${lengthOf(spec).toFixed(1)}s. Next: node ${SCRIPT} shots ${name}`,
-  );
-}
-
-/** A recording the scenes are timed to: their video, or audio. Copied beside the video. */
-function track(name, from) {
-  const file = videoAt(name);
-  if (!from || !existsSync(from))
-    throw new Stop(
-      `Give the recording: node ${SCRIPT} track ${name} <video or audio file>`,
-    );
-  const spec = specOf(file);
-  const ffmpeg = findFfmpeg(WORKSPACE, Stop);
-  const got = probe(ffmpeg, from, Stop);
-  const dir = dirname(file);
-  const rel = `track/${basename(from)}`;
-  const to = join(dir, rel);
-  mkdirSync(dirname(to), { recursive: true });
-  if (resolve(from) !== resolve(to)) {
-    rmSync(to, { force: true });
-    // Theirs stays where it was: a link where the disk allows it, a copy where not
-    try {
-      linkSync(from, to);
-    } catch {
-      copyFileSync(from, to);
-    }
-  }
-  spec.track = {
-    file: rel,
-    kind: got.video ? "video" : "audio",
-    length: Number(got.length.toFixed(3)),
-  };
-  if (got.video) {
-    // Drawn over their picture, the frame is theirs
-    spec.size = `${got.video.w - (got.video.w % 2)}x${got.video.h - (got.video.h % 2)}`;
-    if (got.video.fps) spec.fps = Math.round(got.video.fps * 1000) / 1000;
-  }
-  for (const s of spec.scenes) {
-    delete s.voice;
-    delete s.dur;
-  }
-  const errors = check(spec, { exists: (p) => existsSync(join(dir, p)) });
-  if (errors.length) {
-    // Scenes written before there was a recording have no times on it yet: their JSON,
-    // with the recording in it, waits in scratch for the times
-    const json = join(
-      WORKSPACE,
-      "scratch",
-      `${basename(file, ".html")}.track.json`,
-    );
-    mkdirSync(dirname(json), { recursive: true });
-    writeFileSync(json, `${JSON.stringify(spec, null, 2)}\n`);
-    throw new Stop(
-      `The recording is in ${shown(to)} (${got.length.toFixed(1)}s${got.video ? `, ${spec.size}` : ""}), and the scenes are not timed to it yet:\n- ${errors.join("\n- ")}\nThe JSON with the recording in it is ${shown(json)}: give each scene "at", the second it comes in on the transcript, then: node ${SCRIPT} put ${name} ${shown(json)}`,
-    );
-  }
-  write(file, spec);
-  console.log(
-    `${shown(file)} plays over ${shown(to)} (${got.length.toFixed(1)}s): ${got.video ? "the scenes cut in over their video, which shows between them" : "the scenes run to their recording"}.`,
-  );
-}
-
-/** Every scene settled, and the moments it changes, as one picture to look at. */
+/** Moments of every scene, as one picture to look at. */
 async function shots(name, ...rest) {
   const file = videoAt(name);
-  const spec = specOf(file);
   const opts = parseArgs(rest);
-  const [w, h] = spec.size.split("x").map(Number);
   const out = join(WORKSPACE, "scratch", `${basename(file, ".html")}-shots`);
   rmSync(out, { recursive: true, force: true });
   mkdirSync(out, { recursive: true });
@@ -365,57 +223,46 @@ async function shots(name, ...rest) {
   try {
     const got = await apart((inPage) =>
       inPage(
-        async (page, { url, w, h, out, asked }) => {
+        async (page, { url, out, asked }) => {
           const tab = await page.context().newPage();
-          await tab.setViewportSize({ width: w, height: h });
+          await tab.setViewportSize({ width: 1920, height: 1080 });
           await tab.goto(url, { waitUntil: "load" });
-          await tab.evaluate(async () => {
-            await window.motionReady;
-            await document.fonts.ready;
-            await Promise.all(
-              [...document.images].map((i) => i.decode().catch(() => {})),
-            );
+          await tab.waitForFunction(() => window.READY, null, {
+            timeout: 60000,
           });
-          const info = await tab.evaluate(() => ({
-            ...window.MOTION,
-            cut: window.MOTION.cut(),
-            broken: [...document.images]
-              .filter((i) => !i.naturalWidth)
-              .map((i) => i.getAttribute("src")),
-          }));
-          // Each scene once it has settled, and halfway into each change it makes
+          const film = await tab.evaluate(() => window.FILM);
+          await tab.setViewportSize({ width: film.width, height: film.height });
+          // Each scene a third in, two thirds in, and as it ends
           const times =
             asked ??
-            info.scenes.flatMap((s) => {
-              const settle = Math.max(s.start, s.end - 0.2);
-              const mid =
-                s.beats.length > 1
-                  ? [s.beats[Math.floor(s.beats.length / 2)] + 0.12]
-                  : [];
-              return [...mid, settle];
+            film.scenes.flatMap((s) => {
+              const len = s.t1 - s.t0;
+              return [0.3, 0.62, 0.94].map((k) => s.t0 + len * k);
             });
-          const pngs = [];
+          const jpgs = [];
           for (const [i, t] of times.entries()) {
-            await tab.evaluate((t) => window.seek(t), t);
-            const path = `${out}/shot-${String(i + 1).padStart(2, "0")}.png`;
-            await tab.screenshot({ path, scale: "css" });
-            // The sheet takes a lighter copy: thirty full pictures in one page do not decode
-            pngs.push(
+            await tab.evaluate(
+              (n) => window.frame(n, 1),
+              Math.round(t * film.fps),
+            );
+            await tab.locator("#film").screenshot({
+              path: `${out}/shot-${String(i + 1).padStart(2, "0")}.png`,
+            });
+            jpgs.push(
               (
-                await tab.screenshot({
-                  type: "jpeg",
-                  quality: 72,
-                  scale: "css",
-                })
+                await tab
+                  .locator("#film")
+                  .screenshot({ type: "jpeg", quality: 70 })
               ).toString("base64"),
             );
           }
-          const cols = w > h ? 3 : 5;
-          const cell = w > h ? 560 : 300;
-          const cells = pngs
+          const wide = film.width >= film.height;
+          const cols = wide ? 3 : 6;
+          const cell = wide ? 520 : 250;
+          const cells = jpgs
             .map(
-              (png, i) =>
-                `<figure><figcaption>${i + 1} · ${times[i].toFixed(2)}s</figcaption><img src="data:image/jpeg;base64,${png}"></figure>`,
+              (j, i) =>
+                `<figure><figcaption>${i + 1} · ${times[i].toFixed(1)}s</figcaption><img src="data:image/jpeg;base64,${j}"></figure>`,
             )
             .join("");
           await tab.setViewportSize({
@@ -423,56 +270,63 @@ async function shots(name, ...rest) {
             height: 800,
           });
           await tab.setContent(
-            `<!doctype html><style>body{margin:0;background:#e8e8e8}#sheet{display:inline-grid;grid-template-columns:repeat(${cols},${cell}px);gap:20px 16px;padding:16px}figure{margin:0}figcaption{font:600 16px/1.4 system-ui,sans-serif;color:#1b1b1b;padding-bottom:6px}img{display:block;width:${cell}px;box-shadow:0 0 0 1px #0002}</style><div id="sheet">${cells}</div>`,
+            `<!doctype html><style>body{margin:0;background:#e8e8e8}#sheet{display:inline-grid;grid-template-columns:repeat(${cols},${cell}px);gap:18px 16px;padding:16px}figure{margin:0}figcaption{font:600 15px/1.4 system-ui,sans-serif;color:#1b1b1b;padding-bottom:5px}img{display:block;width:${cell}px;box-shadow:0 0 0 1px #0002}</style><div id="sheet">${cells}</div>`,
           );
-          await tab.evaluate(() =>
-            // One at a time: thirty decoded at once run out of room
-            (async () => {
-              for (const i of document.images) await i.decode().catch(() => {});
-            })(),
-          );
+          await tab.evaluate(async () => {
+            for (const i of document.images) await i.decode().catch(() => {});
+          });
           await tab.locator("#sheet").screenshot({ path: `${out}/sheet.png` });
           await tab.close();
-          return {
-            times,
-            cut: info.cut,
-            broken: info.broken,
-            scenes: info.scenes.length,
-          };
+          return { times, scenes: film.scenes.length };
         },
-        { url, w, h, out, asked },
+        { url, out, asked },
       ),
     );
     console.log(
-      `${got.times.length} picture(s) of ${got.scenes} scene(s) in ${shown(out)}; all of them on one: ${shown(join(out, "sheet.png"))}. Look at that one.`,
+      `${got.times.length} picture(s) of ${got.scenes} scene(s) in ${shown(out)}; all of them on one: ${shown(join(out, "sheet.png"))}. Look at that one: is every word inside the frame and easy to read, is each scene one clear moment, does it end on the moment that matters?`,
     );
-    if (got.cut.length)
-      console.log(
-        `Scene(s) ${got.cut.join(", ")} hold more than fits their card: shorten the words or split the scene.`,
-      );
-    if (got.broken.length)
-      console.log(`Pictures that did not load: ${got.broken.join(", ")}`);
   } finally {
     served.close();
   }
 }
 
-/** A frame rate as ffmpeg takes it, and as a number. */
-function rateOf(fps) {
-  const text = String(fps ?? 30);
-  const [a, b] = text.split("/").map(Number);
-  return { text, value: b ? a / b : a };
+/** 16-bit stereo WAV of the film's music, made by the same code the player plays. */
+function music(film, to) {
+  const code = readFileSync(join(RUNTIME, "score.js"), "utf8");
+  const composeScore = runInNewContext(`${code}\ncomposeScore`, {
+    Math,
+    Float32Array,
+  });
+  const made = composeScore(film, 48000);
+  const n = made.left.length;
+  const buf = Buffer.alloc(44 + n * 4);
+  buf.write("RIFF", 0);
+  buf.writeUInt32LE(36 + n * 4, 4);
+  buf.write("WAVEfmt ", 8);
+  buf.writeUInt32LE(16, 16);
+  buf.writeUInt16LE(1, 20);
+  buf.writeUInt16LE(2, 22);
+  buf.writeUInt32LE(made.rate, 24);
+  buf.writeUInt32LE(made.rate * 4, 28);
+  buf.writeUInt16LE(4, 32);
+  buf.writeUInt16LE(16, 34);
+  buf.write("data", 36);
+  buf.writeUInt32LE(n * 4, 40);
+  for (let i = 0; i < n; i++) {
+    const l = Math.max(-1, Math.min(1, made.left[i]));
+    const r = Math.max(-1, Math.min(1, made.right[i]));
+    buf.writeInt16LE(Math.round(l * 32767), 44 + i * 4);
+    buf.writeInt16LE(Math.round(r * 32767), 46 + i * 4);
+  }
+  writeFileSync(to, buf);
 }
 
 async function render(name, ...rest) {
   const file = videoAt(name);
   const opts = parseArgs(rest);
   const draft = Boolean(opts.draft);
-  const spec = specOf(file);
   const dir = dirname(file);
   const ffmpeg = findFfmpeg(WORKSPACE, Stop);
-  const [w, h] = spec.size.split("x").map(Number);
-  const fps = rateOf(spec.fps);
   const sub = draft ? 1 : SUBFRAMES;
   const tabs = Math.max(1, Math.min(MOST_TABS, availableParallelism() - 1));
   const work = mkdtempSync(join(dir, `.${basename(file, ".html")}-frames-`));
@@ -482,133 +336,93 @@ async function render(name, ...rest) {
   const began = Date.now();
   try {
     const made = await apart(async (inPage) => {
-      const info = await inPage(
-        async (page, { url, w, h, tabs }) => {
+      const film = await inPage(
+        async (page, { url, tabs }) => {
           const ctx = page.context();
-          const broken = [];
           for (let k = 0; k < tabs; k++) {
             const tab = await ctx.newPage();
-            await tab.setViewportSize({ width: w, height: h });
+            await tab.setViewportSize({ width: 1920, height: 1080 });
             await tab.goto(url, { waitUntil: "load" });
-            broken.push(
-              ...(await tab.evaluate(async () => {
-                await window.motionReady;
-                await document.fonts.ready;
-                await Promise.all(
-                  [...document.images].map((i) => i.decode().catch(() => {})),
-                );
-                return [...document.images]
-                  .filter((i) => !i.naturalWidth)
-                  .map((i) => i.getAttribute("src"));
-              })),
-            );
+            await tab.waitForFunction(() => window.READY, null, {
+              timeout: 60000,
+            });
           }
-          const m = await ctx
+          const last = ctx.pages().at(-1);
+          const film = await last.evaluate(() => window.FILM);
+          for (const tab of ctx
             .pages()
-            .at(-1)
-            .evaluate(() => window.MOTION);
-          return { ...m, broken: [...new Set(broken)] };
+            .filter((p) => p.url().includes("?render")))
+            await tab.setViewportSize({
+              width: film.width,
+              height: film.height,
+            });
+          return film;
         },
-        { url, w, h, tabs },
+        { url, tabs },
       );
-      if (info.broken.length)
+      if (film.errors.length || film.problems.length)
         throw new Stop(
-          `Pictures that did not load: ${info.broken.join(", ")}. Put them in the video's folder, then render again.`,
+          `The film has errors: put it again and fix what put says, then render. (${[...film.problems, ...film.errors.map((e) => e.message)].join("; ")})`,
         );
-      const frames = Math.round(info.duration * fps.value);
-      const per = Math.max(1, Math.round(PIECE_S * fps.value));
+      const frames = Math.round(film.duration * film.fps);
+      const per = Math.max(1, Math.round(PIECE_S * film.fps));
       const pieces = [];
       let encoding = null;
-      let reused = 0;
       for (let f0 = 0; f0 < frames; f0 += per) {
         const f1 = Math.min(frames, f0 + per);
-        const got = await inPage(
-          async (page, { from, to, sub, fps, work, alpha }) => {
+        await inPage(
+          async (page, { from, to, sub, work }) => {
             const tabs = page
               .context()
               .pages()
               .filter((p) => p.url().includes("?render"));
-            const all = to - from;
-            const share = Math.ceil(all / tabs.length);
-            const reuse = [];
+            const share = Math.ceil((to - from) / tabs.length);
             await Promise.all(
               tabs.map(async (tab, k) => {
                 const a = from + k * share;
                 const b = Math.min(to, a + share);
-                let last = -1;
-                for (let i = a; i < b; i++) {
-                  const f = Math.floor(i / sub);
-                  const s = i % sub;
-                  // Across half of the frame's time, centred on it: a 180° shutter
-                  const t = Math.max(
-                    0,
-                    f / fps + (s - (sub - 1) / 2) / (fps * 2 * sub),
+                for (let n = a; n < b; n++) {
+                  await tab.evaluate(
+                    ([n, sub]) => window.frame(n, sub),
+                    [n, sub],
                   );
-                  const changed = await tab.evaluate((t) => window.seek(t), t);
-                  const name = `${work}/f${String(i).padStart(7, "0")}.${alpha ? "png" : "jpg"}`;
-                  if (changed === 0 && last >= 0) reuse.push([last, i]);
-                  else {
-                    // A jpeg is taken faster, and the video it goes into keeps less than it
-                    // does; only a picture over their video needs a png's transparency
-                    await tab.screenshot(
-                      alpha
-                        ? { path: name, omitBackground: true }
-                        : { path: name, type: "jpeg", quality: 95 },
-                    );
-                    last = i;
-                  }
+                  await tab.locator("#film").screenshot({
+                    path: `${work}/f${String(n).padStart(7, "0")}.jpg`,
+                    type: "jpeg",
+                    quality: 94,
+                  });
                 }
               }),
             );
-            return reuse;
           },
-          {
-            from: f0 * sub,
-            to: f1 * sub,
-            sub,
-            fps: fps.value,
-            work,
-            alpha: info.alpha,
-          },
+          { from: f0, to: f1, sub, work },
         );
-        // A frame that drew nothing new is the picture before it
-        const ext = info.alpha ? "png" : "jpg";
-        for (const [from, to] of got) {
-          const src = join(work, `f${String(from).padStart(7, "0")}.${ext}`);
-          const dst = join(work, `f${String(to).padStart(7, "0")}.${ext}`);
-          try {
-            linkSync(src, dst);
-          } catch {
-            copyFileSync(src, dst);
-          }
-        }
-        reused += got.length;
         // Encoded while the next piece is drawn; one at a time, beside the browser
         await encoding;
-        encoding = encodePiece(ffmpeg, {
-          work,
-          f0,
-          f1,
-          sub,
-          fps,
-          alpha: info.alpha,
-          draft,
-        });
+        encoding = encodePiece(ffmpeg, { work, f0, f1, fps: film.fps, draft });
         // Its failure is met where it is awaited, not as an unhandled rejection before that
         encoding.catch(() => {});
         pieces.push(encoding);
         process.stdout.write(
-          `drawn ${(f1 / fps.value).toFixed(1)}s of ${info.duration.toFixed(1)}s\n`,
+          `drawn ${(f1 / film.fps).toFixed(1)}s of ${film.duration.toFixed(1)}s\n`,
         );
       }
-      return { info, pieces: await Promise.all(pieces), frames, reused };
+      return { film, pieces: await Promise.all(pieces) };
     });
-    finish(ffmpeg, { ...made, spec, dir, work, out, fps, draft });
-    const secs = made.info.duration;
+    const wav = join(work, "music.wav");
+    music(made.film, wav);
+    finish(ffmpeg, {
+      pieces: made.pieces,
+      wav,
+      work,
+      out,
+      film: made.film,
+      dir,
+    });
+    const secs = made.film.duration;
     const mb = (statSync(out).size / 1024 / 1024).toFixed(1);
-    const drawn = made.frames * sub;
     console.log(
-      `Made ${shown(out)}${draft ? " (a draft: no motion blur)" : ""}: ${Math.floor(secs / 60)}:${String(Math.round(secs % 60)).padStart(2, "0")} long, ${spec.size}, ${mb} MB, in ${Math.round((Date.now() - began) / 1000)}s (${Math.round((made.reused / drawn) * 100)}% of ${drawn} pictures were still and reused). Hand back this path.`,
+      `Made ${shown(out)}${draft ? " (a draft: no motion blur)" : ""}: ${Math.floor(secs / 60)}:${String(Math.round(secs % 60)).padStart(2, "0")} long, ${made.film.width}x${made.film.height}, ${mb} MB, in ${Math.round((Date.now() - began) / 1000)}s. Hand back this path.`,
     );
   } finally {
     served.close();
@@ -616,47 +430,30 @@ async function render(name, ...rest) {
   }
 }
 
-/**
- * One piece of frames into a video of its own, and its pictures deleted: blended from its
- * subframes, lossless with its transparency when it goes over their video, else h264.
- */
-function encodePiece(ffmpeg, { work, f0, f1, sub, fps, alpha, draft }) {
-  const stem = join(work, `piece-${String(f0).padStart(7, "0")}`);
-  const blend =
-    sub > 1
-      ? `tmix=frames=${sub}:weights='${Array(sub).fill(1).join(" ")}',select='eq(mod(n\\,${sub})\\,${sub - 1})',`
-      : "";
-  const file = `${stem}.${alpha ? "mkv" : "mp4"}`;
-  const ext = alpha ? "png" : "jpg";
+/** One piece of frames into a video of its own, and its pictures deleted. */
+function encodePiece(ffmpeg, { work, f0, f1, fps, draft }) {
+  const file = join(work, `piece-${String(f0).padStart(7, "0")}.mp4`);
   const args = [
     "-hide_banner",
     "-loglevel",
     "error",
     "-y",
     "-framerate",
-    String(fps.value * sub),
+    String(fps),
     "-start_number",
-    String(f0 * sub),
+    String(f0),
     "-i",
-    join(work, `f%07d.${ext}`),
-    "-vf",
-    `format=${alpha ? "rgba" : "rgb24"},${blend}setpts=N/(${fps.value})/TB`,
-    "-r",
-    fps.text,
+    join(work, "f%07d.jpg"),
     "-frames:v",
     String(f1 - f0),
-    ...(alpha
-      ? ["-c:v", "ffv1", "-pix_fmt", "bgra"]
-      : [
-          "-c:v",
-          "libx264",
-          "-preset",
-          draft ? "veryfast" : "medium",
-          "-crf",
-          draft ? "22" : "16",
-          "-pix_fmt",
-          "yuv420p",
-        ]),
+    "-c:v",
+    "libx264",
+    "-preset",
+    draft ? "veryfast" : "medium",
+    "-crf",
+    draft ? "22" : "19",
+    "-pix_fmt",
+    "yuv420p",
     file,
   ];
   return new Promise((done, failed) => {
@@ -668,8 +465,8 @@ function encodePiece(ffmpeg, { work, f0, f1, sub, fps, alpha, draft }) {
     run.on("close", (code) => {
       if (code !== 0)
         return failed(new Stop(`ffmpeg could not encode the frames:\n${said}`));
-      for (let i = f0 * sub; i < f1 * sub; i++)
-        rmSync(join(work, `f${String(i).padStart(7, "0")}.${ext}`), {
+      for (let i = f0; i < f1; i++)
+        rmSync(join(work, `f${String(i).padStart(7, "0")}.jpg`), {
           force: true,
         });
       done(file);
@@ -677,113 +474,46 @@ function encodePiece(ffmpeg, { work, f0, f1, sub, fps, alpha, draft }) {
   });
 }
 
-/**
- * A tick and a rush of air as sound files, synthesized: a short tone that dies fast, and pink
- * noise swept through a band that opens as it passes. Quiet, under any voice.
- */
-function cueSounds(ffmpeg, work) {
-  const make = (name, source) => {
-    const file = join(work, `${name}.wav`);
-    const made = spawnSync(
-      ffmpeg,
-      [
-        "-hide_banner",
-        "-loglevel",
-        "error",
-        "-y",
-        "-f",
-        "lavfi",
-        "-i",
-        source,
-        file,
-      ],
-      { encoding: "utf8" },
-    );
-    if (made.status !== 0)
-      throw new Stop(
-        `ffmpeg could not make the ${name} sound:\n${made.stderr}`,
-      );
-    return file;
-  };
-  return {
-    click: make(
-      "click",
-      "aevalsrc='0.22*sin(2*PI*1800*t)*exp(-t*120)+0.08*sin(2*PI*3600*t)*exp(-t*200)':d=0.07:s=48000",
-    ),
-    whoosh: make(
-      "whoosh",
-      "anoisesrc=d=0.42:c=pink:a=0.5:r=48000,highpass=f=350,lowpass=f=4200,afade=t=in:d=0.24:curve=exp,afade=t=out:st=0.24:d=0.18,volume=0.45",
-    ),
-  };
-}
-
-/** The pieces joined, with the sound: the voices where their scenes start, or the recording. */
-function finish(ffmpeg, { info, pieces, spec, dir, work, out, fps, draft }) {
+/** The pieces joined, and the music under them. */
+function finish(ffmpeg, { pieces, wav, work, out, film, dir }) {
   const list = join(work, "pieces.txt");
   writeFileSync(
     list,
     pieces.map((p) => `file '${p.replace(/'/g, "'\\''")}'`).join("\n"),
   );
-  const args = ["-hide_banner", "-loglevel", "error", "-y"];
-  const video = spec.track?.kind === "video";
-  const sounds = info.audio
-    .filter((a) => !a.video)
-    .map((a) => ({ file: join(dir, a.src), at: a.at, gain: 1 }));
-  // The ticks and rushes of air, made here from nothing and laid under the voices
-  if (info.cues.length) {
-    const made = cueSounds(ffmpeg, work);
-    for (const c of info.cues)
-      sounds.push({ file: made[c.sound], at: Math.max(0, c.at), gain: 1 });
-  }
-  if (video) args.push("-i", join(dir, spec.track.file));
-  args.push("-f", "concat", "-safe", "0", "-i", list);
-  const first = video ? 2 : 1;
-  for (const a of sounds) args.push("-i", a.file);
-  const filters = [];
-  const map = video ? "[v]" : `${first - 1}:v`;
-  if (video) {
-    // Their picture under the scenes, at the frame's size
-    const [w, h] = spec.size.split("x");
-    filters.push(
-      `[0:v]scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h},setsar=1,fps=${fps.text}[bg]`,
-      `[bg][1:v]overlay=format=auto:shortest=1,format=yuv420p[v]`,
-    );
-  }
-  let audio = [];
-  if (video) audio = ["-map", "0:a?"];
-  else if (sounds.length) {
-    const lanes = sounds.map((a, i) => {
-      const ms = Math.round(a.at * 1000);
-      return `[${first + i}:a]aformat=sample_rates=48000:channel_layouts=stereo,volume=${a.gain},adelay=${ms}|${ms}[a${i}]`;
-    });
-    filters.push(
-      ...lanes,
-      `${sounds.map((_, i) => `[a${i}]`).join("")}amix=inputs=${sounds.length}:normalize=0:duration=longest,apad,atrim=0:${info.duration.toFixed(3)}[a]`,
-    );
-    audio = ["-map", "[a]"];
-  }
-  if (filters.length) args.push("-filter_complex", filters.join(";"));
-  args.push("-map", map);
-  args.push(...audio);
-  args.push(
-    ...(video
-      ? [
-          "-c:v",
-          "libx264",
-          "-preset",
-          draft ? "veryfast" : "medium",
-          "-crf",
-          draft ? "22" : "17",
-        ]
-      : ["-c:v", "copy"]),
-    ...(audio.length ? ["-c:a", "aac", "-b:a", "192k"] : []),
-    "-movflags",
-    "+faststart",
-    "-t",
-    info.duration.toFixed(3),
-    out,
+  const made = spawnSync(
+    ffmpeg,
+    [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-y",
+      "-f",
+      "concat",
+      "-safe",
+      "0",
+      "-i",
+      list,
+      "-i",
+      wav,
+      "-map",
+      "0:v",
+      "-map",
+      "1:a",
+      "-c:v",
+      "copy",
+      "-c:a",
+      "aac",
+      "-b:a",
+      "192k",
+      "-movflags",
+      "+faststart",
+      "-t",
+      film.duration.toFixed(3),
+      out,
+    ],
+    { encoding: "utf8" },
   );
-  const made = spawnSync(ffmpeg, args, { encoding: "utf8" });
   if (made.status !== 0)
     throw new Stop(`ffmpeg could not make the video:\n${made.stderr}`);
   // A render before this one left its pictures if it was stopped
@@ -795,12 +525,12 @@ function finish(ffmpeg, { info, pieces, spec, dir, work, out, fps, draft }) {
       rmSync(join(dir, f), { recursive: true, force: true });
 }
 
-const commands = { put, get, voices, track, shots, render, kinds };
+const commands = { put, get, shots, render };
 const [command, ...rest] = process.argv.slice(2);
 try {
   if (!commands[command])
     throw new Stop(
-      "Usage: motion.mjs kinds [kind] | put <name|path> <video.json> | get <name|path> <file.json> | voices <name|path> <audio>... | track <name|path> <file> | shots <name|path> [--at 1.2,3] | render <name|path> [--draft]",
+      "Usage: motion.mjs put <name|path> <film.js> | get <name|path> <film.js> | shots <name|path> [--at 1,2.5] | render <name|path> [--draft]",
     );
   await commands[command](...rest);
 } catch (error) {

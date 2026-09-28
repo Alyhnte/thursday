@@ -1,5 +1,5 @@
 ---
-checked: 2026-09-27
+checked: 2026-09-28
 paths:
   - "skills/**"
   - "seed-skills/**"
@@ -24,7 +24,7 @@ skills, and the user opens what they made in the app and edits a page, a deck or
 - `skills/artifact/SKILL.md` — what the user keeps or uses (document, canvas, picture book, deck, sheet, page, app, chart, diagram) as one skill, its `runtime/` behind it; a sheet is a real .xlsx (`skills/artifact/scripts/spreadsheet.mjs`).
 - `skills/artifact/runtime/shell/put.mjs` — how a bot writes into a page a skill made; the revision saves check.
 - `features/ai/tools/deck.tool.ts` — `make_deck`: typed slides that `skills/artifact/runtime/deck` draws.
-- `skills/artifact/scripts/motion.mjs` — a motion video: JSON scenes (`runtime/motion/schema.mjs`, examples in `runtime/motion/catalog.mjs`) drawn by `runtime/motion`, rendered to mp4.
+- `skills/artifact/scripts/motion.mjs` — a motion video: the bot's code draws each scene with the kit in `runtime/motion` (`runtime/motion/film.js`, its kit `kit-*.js` and music `runtime/motion/score.js`), checked in a browser by `put`, rendered to mp4.
 - `features/bot/bot.seed.ts` — the seed bots' roles, and what a role may name.
 - `features/artifact/artifact.query.ts` — finished work, listed from the bots' folders alone.
 - `app/api/file/[...path]/route.ts` — a workspace file served; a page runs on its own origin.
