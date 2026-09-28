@@ -97,6 +97,11 @@ A bot can also find a skill in the open registry while it works, or write a new 
 installs one from the registry it asks, saying who published it, its license and what its security
 checks found. Its report says whether it kept the skill for itself or for every bot.
 
+Unasked, a bot writes a skill only for a kind of job that comes back — a routine's, or one it has
+done before — and only for itself, improving the one it has before adding another. Its report says
+which, in one line; it shows under that bot's group in **Settings › Skills**, where it can be
+switched off or deleted. The skills that ship and the user's own are never changed unasked.
+
 ## Connected services
 
 **Settings › Connectors** connects MCP servers, picked from the list or added by pasting their

@@ -1887,6 +1887,21 @@ test("the assembled participant prompt names its return route and says who hands
     );
 });
 
+test("a bot is told to keep its skills in the folder the app lists to it alone", async () => {
+  const { loadBotPrompt } = await import(
+    "../features/ai/prompts/bot.prompt.ts"
+  );
+  const { ownSkills } = await import("../features/skills/skills.discover.ts");
+  const { botFolder } = await import("../features/workspace/workspace.ts");
+  const told = `${botFolder("Beta")}/.agents/skills`;
+  const { text } = await loadBotPrompt("Beta", null);
+  assert.ok(text.includes("## Your own skills"));
+  assert.ok(text.includes(`\`${told}/\``));
+  // The folder named is the one loadSkills reads for this bot, and no other bot's
+  assert.ok(ownSkills("Beta").endsWith(told));
+  assert.ok(!ownSkills("Alpha").endsWith(told));
+});
+
 test("a bot's prompt lists its other threads with its own last words, never the thread it is in", async () => {
   // Rows written in one second tie on `updatedAt`; a list long enough holds them all
   const { BOT_WORK } = await import("../config.ts");
