@@ -18,9 +18,9 @@ it, in a workspace the app lays out and clears by age.
 - `features/workspace/workspace.ts` — the workspace folders, `writeRefusal`, `insideWorkspace`, each shell's environment, fetching the browser, closing and forgetting a thread's browsers.
 - `lib/sandbox.ts` — the shell: scrubbed environment, timeouts that kill the process group, long output folded to a file.
 - `features/ai/tools/workspace.tool.ts` — `bash`, `write_file`, and the shell guide on a bot's first command.
-- `features/signins/signins.query.ts` — the sign-in vault: keep, borrow, renew, whose browser a session drives.
+- `features/signins/signins.query.ts` — the sign-in vault, one file per account of a site: keep, borrow, renew, whose browser a session drives.
 - `features/ai/tools/signin.tool.ts` — `sign_in_use` and `sign_in_keep`.
-- `features/signins/components/signins-setting.tsx` — Settings › Sign-ins: which bots may borrow, and signing out.
+- `features/signins/components/signins-setting.tsx` — Settings › Sign-ins: a site's accounts, which bots may borrow each, and signing out.
 - `skills/browser/SKILL.md` — what a bot is told about the browser.
 
 ## How it fits

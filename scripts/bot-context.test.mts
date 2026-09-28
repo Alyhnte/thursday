@@ -3332,10 +3332,10 @@ test("a kept sign-in is renewed only from the browser it was lent to, for a bot 
     });
     assert.equal(kept.kind, "kept");
 
-    // Another bot keeping the same site is refused and asks; the kept session stays
+    // Another bot keeping the same account is refused and asks; the kept session stays
     const other = await keepSignIn({
       site: "shop.example",
-      account: "someone-else",
+      account: "a@example.com",
       bot: "Visitor",
       state: { cookies: [cookie("theirs")] },
     });
@@ -3353,7 +3353,7 @@ test("a kept sign-in is renewed only from the browser it was lent to, for a bot 
       sandbox,
       await browser("job-visitor", "anonymous"),
       "Visitor",
-      "shop.example",
+      { site: "shop.example", account: "a@example.com" },
       "loaded",
     );
     await renewSignIns("job-visitor");
@@ -3361,7 +3361,13 @@ test("a kept sign-in is renewed only from the browser it was lent to, for a bot 
 
     // The browser it was lent to, for the bot allowed it, renews it
     const keeper = await browser("job-keeper", "signed-in");
-    await holdSignIn(sandbox, keeper, "Keeper", "shop.example", "loaded");
+    await holdSignIn(
+      sandbox,
+      keeper,
+      "Keeper",
+      { site: "shop.example", account: "a@example.com" },
+      "loaded",
+    );
     await holds("rotated");
     await renewSignIns("job-keeper");
     assert.equal(await stored("Keeper"), "rotated");
@@ -3373,7 +3379,7 @@ test("a kept sign-in is renewed only from the browser it was lent to, for a bot 
     await renewSignIns("job-keeper");
     assert.equal(await stored("Keeper"), "rotated");
   } finally {
-    await removeSignIn("shop.example");
+    await removeSignIn("shop.example", "a@example.com");
     await rm(join(home, "browsers.json"), { force: true });
     await rm(join(home, "state.json"), { force: true });
     await rm(join(home, "marks"), { recursive: true, force: true });
@@ -3464,7 +3470,13 @@ test("a browser holds the sign-in loaded into it last, gives back the one before
 
     // One kept from a browser the app lent the shop to: the browser holds both
     await use("shop.example");
-    await holdSignIn(sandbox, env, "Keeper", "mail.example", "kept");
+    await holdSignIn(
+      sandbox,
+      env,
+      "Keeper",
+      { site: "mail.example", account: "a" },
+      "kept",
+    );
     await holds(sid("shop.example", "shop-3"), sid("mail.example", "mail-3"));
     await renewSignIns("job-lend");
     assert.equal(await stored("shop.example"), "shop-3");
@@ -3493,8 +3505,186 @@ test("a browser holds the sign-in loaded into it last, gives back the one before
     assert.equal(await stored("shop.example"), "shop-5");
     assert.equal(await stored("mail.example"), "mail-4");
   } finally {
-    await removeSignIn("shop.example");
-    await removeSignIn("mail.example");
+    await removeSignIn("shop.example", "a");
+    await removeSignIn("mail.example", "a");
+    await rm(join(home, "browsers.json"), { force: true });
+    await rm(join(home, "state.json"), { force: true });
+    await rm(join(home, "marks"), { recursive: true, force: true });
+  }
+});
+
+test("a site keeps a sign-in per account, a bot names the one it uses, and one account's cookies never go into another's", async () => {
+  const {
+    keepSignIn,
+    borrowSignIn,
+    listSignIns,
+    setSignInBot,
+    removeSignIn,
+    renewSignIns,
+    settleVault,
+  } = await import("../features/signins/signins.query.ts");
+  const { createSignInTools } = await import(
+    "../features/ai/tools/signin.tool.ts"
+  );
+  const { jobShellEnv, openWorkspace } = await import(
+    "../features/workspace/workspace.ts"
+  );
+  const { DATA_DIR, PATHS } = await import("../config.ts");
+  const { existsSync } = await import("node:fs");
+  const vault = join(DATA_DIR, PATHS.signIns);
+  const sandbox = await openWorkspace();
+  const env = jobShellEnv("job-accounts");
+  const session = (value: string) => ({
+    name: "sessionid",
+    domain: ".instagram.test",
+    path: "/",
+    value,
+  });
+  const state = (value: string) => ({ cookies: [session(value)] });
+  const keep = (account: string, bot: string, another?: boolean) =>
+    keepSignIn({
+      site: "instagram.test",
+      account,
+      bot,
+      state: state(`${account}-1`),
+      another,
+    });
+  const valueOf = async (account: string) => {
+    const got = await borrowSignIn("instagram.test", "Jarvis", account);
+    assert.equal(got.kind, "state");
+    return (got as { state: { cookies: { value: string }[] } }).state.cookies[0]
+      .value;
+  };
+  const accounts = async () =>
+    (await listSignIns())
+      .filter((one) => one.site === "instagram.test")
+      .map((one) => one.account);
+  const tools = createSignInTools(sandbox, "Jarvis", env);
+  const options = { toolCallId: "accounts", messages: [], context: {} };
+  const use = (input: { site: string; account?: string }) =>
+    tools[T.sign_in_use].execute!(input, options) as Promise<string>;
+
+  try {
+    assert.equal((await keep("@main", "Jarvis")).kind, "kept");
+    // A name the site does not keep is asked about before it is a second row
+    const unlisted = await keep("@shop", "Jarvis");
+    assert.deepEqual(unlisted, {
+      kind: "unlisted",
+      site: "instagram.test",
+      accounts: ["@main"],
+    });
+    assert.deepEqual(await accounts(), ["@main"]);
+    // Said to be another account, it is kept beside the first, for the bot that kept it alone
+    const shop = await keep("@shop", "Marketer", true);
+    assert.equal(shop.kind, "kept");
+    assert.deepEqual(shop.kind === "kept" && shop.signIn.bots, ["Marketer"]);
+    // The same account signed in again replaces its own row, however it is spaced
+    assert.equal((await keep(" @main ", "Jarvis")).kind, "kept");
+    assert.deepEqual(await accounts(), ["@main", "@shop"]);
+    // Two names apart only in case stay two, on a disk that ignores case too
+    assert.equal((await keep("@Main", "Jarvis", true)).kind, "kept");
+    assert.deepEqual(await accounts(), ["@main", "@Main", "@shop"]);
+    await removeSignIn("instagram.test", "@Main");
+    assert.deepEqual(await accounts(), ["@main", "@shop"]);
+
+    // With two kept, none is picked for the bot: it names one, or is told which there are
+    assert.deepEqual(await borrowSignIn("instagram.test", "Jarvis"), {
+      kind: "pick",
+      site: "instagram.test",
+      accounts: ["@main", "@shop"],
+    });
+    assert.match(
+      await use({ site: "instagram.test" }),
+      /keeps more than one account: @main, @shop\. Call again with `account`/,
+    );
+    assert.match(
+      await use({ site: "instagram.test", account: "@gone" }),
+      /Nothing is kept for instagram\.test as @gone\. Kept there: @main, @shop/,
+    );
+    // A subdomain reads the site's accounts
+    assert.equal(
+      (await borrowSignIn("m.instagram.test", "Jarvis", "@main")).kind,
+      "state",
+    );
+    // Asking for an account it may not use lists the bot on that account alone
+    const asked = await borrowSignIn("instagram.test", "Jarvis", "@shop");
+    assert.equal(asked.kind, "ask");
+    assert.deepEqual(
+      (await listSignIns()).map((one) => [one.account, one.asking]),
+      [
+        ["@main", []],
+        ["@shop", ["Jarvis"]],
+      ],
+    );
+    await setSignInBot("instagram.test", "@shop", "Jarvis", true);
+
+    // One browser, one account after the other: each account's cookie goes back to its own
+    await writeFile(
+      join(home, "browsers.json"),
+      JSON.stringify({
+        browsers: [{ name: env.PLAYWRIGHT_CLI_SESSION, headed: false }],
+      }),
+    );
+    assert.match(
+      await use({ site: "instagram.test", account: "@main" }),
+      /^Signed in to instagram\.test as @main\./,
+    );
+    await writeFile(join(home, "state.json"), JSON.stringify(state("main-2")));
+    assert.match(
+      await use({ site: "instagram.test", account: "@shop" }),
+      /^Signed in to instagram\.test as @shop\./,
+    );
+    await writeFile(join(home, "state.json"), JSON.stringify(state("shop-2")));
+    await renewSignIns("job-accounts");
+    assert.equal(await valueOf("@main"), "main-2");
+    assert.equal(await valueOf("@shop"), "shop-2");
+
+    // Signing out of one account leaves the other, which a bot then gets without naming it
+    await removeSignIn("instagram.test", "@shop");
+    assert.deepEqual(await accounts(), ["@main"]);
+    assert.equal(
+      (await borrowSignIn("instagram.test", "Jarvis")).kind,
+      "state",
+    );
+
+    // A sign-in an older build kept in one file a site moves to its account's file the first
+    // time a process reads the vault: a server `next dev` reloads never boots again
+    const legacy = join(vault, "legacy.test.json");
+    const older = (bots: string[]) =>
+      writeFile(
+        legacy,
+        JSON.stringify({
+          site: "legacy.test",
+          account: "old@example.com",
+          bots,
+          asking: [],
+          keptAt: new Date().toISOString(),
+          usedAt: null,
+          state: { cookies: [] },
+        }),
+      );
+    await older(["Jarvis"]);
+    delete (globalThis as { __signInsSettled?: unknown }).__signInsSettled;
+    assert.equal(
+      (await borrowSignIn("legacy.test", "Jarvis", "old@example.com")).kind,
+      "state",
+    );
+    assert.equal(existsSync(legacy), false);
+    // One whose place is taken stays where it is, and is not read as a second copy
+    await older(["Other"]);
+    await settleVault();
+    assert.equal(existsSync(legacy), true);
+    assert.deepEqual(
+      (await listSignIns())
+        .filter((one) => one.site === "legacy.test")
+        .map((one) => one.bots),
+      [["Jarvis"]],
+    );
+    await rm(legacy);
+  } finally {
+    for (const account of ["@main", "@shop", "@Main"])
+      await removeSignIn("instagram.test", account);
+    await removeSignIn("legacy.test", "old@example.com");
     await rm(join(home, "browsers.json"), { force: true });
     await rm(join(home, "state.json"), { force: true });
     await rm(join(home, "marks"), { recursive: true, force: true });

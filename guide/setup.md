@@ -126,13 +126,16 @@ kept is the site's session, never a password, and it stays on this computer.
 
 - The bot that asked for a sign-in may use it. Another bot that needs it asks first; the list then
   shows *… asks* with **Allow**. The **×** on a bot's name takes that back.
+- A site can keep more than one account: ask a bot to sign in to the other one, and it opens a
+  window for it. Each account is its own sign-in, with its own bots and **Sign out**, listed under
+  the site. A bot uses the account the work is for, and asks which one when it cannot tell.
 - Some sites, Google among them, sign the bot out again on every job however often they sign in.
   For those, a bot can work in a tab of their own Chrome instead, signed in as they already are —
   to every site their Chrome is signed in to, not only that one. That needs the Playwright
   extension installed in their Chrome once and Chrome open: the last row, **Your own Chrome**, has
   **Get the extension**.
-- **Sign out** removes what is kept; the next job that needs the site asks again. On a lost or shared
-  computer, also sign out on the site itself.
+- **Sign out** removes what is kept for that account, and the site's other accounts stay; the next
+  job that needs it asks again. On a lost or shared computer, also sign out on the site itself.
 
 ## Its own window
 

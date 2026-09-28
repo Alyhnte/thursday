@@ -31,14 +31,16 @@ export function SignInAsk({
     <div className="flex flex-wrap gap-1.5">
       {wanted.map((signIn) => (
         <Button
-          key={signIn.site}
+          key={`${signIn.site}\n${signIn.account}`}
           type="button"
           size="sm"
           loading={allowing}
           onClick={() =>
-            void allow(signIn.site, bot, true)
+            void allow(signIn.site, signIn.account, bot, true)
               .then(() =>
-                onAllowed(`Yes — you may use my ${signIn.site} sign-in.`),
+                onAllowed(
+                  `Yes — you may use my ${signIn.site} sign-in as ${signIn.account}.`,
+                ),
               )
               .catch(() => {})
           }

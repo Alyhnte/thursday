@@ -79,7 +79,10 @@ yours to read off the job:
   link it prints and ask. A click there waits on a tab that is in front:
   `--raw run-code "async page => page.bringToFront()"` first.
 - **They sign in themselves.** `open <the login url> --headed --persistent` —
-  the login page, not the front door — then a `question` through Thursday, to the
+  the login page, not the front door. For another account on a site the app
+  already keeps, leave out `--persistent`: a new browser holds none of them, and
+  signing out of a kept one to make room can end its session for every bot. Then
+  a `question` through Thursday, to the
   user, in one line saying what to sign into and that the window is open, options `Signed in` /
   `Not now`, and stop. The window stays open while the job waits; continue from a
   fresh `snapshot` when the answer comes. A captcha or a code sent to their phone

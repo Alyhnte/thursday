@@ -296,9 +296,9 @@ export const PATHS = {
   /** Where tool output over TOOL_OUTPUT is written in full. */
   output: ".output",
   /**
-   * The sites the user signed in to (features/signins), one file a site. Under DATA_DIR and
-   * outside the workspace, so no bot comes across another's session among its files; named
-   * here because `pnpm reset` has to find it without the app.
+   * The sites the user signed in to (features/signins), one file per account. Under DATA_DIR
+   * and outside the workspace, so no bot comes across another's session among its files;
+   * named here because `pnpm reset` has to find it without the app.
    */
   signIns: ".sign-ins",
   skills: {

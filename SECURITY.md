@@ -45,13 +45,14 @@ What the app does to keep that narrow:
   (`skills/browser/SKILL.md`). These are instructions in a skill, not code: the
   app cannot stop a model that ignores them.
 - **A kept sign-in is lent, not handed around.** The app keeps a site's session,
-  never a password: one file a site in `.sign-ins/` under the data folder,
-  outside the bots' workspace. The `sign_in_use` tool lends it only to the bots
-  on its list — the one that kept it, and those you let in under Settings ›
-  Sign-ins or when one asks. Only those bots can replace it (`sign_in_keep`
-  refuses any other and puts it on the asking list), and what a browser holds
-  after a bot's turn refreshes only a sign-in the app lent that browser, for a
-  bot still on the list. Signing out removes the file
+  never a password: one file per account of a site in `.sign-ins/` under the
+  data folder, outside the bots' workspace, each with its own list. The
+  `sign_in_use` tool lends one only to the bots on its list — the one that kept
+  it, and those you let in under Settings › Sign-ins or when one asks. Only those
+  bots can replace it (`sign_in_keep` refuses any other and puts it on the asking
+  list), and what a browser holds after a bot's turn refreshes only a sign-in the
+  app lent that same browser, for a bot still on the list. Signing out of an
+  account removes its file
   (`features/signins/signins.query.ts`). These checks are on the tools, not the
   file: a bot's shell runs as you and can read it. A kept session signs every
   later job of those bots in as you. It is the browser's whole session, not
