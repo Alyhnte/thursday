@@ -24,7 +24,6 @@ import { ModelPicker } from "@/features/ai/components/model-picker";
 import {
   type AutomaticModel,
   parseTextModel,
-  planName,
   type TextModelProviderId,
 } from "@/features/ai/model.schema";
 import { PERSONAS } from "@/features/ai/prompts/persona";
@@ -341,9 +340,7 @@ export function Intro({
               key={step}
               className="absolute top-1/2 left-full ml-[calc(var(--face-bleed)+0.375rem)] flex w-[min(22rem,26vw)] -translate-y-1/2 animate-in flex-col gap-4 text-left fade-in slide-in-from-bottom-1 duration-300 max-[900px]:static max-[900px]:ml-0 max-[900px]:w-[min(22rem,calc(100vw-2rem))] max-[900px]:translate-y-0"
             >
-              {step === "key" && (
-                <KeyTurn voiced={callable} onSaved={() => setKeyed(true)} />
-              )}
+              {step === "key" && <KeyTurn onSaved={() => setKeyed(true)} />}
               {step === "mic" && <MicTurn mic={mic} />}
               {step === "bots" && (
                 <BotsTurn
@@ -359,7 +356,9 @@ export function Intro({
           )}
         </div>
 
-        <div className="flex w-full max-w-3xl flex-col items-center gap-4 px-6 text-center">
+        {/* Positioned, as the call screen's column is: her canvas draws `--face-bleed` past her
+            box, and the box is positioned, so a column that is not lies under what she draws */}
+        <div className="relative flex w-full max-w-3xl flex-col items-center gap-4 px-6 text-center">
           {/* One slot of one height for her first words or the step's state, and the rows
               under the button keep theirs: her face and the button stand still from step to step */}
           <div className="flex h-14 items-center gap-2 text-[13px] text-muted-foreground">
@@ -580,39 +579,11 @@ function Done({ children, tail }: { children: string; tail?: string }) {
 }
 
 /**
- * Her voice: the GPT Subscription or an OpenAI key, the plan first (voice-key CallLines). Once
- * either is in, what she runs on, and where to change it.
+ * Her voice: the GPT Subscription or an OpenAI key, the plan first (voice-key CallLines). Both
+ * rows stay once either is in, each saying what runs on it: a key given before still leaves the
+ * plan to sign in to.
  */
-function KeyTurn({
-  voiced,
-  onSaved,
-}: {
-  voiced: boolean;
-  onSaved: () => void;
-}) {
-  const voice = useVoiceLine();
-  const plan = planName(voice.plan);
-  if (voiced)
-    return voice.line === "chatgpt" ? (
-      <>
-        <Done tail={plan ? `${plan} plan` : undefined}>
-          Signed in with ChatGPT
-        </Done>
-        <Fine>
-          Calls and bots run on your plan. Settings › Thursday switches a call
-          to a key.
-        </Fine>
-      </>
-    ) : (
-      <>
-        <Done>OpenAI key saved</Done>
-        <Fine>
-          {voice.signedIn
-            ? `Calls run on the key; bots and calls in writing run on your ${plan ?? "ChatGPT"} plan.`
-            : "Change it any time in Settings › API keys."}
-        </Fine>
-      </>
-    );
+function KeyTurn({ onSaved }: { onSaved: () => void }) {
   return (
     <>
       <Mine>Give her a voice</Mine>

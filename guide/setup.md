@@ -9,8 +9,10 @@ real voice starts with the first call. The speaker button at the top right mutes
 
 The first step offers her voice two ways, one above the other: **GPT Subscription** first, with
 **Sign in** (it opens ChatGPT's sign-in window), and **OpenAI API key**, whose
-**Paste a key** opens the key field under both. Either one wakes her; signed in, the step shows the
-plan it is on. The call screen's **Set up** and **Settings › Thursday** ask the same way.
+**Paste a key** opens the key field under both. Either one wakes her. Both rows stay once one is
+set, a key given before included: each then shows a check and what runs on it, and the sign-in row
+the plan it is on, so the plan can still be signed in to. The call screen's **Set up** and
+**Settings › Thursday** ask the same way.
 
 Every step can be skipped and done later in Settings. On the microphone step the main button turns
 the microphone on (the browser asks first, by its address bar); the line under it goes on without

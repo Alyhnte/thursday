@@ -11,6 +11,7 @@ import { ProviderIcon } from "@/features/ai/components/provider-icon";
 import {
   LIVE_PROVIDER,
   type LiveLine,
+  type LiveSettings,
   liveLineOf,
 } from "@/features/ai/live.schema";
 import {
@@ -121,7 +122,8 @@ export function useVoiceLine(
  * The two ways a call gets her voice, side by side: the GPT Subscription first, as the one that
  * bills nothing per minute and opens bots and pictures too, then an OpenAI key, whose field opens
  * under both when asked for. The first run and the call screen ask with this while neither is
- * set, so both read the same; which one a call then opens on is live.schema `liveLineOf`.
+ * set, so both read the same; which one a call then opens on is live.schema `liveLineOf`. The
+ * first run keeps both rows once one is set, so a key given before still leaves the plan to pick.
  */
 export function CallLines({
   onSaved,
@@ -138,9 +140,15 @@ export function CallLines({
     config,
     TEXT_MODEL_PROVIDERS.chatgpt.apiKeyName,
   );
+  const keySet = isConfigSet(config, LIVE_PROVIDER.apiKeyName);
+  // The line a call opens on, the one picked in Settings › Thursday included (use-thursday)
+  const { data: liveSettings } = useServerRoute<LiveSettings>(
+    queryKey.thursdaySettings,
+  );
   // Signed in on a plan without spoken calls: the card says so, and signs in another account
-  const voice = useVoiceLine();
+  const voice = useVoiceLine(liveSettings?.runsOn ?? null);
   const noCalls = voice.signedIn && !voice.planCalls;
+  const planSet = voice.signedIn && voice.planCalls && !planLost;
   return (
     // Left-aligned wherever it stands: the call screen centres what is under her face
     <div className="flex w-full flex-col gap-2 text-left">
@@ -150,45 +158,76 @@ export function CallLines({
         provider="chatgpt"
         title={TEXT_MODEL_PROVIDERS.chatgpt.label}
         // Recommended by its place and its button, not a tag: the name has no room beside one
-        tag={noCalls ? (planName(voice.plan) ?? undefined) : undefined}
+        tag={voice.signedIn ? (planName(voice.plan) ?? undefined) : undefined}
         about={
           planLost
             ? "The sign-in saved before can't be unlocked any more."
             : noCalls
               ? "Bots and writing run on this plan; spoken calls don't."
-              : "Your ChatGPT plan. No key, no bill by the minute."
+              : // `line` is null until the plan's line is known: then it says neither
+                planSet && voice.line === "chatgpt"
+                ? "Calls and bots run on your plan."
+                : planSet && voice.line === "openai"
+                  ? "Bots run on your plan; calls run on the key."
+                  : "Your ChatGPT plan. No key, no bill by the minute."
         }
         warn={planLost || noCalls}
       >
-        <ChatGptSignIn
-          variant={noCalls ? "outline" : "brand"}
-          size="sm"
-          className="w-full"
-          label={planLost || noCalls ? "Sign in again" : "Sign in"}
-        />
+        {planSet ? (
+          <LineSet>Signed in</LineSet>
+        ) : (
+          <ChatGptSignIn
+            variant={noCalls ? "outline" : "brand"}
+            size="sm"
+            className="w-full"
+            label={planLost || noCalls ? "Sign in again" : "Sign in"}
+          />
+        )}
       </LineRow>
       <LineRow
         provider="openai"
         title="OpenAI API key"
-        about="Billed by the minute of call, apart from ChatGPT."
+        about={
+          !keySet || !voice.known
+            ? "Billed by the minute of call, apart from ChatGPT."
+            : voice.line === "chatgpt"
+              ? "Calls run on your plan; switch in Settings › Thursday."
+              : "Calls run on it now, billed by the minute."
+        }
       >
-        <Button
-          size="sm"
-          variant={noCalls ? "brand" : "outline"}
-          aria-expanded={keyOpen}
-          onClick={() => setKeyOpen((open) => !open)}
-          className="w-full"
-        >
-          Paste a key
-        </Button>
+        {keySet ? (
+          <LineSet>Saved</LineSet>
+        ) : (
+          <Button
+            size="sm"
+            variant={noCalls ? "brand" : "outline"}
+            aria-expanded={keyOpen}
+            onClick={() => setKeyOpen((open) => !open)}
+            className="w-full"
+          >
+            Paste a key
+          </Button>
+        )}
       </LineRow>
-      {keyOpen && (
+      {keyOpen && !keySet && (
         <div className="flex animate-in flex-col gap-2.5 pt-1 fade-in slide-in-from-top-1 duration-200">
           <VoiceKeys dense plain autoFocus onSaved={onSaved} />
           <GetKeyLink />
         </div>
       )}
     </div>
+  );
+}
+
+/** Where a row's button stands once its way is set: the intro's check, and what is done. */
+function LineSet({ children }: { children: string }) {
+  return (
+    <span className="flex h-7 items-center justify-center gap-1.5 text-[12.5px] text-muted-foreground">
+      <span className="grid size-4 shrink-0 animate-in place-items-center rounded-full bg-primary text-primary-foreground duration-300 zoom-in-50">
+        <Check className="size-2.5" />
+      </span>
+      {children}
+    </span>
   );
 }
 
