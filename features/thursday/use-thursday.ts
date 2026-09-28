@@ -63,12 +63,13 @@ import {
 } from "./open-work";
 import { screenActLine } from "./screen-act";
 import {
-  canShare,
-  isSharing,
-  onShareChange,
-  stopSharing,
+  canShow,
+  onShownChange,
+  seenEachHandOver,
+  shownKind,
+  stopShowing,
   takePicture,
-} from "./screen-share";
+} from "./show";
 import {
   endCallAction,
   openCallAction,
@@ -96,7 +97,7 @@ import { whereNow } from "./where";
  * One live call, plus the thread inbox the app watches even with no call open.
  * The server opens the Live session (openCallAction) and runs the tools
  * (tool-call); the page itself hangs up, puts a word on the face, and takes the
- * picture of a screen the user shares (screen-share).
+ * picture of the screen or camera the user shows (show).
  */
 
 /** Plays when the line opens. */
@@ -126,12 +127,34 @@ const FAILED_FACE_MS = 6000;
 /**
  * What one data channel message may carry when the far end names no limit (the SCTP default
  * the two ends both know), for a picture taken while the connection says none it can be held
- * to (screen-share).
+ * to (show).
  */
 const SCTP_DEFAULT_BYTES = 65_536;
 
 /** Room left in that message for the event around a picture: its type, ids and fields. */
 const PICTURE_ENVELOPE_BYTES = 1_024;
+
+/** What is shown as it is now, made to fit one message of a connection whose limit is `limit`. */
+function pictureFor(limit: number | null | undefined) {
+  // A limit no picture can be held to — none yet, 0, or none at all (Infinity) — is taken as
+  // the smallest one every end takes
+  const bytes =
+    limit && Number.isFinite(limit) && limit > PICTURE_ENVELOPE_BYTES * 2
+      ? limit
+      : SCTP_DEFAULT_BYTES;
+  return takePicture(bytes - PICTURE_ENVELOPE_BYTES);
+}
+
+/** What she reads when she looks and nothing is shown: how they can show her, as far as this browser can. */
+function nothingShown(): string {
+  const ways = [
+    canShow("screen") && "a screen, a window or a tab with Share screen",
+    canShow("camera") && "their camera with Camera",
+  ].filter(Boolean);
+  return ways.length
+    ? `Nothing is being shown. They can show you ${ways.join(", or ")}, on the line under your face.`
+    : "Nothing is being shown, and this browser can show you neither a screen nor a camera.";
+}
 
 /**
  * What the activity line draws: a tool the model is using, or a relay. `line` is
@@ -650,10 +673,11 @@ export function useThursday(
     [outbox],
   );
 
-  // Sharing a screen, or stopping, is told too; while she reads the opening or an update it
-  // waits: put in at once, it went in over her greeting, and on two calls she never gave it.
-  // What earlier calls said about a screen is in her reading, and she answered from it with
-  // a different screen shared; the fact says what is on it now is only known by looking
+  // Showing a screen or the camera, or stopping, is told too; while she reads the opening or
+  // an update it waits: put in at once, it went in over her greeting, and on two calls she
+  // never gave it. What earlier calls said about a screen is in her reading, and she answered
+  // from it with a different screen shared; the fact says what is on it now is only known by
+  // looking
   const shareNews = useRef<string | null>(null);
   useEffect(() => {
     const tell = () => {
@@ -663,11 +687,13 @@ export function useThursday(
       outbox.send(news);
     };
     afterReading.current = tell;
-    const stop = onShareChange((sharing) => {
+    const stop = onShownChange((now, before) => {
       if (!calling.current) return;
-      shareNews.current = sharing
-        ? "The user started sharing their screen with you. What is on it now is known only by looking at it; what was said about a screen before may not be what is there."
-        : "The user stopped sharing their screen.";
+      // The plan's line asks for a picture with a hand-over only while something is shown
+      session.current?.showing(now);
+      shareNews.current = now
+        ? `The user started showing you their ${now}. What is on it now is known only by looking at it; what was said about it before may not be what is there.`
+        : `The user stopped showing you their ${before ?? "screen"}.`;
       tell();
     });
     return () => {
@@ -691,9 +717,10 @@ export function useThursday(
       callId.current = null;
       calling.current = false;
       opening.current = false;
-      // A screen is shared with a call, and goes with it; nothing about it is left to tell
+      // What is shown is shown to a call, and goes with it; nothing about it is left to tell
       shareNews.current = null;
-      stopSharing();
+      stopShowing();
+      seenEachHandOver(false);
       rang.current = false;
       // What she did not voice goes in again next call; unsent context goes with the session
       for (const key of unvoiced.current) told.current.delete(key);
@@ -782,7 +809,7 @@ export function useThursday(
       if (failedFor.current) clearTimeout(failedFor.current);
       if (leaving.current) clearInterval(leaving.current);
       // Held for the page, not this screen: left on, it would go on with no Stop in sight
-      stopSharing();
+      stopShowing();
     };
   }, []);
 
@@ -968,6 +995,14 @@ export function useThursday(
         },
         audio: tap.current,
         on: {
+          // The plan's line asks as the voice hands work over, while something is shown
+          picture: async () => {
+            if (!shownKind()) return null;
+            const taken = await pictureFor(session.current?.messageLimit());
+            return "failed" in taken
+              ? taken
+              : { image: taken.url, kind: taken.kind };
+          },
           // the backend calls tools; the page forwards them to the server
           runTool: async (call) => {
             // end_call and emote are the page's own tools. The line goes down once
@@ -982,26 +1017,14 @@ export function useThursday(
               if (word) setFaceWord({ text: word, at: Date.now() });
               return reply;
             }
-            // The page holds the shared screen: the picture goes to the backend after this
-            // turn's results, made to fit one message of the connection
-            if (call.name === TOOL_NAMES.look_at_screen) {
-              if (!isSharing())
-                return canShare()
-                  ? "Nothing is being shared. They can share a screen, a window or a tab with Share screen, under your face."
-                  : "Nothing is being shared, and this browser cannot share a screen.";
-              // A limit no picture can be held to — none yet, 0, or none at all (Infinity) —
-              // is taken as the smallest one every end takes
-              const limit = session.current?.messageLimit();
-              const bytes =
-                limit &&
-                Number.isFinite(limit) &&
-                limit > PICTURE_ENVELOPE_BYTES * 2
-                  ? limit
-                  : SCTP_DEFAULT_BYTES;
-              const taken = await takePicture(bytes - PICTURE_ENVELOPE_BYTES);
+            // The page holds what is shown: the picture goes to the backend after this turn's
+            // results, made to fit one message of the connection
+            if (call.name === TOOL_NAMES.look_at_shared) {
+              if (!shownKind()) return nothingShown();
+              const taken = await pictureFor(session.current?.messageLimit());
               if ("failed" in taken) return taken.failed;
               return {
-                output: "Their screen as it is now follows, as a picture.",
+                output: `Their ${taken.kind} as it is now follows, as a picture.`,
                 image: taken.url,
               };
             }
@@ -1214,6 +1237,8 @@ export function useThursday(
 
       session.current = live;
       opening.current = false;
+      // The preview says when what is shown reaches her, which differs by line
+      seenEachHandOver(live.relayed());
       rang.current = calledBack;
       stood.current = calledBack
         ? new Set()
