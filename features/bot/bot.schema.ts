@@ -438,6 +438,10 @@ const ThreadLineSchema = z.discriminatedUnion("kind", [
     question: z.boolean().optional(),
     /** The room question it opened (room.query messageKey), for a question to Thursday. */
     questionId: z.string().optional(),
+    /** The exchange a send opens (room.query messageKey): the recipient's lines written for it carry it as `parent`. */
+    exchange: z.string().optional(),
+    /** The bots whose answers it waits for (send_message `after`); it is held until they are back and read. */
+    after: z.array(z.string()).optional(),
   }),
 ]);
 

@@ -577,9 +577,111 @@
   }
 }
 
+/* The office (features/bot/components/office-stage.tsx) builds itself as it opens: each piece
+   falls into place and settles, one after another, then the bots pop up and the rest fades in.
+   Each piece sets its own delay; the classes act only while the stage carries `data-building`. */
+@theme {
+  --animate-office-drop: office-drop 0.34s both;
+  --animate-office-pop: office-pop 0.36s cubic-bezier(0.3, 0.7, 0.3, 1) both;
+  --animate-office-fade: office-fade 0.4s ease both;
+  --animate-office-blink: office-blink 1s steps(1, end) infinite;
+  --animate-office-sand-top: office-sand-top 2.4s linear infinite;
+  --animate-office-sand-bottom: office-sand-bottom 2.4s linear infinite;
+
+  @keyframes office-drop {
+    0% {
+      transform: translateY(-64px);
+      opacity: 0;
+      animation-timing-function: cubic-bezier(0.55, 0, 0.9, 0.45);
+    }
+    56% {
+      transform: translateY(3px);
+      opacity: 1;
+      animation-timing-function: cubic-bezier(0.2, 0.6, 0.4, 1);
+    }
+    78% {
+      transform: translateY(-1.5px);
+    }
+    100% {
+      transform: none;
+      opacity: 1;
+    }
+  }
+
+  @keyframes office-pop {
+    0% {
+      transform: scale(0.2);
+      opacity: 0;
+    }
+    65% {
+      transform: scale(1.1);
+      opacity: 1;
+    }
+    100% {
+      transform: none;
+      opacity: 1;
+    }
+  }
+
+  @keyframes office-fade {
+    from {
+      opacity: 0;
+    }
+  }
+
+  /* The wall clock's colon while the job runs. */
+  @keyframes office-blink {
+    0%,
+    49.9% {
+      opacity: 1;
+    }
+    50%,
+    100% {
+      opacity: 0.12;
+    }
+  }
+
+  /* The hourglass over a held hand-off. */
+  @keyframes office-sand-top {
+    from {
+      transform: scaleY(1);
+    }
+    to {
+      transform: scaleY(0.15);
+    }
+  }
+
+  @keyframes office-sand-bottom {
+    from {
+      transform: scaleY(0.15);
+    }
+    to {
+      transform: scaleY(1);
+    }
+  }
+}
+
+[data-building] .office-drop {
+  animation: var(--animate-office-drop);
+}
+[data-building] .office-pop {
+  animation: var(--animate-office-pop);
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+}
+[data-building] .office-fade {
+  animation: var(--animate-office-fade);
+}
+
 /* Every one of them is a courtesy, so a machine asked to hold still keeps the faces where they are. */
 @media (prefers-reduced-motion: reduce) {
-  [data-crew-motion] {
+  [data-crew-motion],
+  [data-building] .office-drop,
+  [data-building] .office-pop,
+  [data-building] .office-fade,
+  .animate-office-blink,
+  .animate-office-sand-top,
+  .animate-office-sand-bottom {
     animation: none !important;
   }
 }

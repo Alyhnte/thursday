@@ -54,6 +54,17 @@ or waiting on an answer never is, and what a job made stays in **Settings › Fi
 Pressing the pill opens the corner as a list; pressing a row opens the thread. **Esc** or the back
 arrow steps back one level, and the ✕ folds the room away.
 
+The cube button at the top of an open thread shows it as an office, nearly the whole window: each
+bot at its desk, the work walked from desk to desk, a hand-off that waits for another bot's answer
+held in a tray under an hourglass, and questions and the final report brought to your counter. A
+bot's tag opens a card with what it is doing and why; pressing the tag keeps it open. The clock on
+the wall is how long the job has run, and the job's name lies on the floor. **Live** follows a
+running thread as it goes; **Replay** plays any thread from its start, long waits sped up, at 1×,
+2× or 4×. **Chat** beside it is the thread's own conversation; **At a glance** puts the request,
+what is asked of you, each bot's state and what came back on one list. The lanes along the bottom
+show who ran when; drag across them to move through a replay. The office pans by dragging and
+zooms with the wheel or the buttons at its bottom left, and **Esc** closes it.
+
 A long thread summarizes itself when it fills up. The small bar at the top right of an open thread
 shows how full it is; pressing it has the bot summarize at its next step, which makes every later
 step cheaper. The conversation on screen stays whole.

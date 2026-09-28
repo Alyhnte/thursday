@@ -752,6 +752,13 @@ async function withLines(
             delivered: item.consumed,
           })),
         relays: relays.filter((item) => item.threadId === row.id),
+        exchanges: own.map((item) => ({
+          id: item.id,
+          bot: item.bot,
+          caller: item.caller,
+          state: item.state,
+          waitsFor: item.waitsFor,
+        })),
       },
     };
   });
@@ -961,6 +968,20 @@ function linesOf(message: StoredMessage, addressee: string): ThreadLine[] {
                   part.toolCallId,
                 ),
               }
+            : {}),
+          // The exchange a send opens, so the screen finds when a held hand-off went out: the
+          // recipient's first line written under it
+          ...(message.bot
+            ? {
+                exchange: messageKey(
+                  message.threadId,
+                  message.bot,
+                  part.toolCallId,
+                ),
+              }
+            : {}),
+          ...(Array.isArray(args.after) && args.after.length
+            ? { after: args.after.map(String) }
             : {}),
         });
       } else if (part.toolName === TOOL_NAMES.bash) {

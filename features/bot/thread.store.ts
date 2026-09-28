@@ -65,7 +65,15 @@ export type Chatter = {
   steppedIn?: boolean;
   /** Only for kind `tool`. */
   tool?: ToolUse;
-  /** When it was written: a `stop`, whose repeats fold into one line, and a `tool`, so a folded run can say how long it took. */
+  /** Only for kind `ask`: the exchange the send opened (thread.query), which the recipient's lines for it carry as `parent`. */
+  exchange?: string;
+  /** Only for kind `ask`: the bots whose answers it waits for before it goes out (send_message `after`). */
+  after?: string[];
+  /** Only for a send the tool refused, drawn as a step to nobody: whom it was for. */
+  meant?: BotRef | null;
+  /** The exchange the line was written under (`thread_work`); null for the job's own first turn. */
+  parent?: string | null;
+  /** When it was written: a `stop`'s repeats fold into one line, a folded run says how long it took, and the office replays the thread by it. */
   at?: DateLike;
 };
 
@@ -103,6 +111,8 @@ export type ThreadView = {
   /** Context read on the last step and the compaction threshold; the header meter is their ratio. Both 0 means no step ran yet. */
   contextTokens: number;
   contextBudget: number;
+  /** When the job was handed over: the office's clock starts here. */
+  createdAt: DateLike;
   /** Last movement. */
   updatedAt: DateLike;
 };
@@ -154,6 +164,8 @@ export function threadFromRow(row: Thread, bots?: Bot[]): ThreadView {
       : line.parent
         ? (askers.get(line.parent) ?? null)
         : null;
+    // When and under which exchange: the office replays the thread by them
+    const when = { at: line.at, parent: line.parent };
     switch (line.kind) {
       case "user":
         lines.push({
@@ -162,13 +174,28 @@ export function threadFromRow(row: Thread, bots?: Bot[]): ThreadView {
           to: line.to ? ref(line.to) : null,
           text: line.text,
           kind: "user",
+          ...when,
         });
         break;
       case "text":
-        lines.push({ id: line.id, bot, to, text: line.text, kind: "say" });
+        lines.push({
+          id: line.id,
+          bot,
+          to,
+          text: line.text,
+          kind: "say",
+          ...when,
+        });
         break;
       case "note":
-        lines.push({ id: line.id, bot, to, text: line.text, kind: "note" });
+        lines.push({
+          id: line.id,
+          bot,
+          to,
+          text: line.text,
+          kind: "note",
+          ...when,
+        });
         break;
       case "stop":
         lines.push({
@@ -177,7 +204,7 @@ export function threadFromRow(row: Thread, bots?: Bot[]): ThreadView {
           to,
           text: line.text,
           kind: "stop",
-          at: line.at,
+          ...when,
         });
         break;
       case "tool":
@@ -188,7 +215,7 @@ export function threadFromRow(row: Thread, bots?: Bot[]): ThreadView {
           to,
           text: line.note ?? line.input,
           kind: "tool",
-          at: line.at,
+          ...when,
           tool: {
             name: line.name,
             input: line.input,
@@ -213,8 +240,11 @@ export function threadFromRow(row: Thread, bots?: Bot[]): ThreadView {
             id: open.id,
             bot: open.bot,
             to: null,
+            meant: open.to,
             text: open.text,
             kind: "tool",
+            at: open.at,
+            parent: open.parent,
             tool: {
               name: line.name,
               input: open.text,
@@ -238,6 +268,9 @@ export function threadFromRow(row: Thread, bots?: Bot[]): ThreadView {
           kind: "ask",
           question: line.question,
           questionId: line.questionId,
+          exchange: line.exchange,
+          after: line.after,
+          ...when,
         });
         break;
       }
@@ -306,6 +339,7 @@ export function threadFromRow(row: Thread, bots?: Bot[]): ThreadView {
     tokens: row.tokens,
     contextTokens: row.contextTokens,
     contextBudget: row.contextBudget,
+    createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
 }
@@ -542,7 +576,8 @@ export function useBotThreads(): ThreadView[] {
 const isOutcome = (line: Chatter) => line.kind === "result";
 
 /** The model message a line was cut from: thread.query ids its lines `<message id>-<part>`. */
-const messageOf = (line: Chatter) => line.id.slice(0, line.id.lastIndexOf("-"));
+export const messageOf = (line: Chatter) =>
+  line.id.slice(0, line.id.lastIndexOf("-"));
 
 /** Who says a line. The user's words carry the bot that heard them as `bot`. */
 const speakerOf = (line: Chatter): BotRef =>

@@ -1,10 +1,10 @@
 ---
-checked: 2026-09-28
+checked: 2026-09-29
 paths:
   - "features/thursday/components/**"
   - "features/thursday/{tool-line,face*,field,smoke,eyes,wash,ascii.const,silent-voice}.*"
-  - "features/bot/components/{room-*,bot-room,bot-tool,bot-mark,bot-tip,thread-reply,attachments,crew-motion,write-orb,file-note}.*"
-  - "features/bot/{thread.store,mark.const,mark.geometry}.ts"
+  - "features/bot/components/{room-*,bot-room,bot-tool,bot-mark,bot-tip,thread-reply,attachments,crew-motion,write-orb,file-note,office-*}.*"
+  - "features/bot/{thread.store,mark.const,mark.geometry,office,office.scene}.ts"
   - "features/workspace/components/{artifact-view,file-thumb,file-view,given-files}.tsx"
   - "features/intro/**"
   - "app/page.tsx"
@@ -20,6 +20,7 @@ user and what has finished.
 - `features/thursday/components/thursday.tsx` — the call screen: her face, her line, the captions, and `CallFoot` (the rail and the row above it).
 - `features/bot/components/bot-room.tsx` — the room: the pill while folded (`room-pill.tsx`), the list or one thread while open.
 - `features/bot/components/room-conversation.tsx` — a thread read as a conversation; `thread-reply.tsx` beside it is its box, its questions and Stop.
+- `features/bot/components/office-view.tsx` — a thread as an office, live or replayed; `office-stage.tsx` draws it from `features/bot/office.ts` (its lines and the room's exchanges as events and turns) and `features/bot/office.scene.ts` (the layout).
 - `features/bot/thread.store.ts` — the client mirror of threads, and the signals the screen's parts send each other.
 - `features/thursday/tool-line.ts` — the line for each of the call's tool calls; `features/bot/components/bot-tool.tsx` draws a bot's steps.
 - `features/workspace/components/artifact-view.tsx` — the left corner of finished jobs; `file-thumb.tsx` and `file-view.tsx` beside it draw and open a file, and `features/bot/components/file-note.tsx` is the note under an open file to the thread that made it.

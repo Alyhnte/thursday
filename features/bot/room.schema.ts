@@ -31,6 +31,22 @@ const RoomParticipantSchema = z.object({
   bot: z.string(),
   state: WorkStateSchema,
 });
+/**
+ * One exchange of the room (`thread_work`), by the id its lines are written under (a line's
+ * `parent`, a send's `exchange`). The office reads where a line stands off these: the last words
+ * under an exchange that is done are its answer, and one still `waitsFor` has not gone out.
+ */
+const RoomExchangeSchema = z.object({
+  id: z.string(),
+  bot: z.string(),
+  caller: z.string(),
+  state: WorkStateSchema,
+  /**
+   * Bots whose answers its words still wait for (`after`); empty once they went out with those
+   * answers (room.query releaseWaiting), which can be before its bot has written anything.
+   */
+  waitsFor: z.string().array(),
+});
 const RoomQuestionSchema = z.object({
   id: z.string(),
   bot: z.string(),
@@ -91,5 +107,6 @@ export const RoomViewSchema = z.object({
       messageId: z.string().nullable(),
     })
     .array(),
+  exchanges: RoomExchangeSchema.array(),
 });
 export type RoomView = z.infer<typeof RoomViewSchema>;

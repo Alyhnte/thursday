@@ -190,6 +190,15 @@ const { BOT_RUN } = await import("../config.ts");
 // The retry after a break waits in real time; the tests only need its order
 BOT_RUN.retryMs = 1;
 const { eq } = await import("drizzle-orm");
+const { threadFromRow } = await import("../features/bot/thread.store.ts");
+const { liveClock, officeOf, replayClock, sceneOf, seatAt } = await import(
+  "../features/bot/office.ts"
+);
+/** A thread as the office reads it now, off the view the screen gets (features/bot/office.ts). */
+const officeNow = async (id: string) => {
+  const office = officeOf(threadFromRow((await findThreadView(id))!));
+  return { office, scene: sceneOf(office, liveClock(office.span)) };
+};
 await migrateDatabase();
 for (const name of models.keys())
   await database.insert(botTable).values({
@@ -350,13 +359,20 @@ test("thread overview keeps old open work and the inbox retains unread endings",
           questions: [{ id: "question", bot: "Beta", text: "Which address?" }],
           deliveries: [],
           relays: [],
+          exchanges: [],
         },
       }),
     );
     assert.equal(
       needsThreadReply({
         status: "running",
-        room: { participants: [], questions: [], deliveries: [], relays: [] },
+        room: {
+          participants: [],
+          questions: [],
+          deliveries: [],
+          relays: [],
+          exchanges: [],
+        },
       }),
       false,
     );
@@ -660,6 +676,221 @@ test("work handed out after another bot goes out with its answer once the coordi
   assert.deepEqual(gamma?.waitsFor, []);
 });
 
+test("the office reads a room with a held hand-off as the order things crossed it", async () => {
+  const beta = gate();
+  const gamma = gate();
+  plans.set("Alpha", [
+    () => [
+      ...ask("Beta", "Price the red chair"),
+      ...call(T.send_message, {
+        to: "Gamma",
+        text: "Make a card with the red chair's price.",
+        why: "the test's reason",
+        after: ["Beta"],
+      }),
+    ],
+    () => {
+      beta.open();
+      return text("Both handed out.");
+    },
+    () => text("Waiting for Gamma."),
+    () => text("Card made."),
+  ]);
+  plans.set("Beta", [
+    async () => {
+      await beta.shut;
+      return text("Red chair: $40.");
+    },
+  ]);
+  plans.set("Gamma", [
+    async () => {
+      await gamma.shut;
+      return text("Card says $40");
+    },
+  ]);
+  const id = await startThread({
+    bot: "Alpha",
+    request: "Price the chair and make a card",
+    label: "Office",
+    from: "user",
+  });
+  // Out with Beta's answer, Gamma not yet at a line: the room says so, and so does the office
+  const until = Date.now() + 5_000;
+  let view = await findThreadView(id);
+  while (
+    Date.now() < until &&
+    !view?.room.participants.some(
+      (one) => one.bot === "Gamma" && one.state === "running",
+    )
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    view = await findThreadView(id);
+  }
+  try {
+    assert.deepEqual(
+      view?.room.exchanges.find((row) => row.bot === "Gamma")?.waitsFor,
+      [],
+    );
+    const early = officeOf(threadFromRow(view!));
+    assert.deepEqual(
+      early.events.slice(-2).map((event) => [event.kind, event.text]),
+      [
+        ["end", "Waiting for Gamma."],
+        ["release", "Make a card with the red chair's price."],
+      ],
+    );
+    const now = sceneOf(early, liveClock(early.span));
+    assert.equal(seatAt(now, "Gamma", now.end).key, "run");
+  } finally {
+    // A failure above still lets the room finish, or the file waits out its silence timer
+    gamma.open();
+  }
+  await waitFor(id, "done");
+  const office = officeOf(threadFromRow((await findThreadView(id))!));
+  assert.deepEqual(office.bots, ["Alpha", "Beta", "Gamma"]);
+  // The card goes out with Beta's answer only after Alpha's turn that read it: never before
+  assert.deepEqual(
+    office.events.map((event) => [
+      event.kind,
+      event.from,
+      event.to,
+      event.text,
+    ]),
+    [
+      ["job", "you", "Alpha", "Price the chair and make a card"],
+      ["give", "Alpha", "Beta", "Price the red chair"],
+      ["give", "Alpha", "Gamma", "Make a card with the red chair's price."],
+      ["end", "Alpha", "", "Both handed out."],
+      ["return", "Beta", "Alpha", "Red chair: $40."],
+      ["end", "Alpha", "", "Waiting for Gamma."],
+      ["release", "Alpha", "Gamma", "Make a card with the red chair's price."],
+      ["return", "Gamma", "Alpha", "Card says $40"],
+      ["report", "Alpha", "you", "Card made."],
+    ],
+  );
+  assert.deepEqual(office.events[2].after, ["Beta"]);
+  // It went out as the turn that read Beta's answer ended, not when Gamma first wrote
+  assert.equal(office.events[6].at, office.events[5].at);
+  const scene = sceneOf(office, replayClock(office));
+  const at = (kind: string, bot: string) =>
+    scene.events.find(
+      (event) =>
+        event.kind === kind && (event.to === bot || event.from === bot),
+    )!.at;
+  // Held while Beta works, at work from its release, answered by the end
+  const held = seatAt(scene, "Gamma", at("give", "Gamma") + 0.1);
+  assert.equal(held.key, "held");
+  assert.deepEqual(held.waits, ["Beta"]);
+  assert.equal(seatAt(scene, "Gamma", at("release", "Gamma") + 0.1).key, "run");
+  assert.equal(
+    seatAt(scene, "Alpha", at("end", "Alpha") + 0.1).label,
+    "Waiting on Beta and Gamma",
+  );
+  assert.equal(seatAt(scene, "Gamma", scene.end).label, "Answered");
+  assert.equal(seatAt(scene, "Alpha", scene.end).label, "Reported");
+  // Every message gets room to be walked across the floor
+  const times = scene.events.slice(1).map((event) => event.at);
+  for (let index = 1; index < times.length; index++)
+    assert.ok(times[index] - times[index - 1] > 1.89);
+});
+
+test("the office keeps a bot to one exchange at a time, and a turn to the answers it read", async () => {
+  const card = gate();
+  const stateOf = async (id: string, bot: string) =>
+    (await listRoomWork(id)).filter((row) => row.bot === bot);
+  let id = "";
+  plans.set("Alpha", [
+    () => [
+      ...ask("Beta", "Draft the card"),
+      ...ask("Gamma", "Price the chair"),
+    ],
+    () =>
+      call(T.send_message, {
+        to: "Beta",
+        text: "Add the price to the card.",
+        why: "the test's reason",
+        after: ["Gamma"],
+      }),
+    async () => {
+      // Gamma answers while this turn is still at work, and its next step reads it
+      const until = Date.now() + 5_000;
+      while (
+        !(await stateOf(id, "Gamma")).every((row) => row.state === "done") &&
+        Date.now() < until
+      )
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      return call(T.bash, { command: "true", description: "Check the folder" });
+    },
+    (prompt) => {
+      assert.ok(prompt.includes("Chair: $40."));
+      return text("Waiting on Beta.");
+    },
+    () => text("Waiting for the price on the card."),
+    () => text("Done."),
+    () => text("Made it blue."),
+  ]);
+  plans.set("Beta", [
+    async () => {
+      await card.shut;
+      return text("Card drafted.");
+    },
+    () => text("Card with $40."),
+  ]);
+  plans.set("Gamma", [() => text("Chair: $40.")]);
+  id = await startThread({
+    bot: "Alpha",
+    request: "Draft a card with the chair's price",
+    label: "One at a time",
+    from: "user",
+  });
+  // The price went out with Gamma's answer as Alpha's turn ended; Beta is still on the draft
+  const until = Date.now() + 5_000;
+  while (
+    !(await stateOf(id, "Beta")).some(
+      (row) => row.state === "queued" && row.waitsFor.length === 0,
+    ) &&
+    Date.now() < until
+  )
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  try {
+    const { office, scene } = await officeNow(id);
+    assert.ok(office.events.some((event) => event.kind === "release"));
+    // Gamma's answer was read inside the turn: no turn of Alpha's starts for it
+    assert.equal(seatAt(scene, "Alpha", scene.end).label, "Waiting on Beta");
+    assert.equal(seatAt(scene, "Beta", scene.end).label, "Working · turn 1");
+  } finally {
+    card.open();
+  }
+  await waitFor(id, "done");
+  const done = await officeNow(id);
+  const beta = done.scene.turns.Beta.filter((turn) => turn.key === "run");
+  // The price starts once the draft is back, not when it was let out
+  const drafted = done.scene.events.find(
+    (event) => event.kind === "return" && event.text === "Card drafted.",
+  );
+  assert.deepEqual(
+    beta.map((turn) => turn.n),
+    [1, 2],
+  );
+  assert.equal(beta[1].from, drafted?.at);
+  assert.deepEqual(
+    done.scene.turns.Alpha.filter((turn) => turn.key === "run").map(
+      (turn) => turn.n,
+    ),
+    [1, 2, 3],
+  );
+  // Asked for more after the report: the first report stays one
+  await answerThread(id, "Also make it blue.", "user", "Alpha");
+  await waitFor(id, "done");
+  const again = await officeNow(id);
+  assert.deepEqual(
+    again.office.events
+      .filter((event) => event.kind === "report")
+      .map((event) => event.text),
+    ["Done.", "Made it blue."],
+  );
+});
+
 test("an answer that is a question back keeps the work held while the coordinator settles it", async () => {
   const first = gate();
   const second = gate();
@@ -723,6 +954,18 @@ test("an answer that is a question back keeps the work held while the coordinato
     from: "user",
   });
   assert.equal((await waitFor(id, "done")).outcome, "Done.");
+  // The office keeps the itinerary held through the question back, and lets it out with the
+  // turn that read the check-in date; a replay spaces what the same second held
+  const { office } = await officeNow(id);
+  const scene = sceneOf(office, replayClock(office));
+  const released = office.events.findIndex((event) => event.kind === "release");
+  assert.equal(office.events[released - 1]?.text, "Waiting for Gamma.");
+  const back = scene.events.find(
+    (event) =>
+      event.kind === "return" && event.text === "Which hotel did you book?",
+  );
+  assert.equal(seatAt(scene, "Gamma", back!.at + 0.1).key, "held");
+  assert.equal(seatAt(scene, "Gamma", scene.end).label, "Answered");
 });
 
 test("work sent after another to a bot already busy for you waits as a second hand-off", async () => {
@@ -913,6 +1156,23 @@ test("after naming a bot already back and read sends at once with its answer; on
   await waitFor(id, "done");
   const gamma = (await listRoomWork(id)).find((row) => row.bot === "Gamma");
   assert.deepEqual(gamma?.waitsFor, []);
+  // The office goes by the room's spelling, draws the card as plain work since Beta was back
+  // and read, and the turned-down send as the room's own words, to the bot it was for
+  const { office, scene } = await officeNow(id);
+  assert.deepEqual(office.bots, ["Alpha", "Beta", "Gamma"]);
+  const card = office.events.filter(
+    (event) => event.kind === "give" && event.to === "Gamma",
+  );
+  assert.deepEqual(
+    card.map((event) => event.after),
+    [[]],
+  );
+  assert.ok(!office.events.some((event) => event.kind === "release"));
+  const refused = office.events.find((event) => event.kind === "refused");
+  assert.equal(refused?.to, "Gamma");
+  assert.ok(refused?.text.includes("Designer has no work from you to wait on"));
+  assert.equal(seatAt(scene, "Gamma", scene.end).label, "Answered");
+  assert.equal(seatAt(scene, "Alpha", scene.end).label, "Reported");
 });
 
 test("work the user gives a bot directly shows on the coordinator's list as the user's", async () => {
@@ -1684,6 +1944,15 @@ test("a bot waiting on the user holds other messages until the answer", async ()
   await waitFor(id, "waiting");
   // Gamma's return arrived while Alpha waited on the user; Alpha has not run for it
   assert.equal((inputs.get("Alpha")?.length ?? 0) - alphaCalls, 1);
+  const asking = await officeNow(id);
+  assert.equal(
+    seatAt(asking.scene, "Alpha", asking.scene.end).label,
+    "Waiting on you",
+  );
+  assert.equal(
+    seatAt(asking.scene, "Gamma", asking.scene.end).label,
+    "Answered",
+  );
   const alpha = (await listRoomWork(id)).filter((row) => row.bot === "Alpha");
   assert.ok(
     alpha.every((row) => row.state !== "queued" && row.state !== "running"),
@@ -1699,6 +1968,14 @@ test("a bot waiting on the user holds other messages until the answer", async ()
   await waitFor(id, "done");
   assert.equal((inputs.get("Alpha")?.length ?? 0) - alphaCalls, 2);
   assert.equal((await findThread(id))?.outcome, "Final report");
+  // Two turns, as the model was called twice: the answer started the second
+  const { scene } = await officeNow(id);
+  assert.deepEqual(
+    scene.turns.Alpha.filter((turn) => turn.key === "run").map(
+      (turn) => turn.n,
+    ),
+    [1, 2],
+  );
 });
 
 test("a consumed inbox survives a crash before model execution and restart waits for a person", async () => {
@@ -1774,6 +2051,9 @@ test("work runs with no browser on the stream, and a stop of the app's waits for
   // The server going down is the one thing that parks it, and only a person picks it up
   await pauseThreads("The server was shut down while this was running.");
   assert.equal((await findThread(id))?.status, "waiting");
+  // Parked, not at work: the office says so until Continue
+  const parked = await officeNow(id);
+  assert.equal(seatAt(parked.scene, "Alpha", parked.scene.end).label, "Paused");
   plans.set("Alpha", [
     (prompt) => {
       assert.ok(prompt.includes("UNWATCHED_BOUNDARY"));
@@ -1782,6 +2062,8 @@ test("work runs with no browser on the stream, and a stop of the app's waits for
   ]);
   await answerThread(id, "Continue");
   assert.equal((await waitFor(id, "done")).outcome, "Picked back up");
+  const back = await officeNow(id);
+  assert.equal(seatAt(back.scene, "Alpha", back.scene.end).label, "Reported");
 });
 
 test("a late inbox message queues another turn atomically with completion", async () => {
@@ -2940,6 +3222,14 @@ test("Thursday takes only questions: an update is refused, and the final report 
     relays.map((relay) => relay.kind),
     ["report"],
   );
+  // The office draws the update turned down at your door, in the room's own words
+  const { office } = await officeNow(id);
+  const refused = office.events.find((event) => event.kind === "refused");
+  assert.equal(refused?.to, "you");
+  assert.ok(
+    refused?.text.includes("Send Thursday only a question for the user"),
+  );
+  assert.equal(office.events.at(-1)?.kind, "report");
 });
 
 test("answer drafts remain separate for two questions from the same bot", async () => {

@@ -33,6 +33,7 @@ import {
   useSeenOnDetail,
   writeLine,
 } from "../thread.store";
+import { OfficeView } from "./office-view";
 import { Conversation, ThreadHeader } from "./room-conversation";
 import {
   Empty,
@@ -77,6 +78,9 @@ export const BotRoom = memo(function BotRoom() {
   const [open, setOpen] = useState(false);
   /** Open thread; null shows the list. */
   const [picked, setPicked] = useState<string | null>(null);
+  /** The thread watched as an office, over everything (office-view); another thread picked closes it. */
+  const [office, setOffice] = useState<string | null>(null);
+  if (office !== null && office !== picked) setOffice(null);
   // A thread is read at nearly the window's height and lies over the call; only the write
   // line steps aside for it. The list is a short card in the corner
   const reading = open && picked !== null;
@@ -247,6 +251,7 @@ export const BotRoom = memo(function BotRoom() {
   // on the pill, and a History one would not be found once its pages stop being read.
   const fold = () => {
     setOpen(false);
+    setOffice(null);
     setPicked(null);
     setTab("now");
     scroll.current = 0;
@@ -316,7 +321,19 @@ export const BotRoom = memo(function BotRoom() {
                 thread={current}
                 onBack={() => setPicked(null)}
                 onClose={fold}
+                onOffice={() => setOffice(current.id)}
               />
+              {office === current.id && (
+                <OfficeView
+                  thread={current}
+                  faces={current.roster}
+                  tab={sides[current.id] ?? null}
+                  onTab={(bot) =>
+                    setSides((was) => ({ ...was, [current.id]: bot }))
+                  }
+                  onClose={() => setOffice(null)}
+                />
+              )}
               <Conversation
                 thread={current}
                 tab={sides[current.id] ?? null}
@@ -325,21 +342,25 @@ export const BotRoom = memo(function BotRoom() {
                 }
                 className="min-h-0 flex-1"
               />
-              <ThreadReply
-                thread={{
-                  id: current.id,
-                  label: current.label,
-                  bot: current.bot.name,
-                  ask: current.ask,
-                  room: current.room,
-                }}
-                status={
-                  current.status === "working" ? "running" : current.status
-                }
-                faces={current.roster}
-                to={sides[current.id] ?? current.bot.name}
-                className="mx-3 mb-2 shrink-0"
-              />
+              {/* One box a thread: the office has its own while open, and this one reads the
+                  drafts again when it comes back (thread-reply drafts, roomDrop) */}
+              {office !== current.id && (
+                <ThreadReply
+                  thread={{
+                    id: current.id,
+                    label: current.label,
+                    bot: current.bot.name,
+                    ask: current.ask,
+                    room: current.room,
+                  }}
+                  status={
+                    current.status === "working" ? "running" : current.status
+                  }
+                  faces={current.roster}
+                  to={sides[current.id] ?? current.bot.name}
+                  className="mx-3 mb-2 shrink-0"
+                />
+              )}
             </>
           ) : (
             <>
