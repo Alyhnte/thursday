@@ -130,7 +130,7 @@ function fakeCanvas() {
 /** The film's code run with the kit, as the page runs it to render; its FILM once laid out. */
 async function laidOut(code: string) {
   const main = fakeCanvas();
-  const window: Record<string, unknown> = {};
+  const window: Record<string, unknown> = { addEventListener() {} };
   const context = {
     window,
     location: { search: "?render" },
@@ -141,7 +141,13 @@ async function laidOut(code: string) {
       fonts: { load: async () => [], ready: Promise.resolve() },
       body: { classList: { add() {} } },
     },
-    Image: class {},
+    // No picture loads here: each says so, as a missing file does in a browser
+    Image: class {
+      onerror: (() => void) | null = null;
+      set src(_: string) {
+        setTimeout(() => this.onerror?.(), 0);
+      }
+    },
     Path2D: class {
       moveTo() {}
       lineTo() {}
@@ -230,6 +236,18 @@ test("a scene that throws is named with its scene, and a wrong setting with its 
   );
   assert.match(film.errors[0].message, /No one called "nobody" in the cast/);
   assert.match(film.errors[1].message, /No thing "unicorn"/);
+});
+
+test("a film with no scenes, or a picture from elsewhere, is refused with why, not thrown", async () => {
+  const film = await laidOut(
+    `film({ scenes: [], images: { us: "https://example.com/us.jpg", ok: "pictures/us.jpg" } });`,
+  );
+  assert.match(film.problems.join("\n"), /give at least one scene/);
+  assert.match(
+    film.problems.join("\n"),
+    /The picture "us" is https:\/\/example\.com\/us\.jpg/,
+  );
+  assert.doesNotMatch(film.problems.join("\n"), /"ok" is/);
 });
 
 test("the music fills the film, is not silent, and is the same for the same seed", async () => {

@@ -107,7 +107,8 @@ export function inPageApart(fn, args = {}, helpers = {}) {
  */
 export async function apart(work) {
   const own = process.env.PLAYWRIGHT_CLI_SESSION;
-  process.env.PLAYWRIGHT_CLI_SESSION = `${own || "default"}-apart`;
+  // One to each script: two scripts at once in a job never close each other's
+  process.env.PLAYWRIGHT_CLI_SESSION = `${own || "default"}-apart-${process.pid}`;
   try {
     return await work(inPage);
   } finally {

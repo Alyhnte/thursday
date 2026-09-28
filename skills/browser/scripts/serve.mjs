@@ -51,8 +51,11 @@ export async function serveFolder(dir, { instead = {}, take = null } = {}) {
   const server = createServer((req, res) => {
     if (take && req.method === "POST" && req.url.startsWith("/__take/")) {
       // A name alone, never a path: nothing is written outside `take`
-      const name = basename(decodeURIComponent(req.url.slice(8)));
-      if (!/^[\w.-]+$/.test(name)) {
+      let name = "";
+      try {
+        name = basename(decodeURIComponent(req.url.slice(8)));
+      } catch {}
+      if (!/^[\w.-]+$/.test(name) || /^\.+$/.test(name)) {
         res.writeHead(400).end();
         return;
       }

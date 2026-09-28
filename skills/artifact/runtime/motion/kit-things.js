@@ -43,51 +43,53 @@ const THINGS = {
         ["#3a80ef", "#f27caa", "#f8d65c", "#18a896"][i % 4],
         { rim: 1, shadow: 2 },
       );
-      if (lit > 0.01) {
-        const fl = lit * (0.9 + 0.1 * Math.sin(X.T * 17 + i * 2));
-        const gr = X.g.createRadialGradient(
-          cx,
-          topY - 34,
-          1,
-          cx,
-          topY - 34,
-          22 * fl,
-        );
-        gr.addColorStop(0, "rgba(255,220,120,0.55)");
-        gr.addColorStop(1, "rgba(255,220,120,0)");
-        if (!X.dry) {
-          X.g.fillStyle = gr;
-          X.g.fillRect(cx - 24, topY - 58, 48, 48);
+      quiet(() => {
+        if (lit > 0.01) {
+          const fl = lit * (0.9 + 0.1 * Math.sin(X.T * 17 + i * 2));
+          const gr = X.g.createRadialGradient(
+            cx,
+            topY - 34,
+            1,
+            cx,
+            topY - 34,
+            22 * fl,
+          );
+          gr.addColorStop(0, "rgba(255,220,120,0.55)");
+          gr.addColorStop(1, "rgba(255,220,120,0)");
+          if (!X.dry) {
+            X.g.fillStyle = gr;
+            X.g.fillRect(cx - 24, topY - 58, 48, 48);
+          }
+          blob(
+            [
+              ...arc(cx, topY - 30, 5 * fl, 5 * fl, 0, PI, 8),
+              [cx + Math.sin(X.T * 9 + i) * 1.5, topY - 30 - 14 * fl],
+            ],
+            "#ffb43c",
+          );
+          blob(
+            [
+              ...arc(cx, topY - 29, 2.4 * fl, 2.4 * fl, 0, PI, 6),
+              [cx, topY - 29 - 6 * fl],
+            ],
+            "#fff3c0",
+          );
+        } else if (o.smoke) {
+          const sm = clamp(o.smoke);
+          const pts = [];
+          for (let m = 0; m <= 10; m++) {
+            const q = m / 10;
+            pts.push([
+              cx + Math.sin(q * 6 + X.T * 3 + i) * 4 * q,
+              topY - 26 - q * 40 * sm,
+            ]);
+          }
+          X.g.save();
+          X.g.globalAlpha *= 0.6 * (1 - sm * 0.6);
+          crayon(pts, 2.5, "#d8d8e0", { shine: false });
+          X.g.restore();
         }
-        blob(
-          [
-            ...arc(cx, topY - 30, 5 * fl, 5 * fl, 0, PI, 8),
-            [cx + Math.sin(X.T * 9 + i) * 1.5, topY - 30 - 14 * fl],
-          ],
-          "#ffb43c",
-        );
-        blob(
-          [
-            ...arc(cx, topY - 29, 2.4 * fl, 2.4 * fl, 0, PI, 6),
-            [cx, topY - 29 - 6 * fl],
-          ],
-          "#fff3c0",
-        );
-      } else if (o.smoke) {
-        const sm = clamp(o.smoke);
-        const pts = [];
-        for (let m = 0; m <= 10; m++) {
-          const q = m / 10;
-          pts.push([
-            cx + Math.sin(q * 6 + X.T * 3 + i) * 4 * q,
-            topY - 26 - q * 40 * sm,
-          ]);
-        }
-        X.g.save();
-        X.g.globalAlpha *= 0.6 * (1 - sm * 0.6);
-        crayon(pts, 2.5, "#d8d8e0", { shine: false });
-        X.g.restore();
-      }
+      });
     }
   },
   gift(o) {
@@ -339,22 +341,24 @@ const THINGS = {
     const open = clamp(o.open ?? 0);
     const slide = clamp((open - 0.4) / 0.6);
     paper(rect(-50, -66, 100, 66, 3), shade(c, -0.08), { rim: 2.2, shadow: 6 });
-    if (open > 0.3) {
-      paper(rect(-42, -62 - slide * 56, 84, 60, 2), "#fffdf6", {
-        rim: 1.4,
-        shadow: 3,
-      });
-      for (let k = 0; k < 3; k++)
-        crayon(
-          [
-            [-30, -48 - slide * 56 + k * 12],
-            [30 - k * 12, -48 - slide * 56 + k * 12],
-          ],
-          2,
-          "#9aa0c4",
-          { shine: false },
-        );
-    }
+    quiet(() => {
+      if (open > 0.3) {
+        paper(rect(-42, -62 - slide * 56, 84, 60, 2), "#fffdf6", {
+          rim: 1.4,
+          shadow: 3,
+        });
+        for (let k = 0; k < 3; k++)
+          crayon(
+            [
+              [-30, -48 - slide * 56 + k * 12],
+              [30 - k * 12, -48 - slide * 56 + k * 12],
+            ],
+            2,
+            "#9aa0c4",
+            { shine: false },
+          );
+      }
+    });
     paper(
       [
         [-50, -66],

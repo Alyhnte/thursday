@@ -659,7 +659,7 @@ function personAt(who, x, y, size, o, seed) {
         { seed: seed + 43, rim: 1.2, shadow: 2 },
       );
     }
-    faceOf(R, { ...o, seed }, t, age);
+    quiet(() => faceOf(R, { ...o, seed }, t, age));
     hairFront(style, R, hair, seed, age);
     if (who.glasses) {
       const gc = typeof who.glasses === "string" ? who.glasses : INK;

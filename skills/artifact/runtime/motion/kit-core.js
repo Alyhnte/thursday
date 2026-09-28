@@ -65,6 +65,18 @@ const sealed = (fn) =>
       X.n = n0 + 1;
     }
   };
+/**
+ * A part drawn only some of the time (a flame until it is blown out, a blink) takes no seed
+ * from what is drawn after it.
+ */
+function quiet(fn) {
+  const n0 = X.n;
+  try {
+    fn();
+  } finally {
+    X.n = n0;
+  }
+}
 
 // ---------------------------------------------------------------- colour
 const rgbOf = (hex) => {
@@ -482,6 +494,19 @@ const LINES = new Map();
 function fontOf(size, o) {
   return `${o.weight ?? ""} ${size}px ${o.font ?? HAND}`.trim();
 }
+/** What a reader takes as one letter: a Hangul syllable, an accented letter, a whole emoji. */
+const SEGMENTER =
+  typeof Intl !== "undefined" && Intl.Segmenter
+    ? new Intl.Segmenter(undefined, { granularity: "grapheme" })
+    : null;
+const graphemes = (s) =>
+  SEGMENTER ? [...SEGMENTER.segment(s)].map((g) => g.segment) : [...s];
+// Scripts whose letters join, stack or reorder (Hebrew, Arabic, the scripts of India and
+// South-east Asia): a line of them is written whole, as the font shapes it, never a letter
+// at a time. Hebrew and Arabic run right to left.
+const JOINED = /[֐-ࣿऀ-෿฀-࿿က-႟ក-៿יִ-﷿ﹰ-﻿]/;
+const RTL = /[֐-ࣿיִ-﷿ﹰ-﻿]/;
+const PICTURE = /\p{Extended_Pictographic}/u;
 /** `text` broken into lines no wider than `width`: at spaces, or anywhere in a word too long. */
 function wrap(text, size, width, o) {
   const key = `${text}|${size}|${width}|${o.font ?? ""}|${o.weight ?? ""}`;
@@ -499,8 +524,12 @@ function wrap(text, size, width, o) {
       if (!width || wide(next.trimEnd()) <= width || !line.trim()) {
         line = next;
         // A word wider than the line alone is broken wherever it runs out
-        while (width && wide(line.trimEnd()) > width && [...line].length > 1) {
-          const chars = [...line];
+        while (
+          width &&
+          wide(line.trimEnd()) > width &&
+          graphemes(line).length > 1
+        ) {
+          const chars = graphemes(line);
           let k = chars.length - 1;
           while (k > 1 && wide(chars.slice(0, k).join("")) > width) k--;
           out.push(chars.slice(0, k).join(""));
@@ -514,7 +543,9 @@ function wrap(text, size, width, o) {
     out.push(line.trimEnd());
   }
   const lines = out.map((s) => {
-    const chars = [...s];
+    const chars = graphemes(s);
+    if (JOINED.test(s))
+      return { whole: s, rtl: RTL.test(s), chars, xs: [], w: wide(s) };
     const xs = [];
     let x = 0;
     for (const ch of chars) {
@@ -548,6 +579,7 @@ function handText(text, x, y, o = {}) {
   g.save();
   g.font = fontOf(size, o);
   g.textBaseline = "alphabetic";
+  g.textAlign = "left";
   const fill = tex(o.color ?? X.colors.ink);
   g.fillStyle = fill;
   g.strokeStyle = fill;
@@ -558,9 +590,36 @@ function handText(text, x, y, o = {}) {
     const lx =
       align === "center" ? x - l.w / 2 : align === "right" ? x - l.w : x;
     const ly = y + li * lh;
+    if (l.whole) {
+      // Written whole, uncovered in the direction it is read
+      const n = l.chars.length;
+      const part = clamp(budget / Math.max(1, n));
+      budget -= n;
+      k += n;
+      if (part <= 0) return;
+      g.save();
+      g.translate(lx, ly);
+      g.rotate((hash(li, seed) - 0.5) * 0.03);
+      g.direction = l.rtl ? "rtl" : "ltr";
+      if (part < 1) {
+        const cw = (l.w + size * 0.2) * part;
+        g.beginPath();
+        g.rect(
+          l.rtl ? l.w + size * 0.1 - cw : -size * 0.1,
+          -size * 1.3,
+          cw,
+          size * 1.8,
+        );
+        g.clip();
+      }
+      g.fillText(l.whole, 0, 0);
+      if (o.bold !== 0) g.strokeText(l.whole, 0, 0);
+      g.restore();
+      return;
+    }
     l.chars.forEach((ch, ci) => {
       k++;
-      if (budget <= 0 || ch === " ") {
+      if (budget <= 0 || !ch.trim()) {
         budget -= 1;
         return;
       }
@@ -588,7 +647,8 @@ function handText(text, x, y, o = {}) {
         g.clip();
       }
       g.fillText(ch, -cw / 2, 0);
-      if (o.bold !== 0) g.strokeText(ch, -cw / 2, 0);
+      // An emoji keeps its own colours: no crayon outline around it
+      if (o.bold !== 0 && !PICTURE.test(ch)) g.strokeText(ch, -cw / 2, 0);
       g.restore();
     });
   });

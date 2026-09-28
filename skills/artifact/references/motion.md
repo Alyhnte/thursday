@@ -48,7 +48,7 @@ film({
     grandma: { age: "elder", skin: "fair", hair: "grey", hairStyle: "bun", top: "#6c8f6a", bottom: "#5a4a6a", skirt: true, glasses: true },
     mia: { age: "child", skin: "tan", hair: "black", hairStyle: "pigtails", top: "#f27caa", bottom: "#3a80ef" },
   },
-  images: { us: "pictures/us.jpg" },   // pictures you put in the video's folder
+  images: { us: "pictures/us.jpg" },   // pictures saved in the video's folder, by their path there
   scenes: [
     { seconds: 4, draw(d) {
       d.room({ wall: "#f3c350", window: "night", lamp: true });
@@ -68,7 +68,8 @@ for the moment the music should lift. The last scene holds a little longer by it
 
 Coordinates are pixels of the frame: `d.W` wide, `d.H` high, (0, 0) the top left. **People
 and things stand on (x, y): x is their middle, y where their feet or bottom touch**, and
-`size` is how tall they are. Everything returns where it is (`{ head, top, hands, mouth }`).
+`size` is how tall they are. People, Thursday, bots and animals return where their `head` and
+`top` are (a person also `hands` and `mouth`); a thing returns its `top` and `middle`.
 
 **Time** — `d.t` seconds into the scene, `d.len` its length.
 - `d.at(a, b)` 0→1 eased from second a to b · `d.lin(a, b)` the same, even
@@ -142,7 +143,8 @@ and write it once as a function you call in every scene it is in.
 ## Mistakes to avoid
 
 - Putting text where a head or a hand is: keep words in the top third, or on a note.
-- People too small: someone the film is about is 450px tall or more in a 1080-high frame.
+- People too small: someone the film is about is 450px tall or more in a 1080-high frame; put
+  names a scene whose people are all under 330px.
 - Everything at once: stagger `at` so things arrive one after another, on the beat.
 - A new look for a person in each scene: define them once in `cast`.
 - Forgetting the frame's shape: for 1080x1920 put people lower and words higher, one per line.

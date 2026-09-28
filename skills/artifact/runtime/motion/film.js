@@ -108,7 +108,7 @@ function makeD() {
       X.g.rotate(rot);
       X.g.translate(-x, -y);
     },
-    group(o, fn) {
+    group: sealed((o, fn) => {
       X.g.save();
       X.g.translate(o.x ?? 0, o.y ?? 0);
       if (o.rot) X.g.rotate(o.rot);
@@ -120,7 +120,7 @@ function makeD() {
       } finally {
         X.g.restore();
       }
-    },
+    }),
     shake(amount = 10) {
       X.g.translate(Math.sin(X.T * 53) * amount, Math.cos(X.T * 47) * amount);
     },
@@ -298,8 +298,13 @@ function noteOn(text, x, y, o, isBubble) {
 }
 
 // ---------------------------------------------------------------- the film laid out
+// What the film's code threw outside any scene, for put to name: a film that throws before it
+// calls film() is never laid out, and put stops waiting for it at once
+window.THROWN = [];
+window.addEventListener("error", (e) => window.THROWN.push(String(e.message)));
 window.film = (def) => {
   if (F) throw new Error("film() was called twice: one film to a page.");
+  window.FILM_CALLED = true;
   const problems = [];
   const size = SIZES[def.size ?? "1920x1080"];
   if (!size)
@@ -346,6 +351,13 @@ window.film = (def) => {
   const hold = 2;
   const total = (beat + hold) * spb;
   if (laid.length) laid[laid.length - 1].t1 = total;
+  const elsewhere = (src) =>
+    /^([a-z][a-z0-9+.-]*:|\/\/)/i.test(String(src)) && !/^data:/i.test(src);
+  for (const [name, src] of Object.entries(def.images ?? {}))
+    if (elsewhere(src))
+      problems.push(
+        `The picture "${name}" is ${src}: a picture from elsewhere cannot go into the mp4. Save it in the film's folder and name it by its path there, like "pictures/${name}.jpg".`,
+      );
   const cast = def.cast ?? {};
   const castSeed = Object.fromEntries(
     Object.keys(cast).map((k, i) => [k, 7001 + i * 97]),
@@ -365,7 +377,10 @@ window.film = (def) => {
     totalBeats: beat + hold,
     cast,
     castSeed,
-    images: def.images ?? {},
+    // Only pictures from the film's folder are loaded: one from elsewhere is refused above
+    images: Object.fromEntries(
+      Object.entries(def.images ?? {}).filter(([, src]) => !elsewhere(src)),
+    ),
     colors: {
       paper: "#fbf6ea",
       ink: "#2b3a67",
@@ -377,7 +392,7 @@ window.film = (def) => {
   };
   start().catch((error) => {
     F.problems.push(String(error?.message ?? error));
-    window.FILM = info([]);
+    window.FILM = { ...(window.FILM ?? info([])), problems: F.problems };
     window.READY = true;
   });
 };
@@ -437,6 +452,10 @@ async function start() {
   F.faces = [];
   const cues = listen();
   window.FILM = info(cues);
+  if (F.problems.length || !F.scenes.length) {
+    window.READY = true;
+    return;
+  }
   if (!RENDER) player();
   else paintAt(0, g0);
   window.READY = true;
@@ -497,6 +516,8 @@ function drawScene(s, t, g) {
   X.len = s.t1 - s.t0;
   X.n = 0;
   X.colors = F.colors;
+  // A ground drawn with no sky before it is lit by day, whatever the frame before drew
+  HOUR = "day";
   g.save();
   g.setTransform(1, 0, 0, 1, 0, 0);
   if (!X.dry) {
@@ -529,7 +550,8 @@ function drawScene(s, t, g) {
 /** The line of the film's code an error came from, where the browser says. */
 function lineOf(error) {
   const m = /film-code[^:]*:(\d+)/.exec(String(error?.stack ?? ""));
-  return m ? Number(m[1]) : null;
+  // The script's first line is the empty one after its tag
+  return m ? Number(m[1]) - 1 : null;
 }
 
 // ---------------------------------------------------------------- one frame
@@ -762,11 +784,18 @@ function player() {
     playing ? Math.min(F.duration, from + clock() - began) : from;
   const fmt = (s) =>
     `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+  // The music is made once the first frame shows, so pressing play does not wait for it
+  let made = null;
+  const compose = () => {
+    if (!made && typeof composeScore === "function")
+      made = composeScore(window.FILM, 48000);
+  };
+  setTimeout(compose, 300);
   const sound = () => {
-    if (buffer || typeof composeScore !== "function") return;
+    if (buffer) return;
     try {
-      audio = new AudioContext();
-      const made = composeScore(window.FILM, audio.sampleRate);
+      compose();
+      audio = new AudioContext({ sampleRate: made.rate });
       buffer = audio.createBuffer(2, made.left.length, made.rate);
       buffer.copyToChannel(made.left, 0);
       buffer.copyToChannel(made.right, 1);

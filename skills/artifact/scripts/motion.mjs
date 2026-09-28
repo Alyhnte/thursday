@@ -45,6 +45,40 @@ const SUBFRAMES = 4;
 const MOST_TABS = 4;
 // Frames drawn and encoded at a time, so the pictures on disk never outgrow one piece
 const PIECE_S = 4;
+// Seconds a page is given to lay its film out (fonts, pictures, a pass over every scene)
+// before a script stops waiting; a film whose code threw first is not waited for at all
+const WAIT_S = 60;
+/**
+ * In the browser: waits until the film is laid out, or its code threw before film() was
+ * called, and gives back what the page has.
+ */
+const ready = async (tab, ms) => {
+  await tab
+    .waitForFunction(
+      () => window.READY || (window.THROWN?.length && !window.FILM_CALLED),
+      null,
+      { timeout: ms },
+    )
+    .catch(() => {});
+  return tab.evaluate(() => ({
+    film: window.FILM ?? null,
+    thrown: window.THROWN ?? [],
+  }));
+};
+/** A film that did not run, or ran with problems, stops shots and render with why. */
+function runs(got, file, name) {
+  const bad = [
+    ...got.thrown,
+    ...(got.film?.problems ?? []),
+    ...(got.film?.errors ?? []).map((e) => `Scene ${e.scene}: ${e.message}`),
+  ];
+  if (!got.film || bad.length)
+    throw new Stop(
+      `${shown(file)} does not run as it is:\n- ${bad.join("\n- ") || "film() was never called"}\nFix its code, then: node ${SCRIPT} put ${name} <film.js>`,
+    );
+  return got.film;
+}
+
 // Letters a viewer reads in a second of handwriting, before a scene is too quick for its words
 const READ_PER_S = 12;
 // The smallest handwriting that reads on a phone, in pixels of a 1080-high frame
@@ -88,23 +122,16 @@ async function look(file, { w, h } = { w: 1920, h: 1080 }) {
   try {
     return await apart((inPage) =>
       inPage(
-        async (page, { url, w, h }) => {
+        async (page, { url, w, h, ms }, { ready }) => {
           const tab = await page.context().newPage();
-          const thrown = [];
-          tab.on("pageerror", (e) => thrown.push(String(e?.message ?? e)));
           await tab.setViewportSize({ width: w, height: h });
           await tab.goto(url, { waitUntil: "load" });
-          // Laid out, or stopped by what its code threw: whichever comes first
-          let film = null;
-          for (let i = 0; i < 600 && !film; i++) {
-            film = await tab.evaluate(() => window.FILM ?? null);
-            if (!film && thrown.length) break;
-            if (!film) await tab.waitForTimeout(100);
-          }
+          const got = await ready(tab, ms);
           await tab.close();
-          return { film, thrown };
+          return got;
         },
-        { url, w, h },
+        { url, w, h, ms: WAIT_S * 1000 },
+        { ready },
       ),
     );
   } finally {
@@ -250,14 +277,19 @@ async function shots(name, ...rest) {
   try {
     const got = await apart((inPage) =>
       inPage(
-        async (page, { url, out, asked }) => {
+        async (page, { url, out, asked, ms }, { ready }) => {
           const tab = await page.context().newPage();
           await tab.setViewportSize({ width: 1920, height: 1080 });
           await tab.goto(url, { waitUntil: "load" });
-          await tab.waitForFunction(() => window.READY, null, {
-            timeout: 60000,
-          });
-          const film = await tab.evaluate(() => window.FILM);
+          const got = await ready(tab, ms);
+          const film = got.film;
+          if (
+            !film ||
+            got.thrown.length ||
+            film.problems.length ||
+            film.errors.length
+          )
+            return { not: got };
           await tab.setViewportSize({ width: film.width, height: film.height });
           // Each scene a third in, two thirds in, and as it ends
           const times =
@@ -306,9 +338,11 @@ async function shots(name, ...rest) {
           await tab.close();
           return { times, scenes: film.scenes.length };
         },
-        { url, out, asked },
+        { url, out, asked, ms: WAIT_S * 1000 },
+        { ready },
       ),
     );
+    if (got.not) runs(got.not, file, name);
     console.log(
       `${got.times.length} picture(s) of ${got.scenes} scene(s) in ${shown(out)}; all of them on one: ${shown(join(out, "sheet.png"))}. Look at that one: is every word inside the frame and easy to read, is each scene one clear moment, does it end on the moment that matters?`,
     );
@@ -364,33 +398,27 @@ async function render(name, ...rest) {
   try {
     const made = await apart(async (inPage) => {
       const film = await inPage(
-        async (page, { url, tabs }) => {
+        async (page, { url, tabs, ms }, { ready }) => {
           const ctx = page.context();
+          let got = null;
           for (let k = 0; k < tabs; k++) {
             const tab = await ctx.newPage();
             await tab.setViewportSize({ width: 1920, height: 1080 });
             await tab.goto(url, { waitUntil: "load" });
-            await tab.waitForFunction(() => window.READY, null, {
-              timeout: 60000,
-            });
+            got = await ready(tab, ms);
+            if (!got.film) return got;
           }
-          const last = ctx.pages().at(-1);
-          const film = await last.evaluate(() => window.FILM);
-          for (const tab of ctx
-            .pages()
-            .filter((p) => p.url().includes("?render")))
+          // This render's own tabs: another script's in the same browser are left alone
+          for (const tab of ctx.pages().filter((p) => p.url() === url))
             await tab.setViewportSize({
-              width: film.width,
-              height: film.height,
+              width: got.film.width,
+              height: got.film.height,
             });
-          return film;
+          return got;
         },
-        { url, tabs },
-      );
-      if (film.errors.length || film.problems.length)
-        throw new Stop(
-          `The film has errors: put it again and fix what put says, then render. (${[...film.problems, ...film.errors.map((e) => e.message)].join("; ")})`,
-        );
+        { url, tabs, ms: WAIT_S * 1000 },
+        { ready },
+      ).then((got) => runs(got, file, name));
       const frames = Math.round(film.duration * film.fps);
       const per = Math.max(1, Math.round(PIECE_S * film.fps));
       const pieces = [];
@@ -398,11 +426,11 @@ async function render(name, ...rest) {
       for (let f0 = 0; f0 < frames; f0 += per) {
         const f1 = Math.min(frames, f0 + per);
         await inPage(
-          async (page, { from, to, sub }) => {
+          async (page, { url, from, to, sub }) => {
             const tabs = page
               .context()
               .pages()
-              .filter((p) => p.url().includes("?render"));
+              .filter((p) => p.url() === url);
             const share = Math.ceil((to - from) / tabs.length);
             // Each tab draws its share and hands each frame back to the script as a jpeg
             await Promise.all(
@@ -431,7 +459,7 @@ async function render(name, ...rest) {
               ),
             );
           },
-          { from: f0, to: f1, sub },
+          { url, from: f0, to: f1, sub },
         );
         // Encoded while the next piece is drawn; one at a time, beside the browser
         await encoding;
