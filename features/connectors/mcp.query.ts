@@ -6,7 +6,7 @@ import {
   mcpServerTable,
   mcpToolTable,
 } from "@/database/tables";
-import { LOST_KEY_WHY } from "@/features/config/config.const";
+import { lostWords } from "@/features/config/config.const";
 import {
   isRemoteConfig,
   type MCPOAuthData,
@@ -199,11 +199,15 @@ function sealOAuth(oauth: MCPOAuthData): MCPStoredOAuth {
   };
 }
 
-/** What `sealOAuth` stored. A row from before sealing holds it in the clear and comes back as it is. */
+/**
+ * What `sealOAuth` stored. A row from before sealing holds it in the clear and comes back as it
+ * is; one holding both — a server with no folder lock, from before 0.17.2, saving over a sealed
+ * row beside this one — has its clear fields win, as they are the later.
+ */
 function openOAuth(stored: MCPStoredOAuth): MCPOAuthData {
   const { sealed, ...rest } = stored;
   return sealed
-    ? { ...rest, ...(JSON.parse(openSecret(sealed)) as MCPOAuthData) }
+    ? { ...(JSON.parse(openSecret(sealed)) as MCPOAuthData), ...rest }
     : rest;
 }
 
@@ -217,26 +221,13 @@ function openedConfig(config: MCPServerConfig): MCPServerConfig | null {
   }
 }
 
-/**
- * The OAuth blob opened. One this data folder's key cannot open is left at what was never
- * secret — the state and the server's metadata — so the next connect asks for a sign-in, which
- * is what brings the credentials back; the sealed blob stays until that sign-in replaces it.
- */
-function openedOAuth(stored: MCPStoredOAuth): {
-  oauth: MCPOAuthData;
-  lost: boolean;
-} {
+/** The OAuth blob opened; null when this data folder's key cannot open it. */
+function openedOAuth(stored: MCPStoredOAuth): MCPOAuthData | null {
   try {
-    return { oauth: openOAuth(stored), lost: false };
+    return openOAuth(stored);
   } catch (cause) {
-    if (!(cause instanceof UnreadableSecret)) throw cause;
-    return {
-      oauth: {
-        state: stored.state,
-        authorizationServer: stored.authorizationServer,
-      },
-      lost: true,
-    };
+    if (cause instanceof UnreadableSecret) return null;
+    throw cause;
   }
 }
 
@@ -246,12 +237,21 @@ function openedOAuth(stored: MCPStoredOAuth): {
  * would take them.
  */
 const lostKeyWords = (name: string) =>
-  `The key saved for "${name}" can't be unlocked any more: ${LOST_KEY_WHY}. Add it again under the same name, with its key: bots keep the tools they pinned.`;
+  lostWords(
+    `The key saved for "${name}"`,
+    "Add it again under the same name, with its key: bots keep the tools they pinned.",
+  );
 
 const lostSignInWords = (name: string) =>
-  `The sign-in saved for "${name}" can't be unlocked any more: ${LOST_KEY_WHY}. Reconnect to sign in again.`;
+  lostWords(`The sign-in saved for "${name}"`, "Reconnect to sign in again.");
 
-/** A row with its credentials opened, as the manager connects with them. */
+/**
+ * A row with its credentials opened, as the manager connects with them. One this data folder's
+ * key cannot open is said in words — the connect that asked shows it (mcp.action), as does the
+ * row (sealMcpSecrets). A sign-in that cannot be opened is not started over by a connect nobody
+ * asked for, a bot's tool call or a routine's, which would write over the one a `.env` put back
+ * could still open: Reconnect does that (`forgetLostSignIn`).
+ */
 function openRow<
   Row extends {
     name: string;
@@ -260,13 +260,34 @@ function openRow<
   },
 >(row: Row) {
   const config = openedConfig(row.config);
-  // Said in words: the connect that asked shows it (mcp.action), as does the row (sealMcpSecrets)
   if (!config) publicError(lostKeyWords(row.name));
-  return {
-    ...row,
-    config,
-    oauth: row.oauth && openedOAuth(row.oauth).oauth,
-  };
+  const oauth = row.oauth && openedOAuth(row.oauth);
+  if (row.oauth && !oauth) publicError(lostSignInWords(row.name));
+  return { ...row, config, oauth };
+}
+
+/**
+ * Lets go of a sign-in this data folder's key cannot open, keeping what was never secret — the
+ * state and the server's metadata — so the connect that follows signs in afresh. Reconnect alone
+ * calls it: that is the user asking for the sign-in again. True when there was one to let go.
+ */
+export async function forgetLostSignIn(name: string): Promise<boolean> {
+  const [row] = await database
+    .select({ oauth: mcpServerTable.oauth })
+    .from(mcpServerTable)
+    .where(eq(mcpServerTable.name, name));
+  if (!row?.oauth || openedOAuth(row.oauth)) return false;
+  await database
+    .update(mcpServerTable)
+    .set({
+      oauth: {
+        state: row.oauth.state,
+        authorizationServer: row.oauth.authorizationServer,
+      },
+    })
+    .where(eq(mcpServerTable.name, name));
+  changed();
+  return true;
 }
 
 /** The whole row including credentials, opened; for the manager, never a route. */
@@ -372,9 +393,9 @@ export async function findServerByOAuthState(state: string) {
 
 /**
  * Seals the credentials written before sealing began, and names the servers whose sealed ones
- * this data folder's key cannot open — on their rows too, where the Connectors screen shows it
- * until a connect succeeds. Run at boot beside config.query sealConfigSecrets; a second run seals
- * nothing, and one transaction leaves a start that dies halfway to the next.
+ * this data folder's key cannot open — on their rows too, where the Connectors screen shows it —
+ * and takes those words off a row that opens again, its `.env` put back. Run at boot (config.seal);
+ * a second run seals nothing, and one transaction leaves a start that dies halfway to the next.
  */
 export async function sealMcpSecrets(): Promise<{
   sealed: number;
@@ -386,13 +407,14 @@ export async function sealMcpSecrets(): Promise<{
         name: mcpServerTable.name,
         config: mcpServerTable.config,
         oauth: mcpServerTable.oauth,
+        lastError: mcpServerTable.lastError,
       })
       .from(mcpServerTable);
     const unreadable: string[] = [];
     let sealed = 0;
     for (const row of rows) {
       const config = openedConfig(row.config);
-      if (!config || (row.oauth && openedOAuth(row.oauth).lost)) {
+      if (!config || (row.oauth && !openedOAuth(row.oauth))) {
         unreadable.push(row.name);
         await tx
           .update(mcpServerTable)
@@ -404,16 +426,24 @@ export async function sealMcpSecrets(): Promise<{
           .where(eq(mcpServerTable.name, row.name));
         continue;
       }
-      if (!inTheClear(row)) continue;
+      // Words this pass wrote about a key that now opens are no longer true
+      const stale =
+        row.lastError === lostKeyWords(row.name) ||
+        row.lastError === lostSignInWords(row.name);
+      const clear = inTheClear(row);
+      if (!clear && !stale) continue;
       await tx
         .update(mcpServerTable)
         .set({
-          config: sealConfig(row.config),
-          oauth:
-            row.oauth && !row.oauth.sealed ? sealOAuth(row.oauth) : row.oauth,
+          ...(clear && {
+            config: sealConfig(row.config),
+            // Opened first: a row holding both keeps its later, clear fields (openOAuth)
+            oauth: row.oauth && sealOAuth(openOAuth(row.oauth)),
+          }),
+          ...(stale && { lastError: null }),
         })
         .where(eq(mcpServerTable.name, row.name));
-      sealed++;
+      if (clear) sealed++;
     }
     return { sealed, unreadable };
   });

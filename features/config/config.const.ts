@@ -371,11 +371,19 @@ export function isConfigUnreadable(
 }
 
 /**
- * Why a saved secret cannot be read, as every screen and error says it: the one cause there is
- * (config.query readConfig, mcp.query). Plain words; the file's path is in the terminal's.
+ * Why a saved secret cannot be read: the one cause there is, since the key is the data folder's
+ * `.env` alone (lib/secret) — it was lost, replaced, or left behind when the database moved.
  */
-export const LOST_KEY_WHY =
+const LOST_KEY_WHY =
   "the .env in the data folder that unlocks it was lost or replaced";
+
+/**
+ * How a saved secret that can no longer be opened is said, wherever it is — a screen, an error,
+ * a connector's row: what it was, why, the file's path where the server has it, and what to do.
+ */
+export function lostWords(what: string, todo: string, where?: string): string {
+  return `${what} can't be unlocked any more: ${LOST_KEY_WHY}${where ? ` (${where})` : ""}. ${todo}`;
+}
 
 export function groupSatisfied(
   group: ConfigGroup,

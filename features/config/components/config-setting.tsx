@@ -59,7 +59,7 @@ import {
   groupSatisfied,
   isConfigSet,
   isConfigUnreadable,
-  LOST_KEY_WHY,
+  lostWords,
 } from "@/features/config/config.const";
 import { ReachGuide } from "@/features/reach/components/reach-guide";
 import {
@@ -840,8 +840,7 @@ function SignInDialog({
         )}
         {lost && (
           <SettingNote className={cn("wrap-break-word", WAITING_INK)}>
-            The sign-in saved here can't be unlocked any more: {LOST_KEY_WHY}.
-            Sign in again.
+            {lostWords("The sign-in saved here", "Sign in again.")}
           </SettingNote>
         )}
       </div>
@@ -861,19 +860,22 @@ function openConfigDialog(entry: ConfigEntry, set: boolean) {
 /** Set, replace or remove one key. The current value is never shown. */
 function ConfigDialog({
   entry,
-  set,
+  set: opened,
   onDone,
 }: {
   entry: ConfigEntry;
+  /** As the row that opened it drew it, until the dialog's own read lands. */
   set: boolean;
   onDone: () => void;
 }) {
   const [value, setValue] = useState("");
+  // Read here rather than handed in: the dialog outlives the row that opened it, and a key
+  // entered again in another tab meanwhile changes both at once
+  const { data: status } = useServerRoute<ConfigStatus[]>(queryKey.config);
+  const set = status ? isConfigSet(status, entry.key) : opened;
+  const lost = isConfigUnreadable(status, entry.key);
   const { data: credits } = useKeyCredits(entry, set);
   const state = credits ? keyState(set, false, credits) : null;
-  // Read here rather than handed in: the dialog outlives the row that opened it
-  const { data: status } = useServerRoute<ConfigStatus[]>(queryKey.config);
-  const lost = isConfigUnreadable(status, entry.key);
 
   // The model picker reads hasKey too, and a catalog key's credits sit under the same url
   const refresh = () => {
@@ -986,8 +988,7 @@ function ConfigDialog({
         )}
         {lost && (
           <SettingNote className={cn("wrap-break-word", WAITING_INK)}>
-            The key saved here can't be unlocked any more: {LOST_KEY_WHY}. Paste
-            it again.
+            {lostWords("The key saved here", "Paste it again.")}
           </SettingNote>
         )}
       </div>

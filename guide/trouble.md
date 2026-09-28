@@ -56,14 +56,18 @@ A job does not fail for good; it pauses and waits.
 ## A saved key is asked for again
 
 The keys, tokens, sign-in and connectors saved in Settings are sealed with a key kept in the data
-folder's `.env` (`setup.md`, Where the files are). When that `.env` is lost or replaced, or the
-database moved without it, what can no longer be opened is marked where it is set: **Enter again**
-on its row in **Settings › API keys**, with a dot on the section; **Stopped** on its service in
-**Settings › Phone**; a line on the connector in **Settings › Connectors**. The terminal names them
-too. Nothing is deleted: the `.env` from a backup, put back before anything is entered anew, opens
-them again. Otherwise paste each one again, or remove the ones no longer wanted. A connector is
-added again under the same name with its key, and its bots keep their tools; one that signs in asks
-for the sign-in again on **Reconnect**.
+folder's `.env` (`setup.md`, Where the files are), and nowhere else. When that `.env` is lost or
+replaced, or the database moved without it, the next start makes a new key, and what can no longer
+be opened is marked where it is set: **Enter again** on its row in **Settings › API keys**, with a
+dot on the section, and in the model picker; **Stopped** on its service in **Settings › Phone**,
+where whoever was let in stays; a line on the connector in **Settings › Connectors**. The terminal
+names them too.
+
+Nothing is deleted. The `.env` from a backup, put back and the app started again, opens them, as
+long as nothing was entered anew in between. Otherwise paste each one again, or remove the ones
+no longer wanted. A connector that took a key is added again under the same name with its key, and
+its bots keep their tools; one that signs in waits until **Reconnect**, which asks for the sign-in
+again — a bot or a routine using it meanwhile is told so, and the old sign-in stays until then.
 
 ## Starting over
 

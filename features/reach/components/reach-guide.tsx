@@ -25,7 +25,7 @@ import {
   type ConfigStatus,
   isConfigSet,
   isConfigUnreadable,
-  LOST_KEY_WHY,
+  lostWords,
 } from "@/features/config/config.const";
 import {
   SettingItems,
@@ -387,7 +387,7 @@ function Channel({
                   step.slot && "key" in step.slot && step.slot.key === refused
                     ? (status?.problem ?? "")
                     : step.slot && "key" in step.slot && isLost(step.slot.key)
-                      ? `The token saved here can't be unlocked any more: ${LOST_KEY_WHY}. Paste it again.`
+                      ? lostWords("The token saved here", "Paste it again.")
                       : null
                 }
                 link={status?.link ?? null}

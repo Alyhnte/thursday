@@ -16,11 +16,13 @@ What the app does to keep that narrow:
 - **Saved keys are sealed.** In the database, the API keys, the phone's bot
   tokens, the ChatGPT sign-in and a connector's headers, env and OAuth tokens are
   sealed with AES-256-GCM (`lib/secret.ts`), under a key the app makes on its
-  first start and keeps in the data folder's `.env` as `THURSDAY_ENCRYPTION_KEY`.
-  A copy of `local.db` on its own — a backup, a synced folder, a file attached to
-  an issue — carries none of them. The key sits beside it, so this does not keep
-  them from anything that runs as you, a bot's shell included. Set in the
-  environment instead, the key is read from there and written nowhere.
+  first start and keeps in the data folder's `.env` as `THURSDAY_ENCRYPTION_KEY`,
+  owner-only. Keys an older version kept in the clear are sealed on the first
+  start of this one, and the file is then rewritten, so none is left in the pages
+  their old values freed. A copy of `local.db` on its own — a backup, a synced
+  folder, a file attached to an issue — carries none of them. The key sits beside
+  it, so this does not keep them from anything that runs as you, a bot's shell
+  included; nor from an older copy of `local.db`, made before the upgrade.
 - **Secrets are not in the shell's environment.** Every environment variable
   matching `KEY|TOKEN|SECRET|PASS|_PWD|CREDENTIAL|_AUTH|_DSN|DATABASE_URL` is stripped from the
   environment a bot's commands run in (`lib/sandbox.ts`), so a compromised npm

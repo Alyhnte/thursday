@@ -1,5 +1,5 @@
 ---
-checked: 2026-09-27
+checked: 2026-09-28
 paths:
   - "lib/protocol/**"
   - "lib/{public-error,date-like,secret}.ts"
@@ -7,6 +7,7 @@ paths:
   - "database/**"
   - "proxy.ts"
   - "features/**/*.{query,action,schema}.ts"
+  - "features/config/config.seal.ts"
   - "scripts/{proxy,secrets}.test.mts"
 ---
 
@@ -24,6 +25,7 @@ The screen shows what the server holds, whoever changed it, and nothing but this
 - `database/db.ts` — the one client, and the lane every statement waits in.
 - `proxy.ts` — what may reach the app at all.
 - `lib/secret.ts` — the data folder's key in its `.env`, and the sealing `config.query` and `mcp.query` do with it.
+- `features/config/config.seal.ts` — boot's pass over the secrets: seal what is in the clear, rewrite the file, name what cannot be opened.
 
 ## How it fits
 A server component calls a domain's query directly; a client screen reads a `serverRoute` GET by its `queryKey`, with `useServerRoute` or `useServerPages`. A write is a server action, and the screen that made it revalidates what it changed in `onOk`; one client's actions run one at a time, so a POST route exists only for work that must not wait in that line or hold it — tool calls that run side by side, and work that streams as it runs. A change the screen did not make — a bot's row, a routine, a phone — arrives as an `appEvents` signal, which a `useAppEvent` handler turns into a `revalidate` of the GET it names. On the server the same bus only wakes the phone relay (`features/reach/reach.ts`), which then reads the rows.

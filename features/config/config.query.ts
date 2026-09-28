@@ -16,7 +16,7 @@ import {
   CONFIG_KEYS,
   groupSatisfied,
   isSecretKey,
-  LOST_KEY_WHY,
+  lostWords,
   VOICE_GROUP_ID,
 } from "./config.const";
 
@@ -28,12 +28,7 @@ import {
  * says why it has none (`missingKeyWords`).
  */
 export async function readConfig(key: string) {
-  const fromEnv = process.env[key]?.trim();
-  if (fromEnv) return fromEnv;
-
-  const stored = await readRow(key);
-  if (stored === undefined) return undefined;
-  return opened(stored)?.trim() || undefined;
+  return (await stored(key)).value;
 }
 
 /**
@@ -58,17 +53,26 @@ export async function missingKeyWords(
 export async function configState(
   key: string,
 ): Promise<"set" | "unset" | "unreadable"> {
-  if (process.env[key]?.trim()) return "set";
-  const stored = await readRow(key);
-  if (stored === undefined) return "unset";
-  const value = opened(stored);
-  if (value === null) return "unreadable";
-  return value.trim() ? "set" : "unset";
+  return (await stored(key)).state;
 }
 
 /** Whether a key is set and can be read: what `isCallable` and the providers list count. */
 export async function hasConfig(key: string): Promise<boolean> {
   return (await configState(key)) === "set";
+}
+
+/** A key's value and whether it can be used: the environment's, else the row's, opened. */
+async function stored(key: string): Promise<{
+  state: "set" | "unset" | "unreadable";
+  value?: string;
+}> {
+  const fromEnv = process.env[key]?.trim();
+  if (fromEnv) return { state: "set", value: fromEnv };
+  const row = await readRow(key);
+  if (row === undefined) return { state: "unset" };
+  const value = opened(row)?.trim();
+  if (value === undefined) return { state: "unreadable" };
+  return value ? { state: "set", value } : { state: "unset" };
 }
 
 async function readRow(key: string): Promise<string | undefined> {
@@ -94,7 +98,11 @@ function unreadableWords(key: string): string {
   const entry = CONFIG_ENTRIES[key];
   const what = entry?.signIn ? "sign-in" : "key";
   const again = entry?.signIn ? "Sign in again" : "Enter it again";
-  return `The saved ${entry?.label ?? key} ${what} can't be unlocked any more: ${LOST_KEY_WHY} (${ENCRYPTION_KEY_NAME} in ${ENV_PATH}). ${again} in Settings.`;
+  return lostWords(
+    `The saved ${entry?.label ?? key} ${what}`,
+    `${again} in Settings.`,
+    `${ENCRYPTION_KEY_NAME} in ${ENV_PATH}`,
+  );
 }
 
 /**
@@ -122,8 +130,9 @@ export async function removeConfig(key: string) {
 
 /**
  * Seals the secrets written before sealing began, and names the sealed ones this data folder's
- * key cannot open. Run at boot, after the migrations; a second run seals nothing. One
- * transaction, so a start that dies halfway leaves the rows as they were for the next.
+ * key cannot open — but for one the environment sets, which wins over its row, so the row is
+ * never read (`readConfig`). Run at boot, after the migrations (config.seal); a second run
+ * seals nothing. One transaction, so a start that dies halfway leaves the rows as they were.
  */
 export async function sealConfigSecrets(): Promise<{
   sealed: number;
@@ -135,7 +144,8 @@ export async function sealConfigSecrets(): Promise<{
     let sealed = 0;
     for (const row of rows) {
       if (isSealed(row.value)) {
-        if (opened(row.value) === null) unreadable.push(row.key);
+        if (opened(row.value) === null && !process.env[row.key]?.trim())
+          unreadable.push(row.key);
       } else if (isSecretKey(row.key)) {
         await tx
           .update(configTable)

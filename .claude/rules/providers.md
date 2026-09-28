@@ -1,5 +1,5 @@
 ---
-checked: 2026-09-27
+checked: 2026-09-28
 paths:
   - "features/ai/{model,model.schema,chatgpt,openrouter}.ts"
   - "features/ai/components/**"
@@ -56,8 +56,9 @@ connected tools: its pinned ones as tools of their own, the rest through `tool_s
   every command a bot runs once it is in `.env`.
 
 ## Check
-No suite is this area's own: `pnpm test:bot` and `pnpm test:reach` fake `getTextModel`, and
-`pnpm test:live` fakes `connected.ts`, so run them when those exports change. To see it, serve a
+`pnpm test:secrets` covers the keys and connector credentials kept sealed, and one that can no
+longer be opened; `pnpm test:bot` and `pnpm test:reach` fake `getTextModel`, and `pnpm test:live`
+fakes `connected.ts`, so run them when those exports change. To see it, serve a
 scratch copy (AGENTS.md › Running the app) and open Settings › API keys, Models and Connectors: a
 model field browses a catalog provider's shelf without a key, and a preset that needs no account
 connects.

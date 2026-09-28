@@ -20,7 +20,7 @@ import {
   type ConfigStatus,
   isConfigSet,
   isConfigUnreadable,
-  LOST_KEY_WHY,
+  lostWords,
 } from "../config.const";
 
 /**
@@ -168,7 +168,7 @@ export function VoiceKeys({
         >
           {/* A key saved before that can no longer be opened is asked for again, saying why */}
           {refused ??
-            `The OpenAI key saved before can't be unlocked any more: ${LOST_KEY_WHY}. Paste it again.`}
+            lostWords("The OpenAI key saved before", "Paste it again.")}
         </p>
       )}
 
