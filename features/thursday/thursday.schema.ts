@@ -10,7 +10,8 @@ import { LiveFragmentSchema } from "@/lib/live/live.schema";
 /**
  * A word on the face: one `emote` put there, or the screen's own while she rings. `at` tells a
  * second showing of the same word from the first; `hold` is how long it stays lit, in seconds,
- * when that is not the face's own (ascii-orb WORD_HOLD).
+ * when that is not the face's own (ascii-orb WORD_HOLD). Infinity holds it until another word,
+ * or none, is handed in its place.
  */
 export type FaceWord = { text: string; at: number; hold?: number };
 

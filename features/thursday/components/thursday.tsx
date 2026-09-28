@@ -91,7 +91,6 @@ import {
 } from "@/features/thursday/use-thursday";
 import { ArtifactView } from "@/features/workspace/components/artifact-view";
 import { useHotkeyLabel } from "@/hooks/use-hotkey";
-import { RING_CYCLE_MS } from "@/lib/live/ring";
 import { useServerRoute } from "@/lib/protocol/use-server-route";
 import { cn, errorToString, plainText } from "@/lib/utils";
 import { CaptionWords } from "./caption-words";
@@ -1203,20 +1202,17 @@ function WorkStack({
   );
 }
 
-/** The word the orb shows while she rings, once a ring (lib/live/ring): lit, held, out, a breath of her own face. */
-const RING_WORD = { text: "CALL", hold: 1.5 };
+/**
+ * The word the orb shows while she rings: lit as the ring starts and held until it is answered,
+ * declined or rung out. Lit once a ring, her face came back between the rings, and the screen
+ * went back and forth between CALL and her.
+ */
+const RING_WORD = { text: "CALL", hold: Number.POSITIVE_INFINITY };
 
 function useRingWord(on: boolean): FaceWord | null {
   const [word, setWord] = useState<FaceWord | null>(null);
   useEffect(() => {
-    if (!on) {
-      setWord(null);
-      return;
-    }
-    const show = () => setWord({ ...RING_WORD, at: Date.now() });
-    show();
-    const again = setInterval(show, RING_CYCLE_MS);
-    return () => clearInterval(again);
+    setWord(on ? { ...RING_WORD, at: Date.now() } : null);
   }, [on]);
   return word;
 }

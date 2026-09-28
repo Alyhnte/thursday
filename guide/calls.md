@@ -145,7 +145,8 @@ notification says it instead (on a Mac, clicking it opens Script Editor, not the
 - **Whenever a job ends** rings for every ending too.
 - **Never** leaves it to the notification.
 
-It needs this tab open. While it rings, the screen shows whose work it is and what it asks, with
+It needs this tab open. While it rings, her face says CALL until it is answered, declined or rung
+out, and the screen shows whose work it is and what it asks, with
 the bot's suggested answers — picking one replies without a call. **Answer**, tapping her face or
 the wake phrase picks up; **Esc** is "not now". A missed ring stays on screen with **Call back**
 until called back or cleared with Esc. She cannot switch this on herself: when asked to call back,
