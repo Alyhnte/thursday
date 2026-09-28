@@ -50,20 +50,13 @@ import {
 } from "@/lib/protocol/use-server-route";
 import { createOutbox, type Outbox } from "@/lib/queue";
 import { errorToString } from "@/lib/utils";
-import {
-  DRAW_COLOR_NAMES,
-  DRAW_COLORS,
-  type DrawColor,
-  FACE_WORD_MAX,
-  undrawable,
-} from "./ascii.const";
+import { FACE_WORD_MAX, undrawable } from "./ascii.const";
 import { callSignal, useCallHeld } from "./call-signal";
 import type { HereScene } from "./components/here-globe";
 import { faceMoment, useFaceMoment } from "./face-moment";
 import { finished, goodbye } from "./face-words";
 import { hereDue, hereShown } from "./here-day";
 import { loadWorld } from "./here-map";
-import { pictureOf } from "./live-picture";
 import {
   openWork,
   startedLine,
@@ -79,7 +72,6 @@ import {
   stopShowing,
   takePicture,
 } from "./show";
-import { parsePath, pathLength } from "./svg-path";
 import {
   endCallAction,
   openCallAction,
@@ -146,7 +138,13 @@ const PICTURE_ENVELOPE_BYTES = 1_024;
 
 /** What is shown as it is now, made to fit one message of a connection whose limit is `limit`. */
 function pictureFor(limit: number | null | undefined) {
-  return takePicture(pictureBytes(limit));
+  // A limit no picture can be held to — none yet, 0, or none at all (Infinity) — is taken as
+  // the smallest one every end takes
+  const bytes =
+    limit && Number.isFinite(limit) && limit > PICTURE_ENVELOPE_BYTES * 2
+      ? limit
+      : SCTP_DEFAULT_BYTES;
+  return takePicture(bytes - PICTURE_ENVELOPE_BYTES);
 }
 
 /** What she reads when she looks and nothing is shown: how they can show her, as far as this browser can. */
@@ -158,19 +156,6 @@ function nothingShown(): string {
   return ways.length
     ? `Nothing is being shown. They can show you ${ways.join(", or ")}, on the line under your face.`
     : "Nothing is being shown, and this browser can show you neither a screen nor a camera.";
-}
-
-/**
- * What one picture for the backend may take of one message of the connection: what is shown,
- * or a picture they gave her (`look_at`). A limit no picture can be held to — none yet, 0, or
- * none at all (Infinity) — is taken as the smallest one every end takes.
- */
-function pictureBytes(limit: number | null | undefined): number {
-  return (
-    (limit && Number.isFinite(limit) && limit > PICTURE_ENVELOPE_BYTES * 2
-      ? limit
-      : SCTP_DEFAULT_BYTES) - PICTURE_ENVELOPE_BYTES
-  );
 }
 
 /**
@@ -1067,22 +1052,10 @@ export function useThursday(
               leave();
               return "Ending the call.";
             }
-            // the face draws the word or the drawing; nothing runs anywhere else
-            if (
-              call.name === TOOL_NAMES.emote ||
-              call.name === TOOL_NAMES.draw
-            ) {
-              const over = faceMoment.current()?.moment.kind;
-              if (over)
-                return `Nothing was shown: your face is showing ${over === "here" ? "where they are" : over === "see" ? "the picture they gave you" : "your drawing"} for a few seconds more.`;
-              if (call.name === TOOL_NAMES.draw) {
-                const { drawing, reply } = readDrawing(call.arguments);
-                if (!drawing) return reply;
-                // the page draws only while it is looked at, and not for someone who asked for less motion
-                return faceMoment.show({ kind: "draw", ...drawing })
-                  ? reply
-                  : "Nothing was drawn: their screen is not showing your face now, or it is set to show less motion.";
-              }
+            // the face draws the word; nothing runs anywhere else
+            if (call.name === TOOL_NAMES.emote) {
+              if (faceMoment.current())
+                return "Nothing was shown: their screen is showing where they are for a few seconds more.";
               const { word, reply } = readFaceWord(call.arguments);
               if (word) setFaceWord({ text: word, at: Date.now() });
               return reply;
@@ -1095,22 +1068,6 @@ export function useThursday(
               if ("failed" in taken) return taken.failed;
               return {
                 output: `Their ${taken.kind} as it is now follows, as a picture.`,
-                image: taken.url,
-              };
-            }
-            // A picture in the workspace — one they gave her — goes in the same way: the backend
-            // answers through the page, where a tool's result can carry no picture of its own
-            if (call.name === TOOL_NAMES.look_at) {
-              const path = readPath(call.arguments);
-              if (!path)
-                return "Nothing was looked at: path is empty. Give the path from the workspace root.";
-              const taken = await pictureOf(
-                path,
-                pictureBytes(session.current?.messageLimit()),
-              );
-              if ("failed" in taken) return taken.failed;
-              return {
-                output: `${path} follows, as a picture.`,
                 image: taken.url,
               };
             }
@@ -1476,48 +1433,6 @@ export function useThursday(
 }
 
 const EMPTY_BANDS = new Array<number>(SPECTRUM_BANDS).fill(0);
-
-/** What `draw` asked for, and the line the model reads back; `drawing` is null when nothing is drawn. */
-function readDrawing(args: string): {
-  drawing: { path: string; color: DrawColor } | null;
-  reply: string;
-} {
-  let path = "";
-  let color = "";
-  try {
-    const parsed: unknown = JSON.parse(args);
-    if (parsed && typeof parsed === "object") {
-      if ("path" in parsed) path = String(parsed.path ?? "").trim();
-      if ("color" in parsed) color = String(parsed.color ?? "").trim();
-    }
-  } catch {
-    // not JSON: it named neither, and is told so below
-  }
-  if (!Object.hasOwn(DRAW_COLORS, color))
-    return {
-      drawing: null,
-      reply: `Nothing was drawn: color is one of ${DRAW_COLOR_NAMES.join(", ")}.`,
-    };
-  if (!pathLength(parsePath(path)))
-    return {
-      drawing: null,
-      reply:
-        "Nothing was drawn: the path draws no line. Give an SVG path's d in a 100 × 100 box, such as M20 52 L40 72 L82 28.",
-    };
-  return { drawing: { path, color: color as DrawColor }, reply: "Drawn." };
-}
-
-/** The path `look_at` was asked about; empty when it named none. */
-function readPath(args: string): string {
-  try {
-    const parsed: unknown = JSON.parse(args);
-    if (parsed && typeof parsed === "object" && "path" in parsed)
-      return String(parsed.path ?? "").trim();
-  } catch {
-    // not JSON: it named no path, and is told so
-  }
-  return "";
-}
 
 /** What `emote` asked the face to show, and the line the model reads back; `word` is null when nothing is shown. */
 function readFaceWord(args: string): { word: string | null; reply: string } {

@@ -2,7 +2,6 @@
 
 import {
   AudioLines,
-  Brush,
   Camera,
   Captions,
   Check,
@@ -124,7 +123,6 @@ const TOOL_ICONS: Partial<Record<string, LucideIcon>> = {
   [TOOL_NAMES.sign_in_use]: KeyRound,
   [TOOL_NAMES.sign_in_keep]: KeyRound,
   [TOOL_NAMES.end_call]: PhoneOff,
-  [TOOL_NAMES.draw]: Brush,
   [TOOL_NAMES.look_at_shared]: ScanEye,
   [TOOL_NAMES.routine]: RoutineMark,
 };

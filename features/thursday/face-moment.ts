@@ -1,25 +1,17 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import type { DrawColor } from "./ascii.const";
 import type { HereScene } from "./components/here-globe";
 
 /**
  * What stands over her face for a few seconds on a call, drawn in her own glyphs: the globe the
- * day's first call opens with (here-globe), a picture handed to her (seeing), or one she draws
- * (her-drawing). One at a time: one that comes while another is up is not drawn, as only the
- * first of several pictures is. While one is up no word goes on her face (use-thursday): `emote`
- * and `draw` are told so and the page's own words are let go, so none is drawn under it or cut
- * short by it. It plays only while the page is looked at: one left behind would come back
- * minutes later, over the conversation.
+ * day's first call opens with (here-globe). While it is up no word goes on her face
+ * (use-thursday): `emote` is told so and the page's own words are let go, so none is drawn under
+ * it or cut short by it. It plays only while the page is looked at: one left behind would come
+ * back minutes later, over the conversation.
  */
 
-export type Moment =
-  | { kind: "here"; scene: HereScene }
-  /** `src` is where the page reads the picture (the file route). */
-  | { kind: "see"; src: string }
-  /** `path` is an SVG path in a 100 × 100 box (svg-path), drawn in her emoji of `color`. */
-  | { kind: "draw"; path: string; color: DrawColor };
+export type Moment = { kind: "here"; scene: HereScene };
 
 /**
  * Where one has got to, for the page around it: `covering` from its first frame, as it spreads

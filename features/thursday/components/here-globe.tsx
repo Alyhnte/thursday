@@ -170,29 +170,29 @@ const WEATHER: Record<
  */
 const AT = {
   /** the world spreads through her from the middle out */
-  cover: [0.1, 1.0],
+  cover: [0.075, 0.75],
   /** her face may still be on screen a frame after it is told to go: it is wiped this long more */
   grace: 0.3,
   /** and she grows a little, as a globe */
-  grow: [0.2, 1.8],
+  grow: [0.15, 1.35],
   /** turning fast, then gliding to a stop over them */
-  spin: [0.2, 3.4],
+  spin: [0.15, 2.55],
   /** down until their country fills the frame */
-  dive: [3.0, 5.2],
+  dive: [2.25, 3.9],
   /** past her circle into a field */
-  open: [3.0, 3.8],
+  open: [2.25, 2.85],
   /** everything but their country falls away */
-  only: [3.3, 4.8],
+  only: [2.475, 3.6],
   /** by night their land goes dark, cell by cell */
-  dark: [4.4, 5.4],
-  pin: [5.1, 5.5],
-  ripple: [5.1, 7.3],
+  dark: [3.3, 4.05],
+  pin: [3.825, 4.125],
+  ripple: [3.825, 5.475],
   /** the sun or the moon comes out */
-  orb: [5.8, 6.6],
+  orb: [4.35, 4.95],
   /** the weather, the last thing in */
-  weather: [6.4, 7.6],
+  weather: [4.8, 5.7],
   /** from going to gone */
-  leave: 1.4,
+  leave: 1.05,
 } as const;
 
 /** Hashes a cell's held key (a hash itself) with a salt, through her own integer hash. */
@@ -580,7 +580,7 @@ class Globe {
     f.t = t;
     f.cover = ss(AT.cover[0], AT.cover[1], tt);
     f.back = ss(backAt, backAt + AT.leave, tt);
-    const stay = 1 - ss(backAt - 0.2, backAt + 0.4, tt);
+    const stay = 1 - ss(backAt - 0.15, backAt + 0.3, tt);
     // she turns into the globe and spins to them
     const grown =
       REST_R + REST_R * 0.32 * backOut(ss(AT.grow[0], AT.grow[1], tt));
@@ -605,10 +605,10 @@ class Globe {
     f.pinA = ss(AT.pin[0], AT.pin[1], tt) * stay;
     f.ripple =
       tt > AT.ripple[0] && tt < AT.ripple[1]
-        ? ((tt - AT.ripple[0]) % 1.1) / 1.1
+        ? ((tt - AT.ripple[0]) % 0.825) / 0.825
         : -1;
     f.orbA = ss(AT.orb[0], AT.orb[1], tt) * stay;
-    f.orbGrow = backOut(ss(AT.orb[0], AT.orb[0] + 1.2, tt)) * stay;
+    f.orbGrow = backOut(ss(AT.orb[0], AT.orb[0] + 0.9, tt)) * stay;
     f.wAmt = ss(AT.weather[0], AT.weather[1], tt) * stay;
     // how dark it is there now: day, dusk, night
     f.night = ss(0.06, -0.1, Math.sin(s.sky.alt));
@@ -1182,7 +1182,7 @@ class Globe {
     const which = this.letters ? 1 : 0;
     ctx.fillStyle = look.ink;
     if (f.pinA > 0 && f.pinSeen) {
-      const size = g.p * 3 * (1 + 0.3 * bump(f.tt, AT.pin[0] + 0.2, 0.2));
+      const size = g.p * 3 * (1 + 0.3 * bump(f.tt, AT.pin[0] + 0.15, 0.15));
       ctx.globalAlpha = this.letters ? f.pinA * ALPHA_TOP : f.pinA;
       ctx.font = GLYPH_FONT(Math.round(this.letters ? size * 0.8 : size));
       ctx.fillText(

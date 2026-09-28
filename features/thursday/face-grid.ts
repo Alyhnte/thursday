@@ -4,8 +4,8 @@ import { fbm, vnoise } from "./field";
 
 /**
  * Her grid carried out to a field wider than her canvas, for what stands over her face
- * (face-moment): the globe (here-globe), a picture (seeing) and her drawing (her-drawing) are
- * drawn cell for cell where her own glyphs are, so they meet her without a seam.
+ * (face-moment): the globe (here-globe) is drawn cell for cell where her own glyphs are, so it
+ * meets her without a seam.
  */
 
 /**
@@ -114,7 +114,7 @@ export function buildGrid(width: number, height: number): Grid {
 
 /**
  * A small living cluster of glyphs round (cx, cy), `R` in radius, the way her body is: how much
- * of one a cell is, 0 to 1. The globe's sun and moon are drawn so, and so is her pen (her-drawing).
+ * of one a cell is, 0 to 1. The globe's sun and moon are drawn so.
  */
 export function bodyAt(
   g: Grid,

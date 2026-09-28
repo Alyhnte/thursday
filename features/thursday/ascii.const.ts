@@ -30,49 +30,81 @@ export const LEVELS = RAMP.length;
 /** Opacity of her letters at the brightest level: alpha 1 on white is solid black dots. */
 export const ALPHA_TOP = 0.82;
 
-/**
- * Her emoji by colour, in the order her face runs through them: the pool is these bands one
- * after another, and a stride past one band changes the colour (thursday-mark).
- */
-const EMOJI_BANDS = {
-  red: ["🍎", "🌹", "🍓", "❤️", "🎈", "🧨", "🔴"],
-  orange: ["🍊", "🔥", "🦊", "🏀", "🧡", "🍑"],
-  yellow: ["⭐", "🍋", "🌻", "💛", "🐥", "🌟", "🍌"],
-  green: ["🍀", "🌿", "🐸", "🥝", "💚", "🌵", "🥑"],
-  blue: ["💧", "🌊", "🫐", "🐳", "💙", "🔵", "🧊"],
-  purple: ["🍇", "💜", "🔮", "🟣", "🪻", "🍆"],
-  pink: ["🌸", "🌷", "💗", "🦩", "🩷"],
-  brown: ["🍫", "🐻", "🌰", "🥐"],
-  monochrome: ["🤍", "☁️", "🖤", "⚪", "⚫", "🦢"],
-  multicolor: ["🌈", "🦜", "🎨", "🪩", "🦄", "✨", "🍬", "🎡"],
-};
-
 /** Her emoji, spread across the colour wheel. */
-export const EMOJI_POOL = Object.values(EMOJI_BANDS).flat();
-
-/**
- * What she draws in (`draw`): one word picks her emoji of that colour, her bands as they are,
- * with the grey band split into white and black and the many-coloured one as a rainbow.
- */
-export const DRAW_COLORS = {
-  red: EMOJI_BANDS.red,
-  orange: EMOJI_BANDS.orange,
-  yellow: EMOJI_BANDS.yellow,
-  green: EMOJI_BANDS.green,
-  blue: EMOJI_BANDS.blue,
-  purple: EMOJI_BANDS.purple,
-  pink: EMOJI_BANDS.pink,
-  brown: EMOJI_BANDS.brown,
-  white: EMOJI_BANDS.monochrome.filter((one) => !"🖤⚫".includes(one)),
-  black: EMOJI_BANDS.monochrome.filter((one) => "🖤⚫".includes(one)),
-  rainbow: EMOJI_BANDS.multicolor,
-};
-
-export type DrawColor = keyof typeof DRAW_COLORS;
-
-export const DRAW_COLOR_NAMES = Object.keys(DRAW_COLORS) as [
-  DrawColor,
-  ...DrawColor[],
+export const EMOJI_POOL = [
+  // red
+  "🍎",
+  "🌹",
+  "🍓",
+  "❤️",
+  "🎈",
+  "🧨",
+  "🔴",
+  // orange
+  "🍊",
+  "🔥",
+  "🦊",
+  "🏀",
+  "🧡",
+  "🍑",
+  // yellow
+  "⭐",
+  "🍋",
+  "🌻",
+  "💛",
+  "🐥",
+  "🌟",
+  "🍌",
+  // green
+  "🍀",
+  "🌿",
+  "🐸",
+  "🥝",
+  "💚",
+  "🌵",
+  "🥑",
+  // blue
+  "💧",
+  "🌊",
+  "🫐",
+  "🐳",
+  "💙",
+  "🔵",
+  "🧊",
+  // purple
+  "🍇",
+  "💜",
+  "🔮",
+  "🟣",
+  "🪻",
+  "🍆",
+  // pink
+  "🌸",
+  "🌷",
+  "💗",
+  "🦩",
+  "🩷",
+  // brown
+  "🍫",
+  "🐻",
+  "🌰",
+  "🥐",
+  // monochrome
+  "🤍",
+  "☁️",
+  "🖤",
+  "⚪",
+  "⚫",
+  "🦢",
+  // multicolor
+  "🌈",
+  "🦜",
+  "🎨",
+  "🪩",
+  "🦄",
+  "✨",
+  "🍬",
+  "🎡",
 ];
 
 /**
