@@ -10,7 +10,8 @@ import { LiveFragmentSchema } from "@/lib/live/live.schema";
 /**
  * A word on the face: one `emote` put there, or the screen's own while she rings. `at` tells a
  * second showing of the same word from the first; `hold` is how long it stays lit, in seconds,
- * when that is not the face's own (ascii-orb WORD_HOLD).
+ * when that is not the face's own (ascii-orb WORD_HOLD). Infinity holds it until another word,
+ * or none, is handed in its place.
  */
 export type FaceWord = { text: string; at: number; hold?: number };
 
@@ -38,6 +39,8 @@ export const WhereSchema = z.object({
       /** `07:28`, the place's own time. */
       sunrise: z.string().regex(/^\d{2}:\d{2}$/),
       sunset: z.string().regex(/^\d{2}:\d{2}$/),
+      /** km/h, now; null where the forecast has none. What draws a storm on the globe (here-sky). */
+      gusts: z.number().min(0).nullish(),
     })
     .nullable(),
 });
@@ -51,6 +54,12 @@ export type CallHandshake = {
   /** Trusted instructions sent after session.started, so she speaks first. */
   opening: string;
   /**
+   * The opening greets them with the weather, because the page asked to show where they are
+   * as the call opens (here-globe): the page draws it only then, so what she says and what
+   * is on the screen are the same.
+   */
+  here: boolean;
+  /**
    * The jobs open as the call started (ai/prompts/call-standing), queued for the backend
    * alone once the line is up. Null when nothing has been handed over yet.
    */
@@ -62,6 +71,12 @@ export type CallHandshake = {
    * manifest for tools the route no longer builds.
    */
   opened: { webSearch: boolean; readSkills: boolean };
+  /**
+   * Where the page follows a call on the GPT subscription's line (thursday.plan): that line
+   * speaks through the server, which runs her backend for the voice. Null on a key's call,
+   * whose events ride the media connection itself.
+   */
+  relay: string | null;
 };
 
 /**

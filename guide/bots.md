@@ -3,9 +3,9 @@
 ## Who the bots are
 
 A bot is a text model with a name, one sentence about what it is for, and a face. That sentence is
-how a job finds its bot. The roster is **Settings › Bots**. **New bot** makes one — it needs a name,
-a description and a model, and the name cannot be changed later. A bot's page holds what it
-**Runs on**, its **Effort**, when it **Compacts at**, its **Tools**, its own **Prompt**, its recent
+how a job finds its bot. The roster is **Settings › Bots**. **New bot** makes one — it needs a name
+and a description, and the name cannot be changed later; left without a model it runs on the app
+default one. A bot's page holds what it **Runs on**, its **Effort**, when it **Compacts at**, its **Tools**, its own **Prompt**, its recent
 threads and its own memory. A bot can be switched off without being deleted. Deleting one keeps what
 it finished (**Settings › Files** still shows it under that bot's name), but its memory and the
 skills it installed go with it. **Ready-made bots**, beside New bot, adds the ready-made ones; the
@@ -84,14 +84,15 @@ Enter sends it, and the room opens on the thread it started.
 An open thread's own message box takes files the same way. Once more than one bot is in a thread,
 the box says who it is addressed to and can be changed. Only the bot the job went to brings other
 bots in, asks the user and answers them; a bot it pulled in answers back to that bot, and anything
-it needs goes through it. A part that needs another bot's result waits until that result is in
+it needs goes through it. A thread holds at most eight bots, the one the job went to included, and
+all of them can work at the same time. A part that needs another bot's result waits until that result is in
 and the bot the job went to has read it, then goes out with it: if the result was a question back,
 that bot settles it first. Bots do not report progress to the call or a phone: the corner shows who
 is working, and what reaches the user is a question or the ending.
 
 A picture a bot made or was given can be changed rather than drawn again: ask for what should be
-different. This needs an image model in **Settings › Models**; if the one picked cannot work from a
-picture, the bot says so.
+different. This needs an image model in **Settings › Models**, or the GPT Subscription signed in on
+a paid plan; if the one picked cannot work from a picture, the bot says so.
 
 ## Telling a running bot something
 

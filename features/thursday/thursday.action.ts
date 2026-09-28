@@ -3,25 +3,40 @@
 import { asSchema } from "ai";
 import z from "zod";
 import { reclaim } from "@/database/db";
-import { LIVE_PROVIDER } from "@/features/ai/live.schema";
+import { readChatGptPlan } from "@/features/ai/chatgpt";
+import {
+  LIVE_LINES,
+  LIVE_PROVIDER,
+  liveLineOf,
+} from "@/features/ai/live.schema";
 import { loadTools } from "@/features/ai/load-tools";
-import { textModelRefSchema } from "@/features/ai/model.schema";
+import {
+  planName,
+  TEXT_MODEL_PROVIDERS,
+  textModelRefSchema,
+} from "@/features/ai/model.schema";
 import { loadCallStanding } from "@/features/ai/prompts/call-standing";
 import { loadLivePrompt } from "@/features/ai/prompts/live.prompt";
 import { loadThursdayPrompt } from "@/features/ai/prompts/thursday.prompt";
 import { removeThread } from "@/features/bot/bot.runner";
 import { listAllThreadIds } from "@/features/bot/thread.query";
 import { EXA_API_KEY } from "@/features/config/config.const";
-import { readConfig } from "@/features/config/config.query";
+import {
+  hasConfig,
+  missingKeyWords,
+  readConfig,
+} from "@/features/config/config.query";
 import { deleteAllNotes } from "@/features/memory/memory.query";
 import {
   LIVE_MODEL,
+  LIVE_PLAN_MODEL,
   LiveCloseSchema,
   type ToolManifest,
 } from "@/lib/live/live.schema";
 import { acceptedReasoning, createLiveCall } from "@/lib/live/live.server";
 import { serverAction } from "@/lib/protocol/server-action";
 import { publicError } from "@/lib/public-error";
+import { openPlanLine, planRelayOf } from "./thursday.plan";
 import {
   changeLiveSettings,
   deleteCall,
@@ -50,8 +65,8 @@ const SDP_MAX_LENGTH = 65_536;
 
 /**
  * The same tool set /api/thursday/tool-call executes. Tools without `execute`
- * (`end_call`, `emote`, `look_at_screen`) are included: the model must see them and the page
- * intercepts them.
+ * (`end_call`, `emote`, `draw`, `look_at_shared`, `look_at`) are included: the model must see
+ * them and the page intercepts them.
  */
 async function loadToolManifest(
   opened: CallHandshake["opened"],
@@ -78,25 +93,54 @@ async function loadToolManifest(
  * and the account key stay here; the browser gets the SDP answer, the call row
  * and what it needs to draw and save the call. `calledBack` is the page placing it
  * for waiting work rather than the user, which changes what she opens with. `where` is where
- * the page found the user and the weather there (where.ts), for both prompts.
+ * the page found the user and the weather there (where.ts), for both prompts. `here` asks for
+ * the opening that greets them with the weather, while the page shows it (here-globe).
  */
 export const openCallAction = serverAction(
   async (
     sdp: unknown,
     calledBack?: unknown,
     where?: unknown,
+    here?: unknown,
   ): Promise<CallHandshake> => {
     const thursday = await readLiveSettings();
     const offer = z.string().min(1).max(SDP_MAX_LENGTH).parse(sdp);
-    const apiKey = await readConfig(LIVE_PROVIDER.apiKeyName);
-    if (!apiKey) {
+    const keys = new Map(
+      await Promise.all(
+        LIVE_LINES.map(async (line) => {
+          const key = TEXT_MODEL_PROVIDERS[line].apiKeyName;
+          return [key, await hasConfig(key)] as const;
+        }),
+      ),
+    );
+    const signedIn = keys.get(TEXT_MODEL_PROVIDERS.chatgpt.apiKeyName) ?? false;
+    const plan = signedIn ? await readChatGptPlan() : null;
+    const line = liveLineOf(
+      thursday.runsOn,
+      (key) => keys.get(key) ?? false,
+      plan,
+    );
+    if (!line) {
+      // Signed in on a plan without calls: said as that, with the way that opens one
+      if (signedIn)
+        publicError(
+          `Your ${TEXT_MODEL_PROVIDERS.chatgpt.label} is on the ${planName(plan)} plan, which has no spoken calls. Add an ${LIVE_PROVIDER.label} key in Settings › API keys, or sign in with a paid plan. Calls in writing and bots run on it as they are.`,
+        );
       publicError(
-        `No ${LIVE_PROVIDER.label} key — add one in Settings › API keys.`,
+        // Neither line can open it; one saved but no longer readable is said as that
+        await missingKeyWords(
+          TEXT_MODEL_PROVIDERS.chatgpt.apiKeyName,
+          await missingKeyWords(
+            LIVE_PROVIDER.apiKeyName,
+            `A spoken call needs a ${TEXT_MODEL_PROVIDERS.chatgpt.label} sign-in or an ${LIVE_PROVIDER.label} key — Settings › API keys.`,
+          ),
+        ),
       );
     }
 
     const rang = z.boolean().default(false).parse(calledBack);
-    const here = readWhere(where);
+    const found = readWhere(where);
+    const showing = z.boolean().default(false).parse(here);
     // What the manifest is built from, sent back with the handshake so a tool called
     // later is looked up in this same set (thursday.schema `opened`)
     const opened = {
@@ -105,28 +149,64 @@ export const openCallAction = serverAction(
     };
 
     // Assembled per call, never cached: both prompts read what earlier calls stored.
-    const [voice, backend, tools, reasoning, standing, exaKey] =
-      await Promise.all([
-        loadLivePrompt({
-          stylePrompt: thursday.stylePrompt,
-          persona: thursday.persona,
-          calledBack: rang,
-          where: here,
-        }),
-        loadThursdayPrompt({
-          backendPrompt: thursday.backendPrompt,
-          readSkills: thursday.readSkills,
-          where: here,
-        }),
-        loadToolManifest(opened),
-        acceptedReasoning({
-          apiKey,
-          model: thursday.backendModel,
-          effort: thursday.reasoningEffort,
-        }),
-        loadCallStanding(),
-        readConfig(EXA_API_KEY),
-      ]);
+    const [voice, backend, standing] = await Promise.all([
+      loadLivePrompt({
+        stylePrompt: thursday.stylePrompt,
+        persona: thursday.persona,
+        calledBack: rang,
+        where: found,
+        here: showing,
+        plan: line === "chatgpt",
+      }),
+      loadThursdayPrompt({
+        backendPrompt: thursday.backendPrompt,
+        readSkills: thursday.readSkills,
+        where: found,
+      }),
+      loadCallStanding(),
+    ]);
+
+    // On the plan the app runs her backend itself, and the page follows the call through it
+    if (line === "chatgpt") {
+      const plan = await openPlanLine({
+        sdp: offer,
+        voice: { instructions: voice.text, voice: thursday.planVoice },
+        settings: thursday,
+        backendPrompt: backend,
+        opened,
+        insertRow: () =>
+          insertCall({
+            provider: line,
+            model: LIVE_PLAN_MODEL,
+            backendModel: thursday.backendModel,
+          }),
+      });
+      return {
+        callId: plan.callId,
+        sdp: plan.sdp,
+        opening: voice.opening,
+        here: voice.here,
+        standing,
+        opened,
+        relay: planRelayOf(plan.callId),
+      };
+    }
+
+    const apiKey = await readConfig(LIVE_PROVIDER.apiKeyName);
+    if (!apiKey) {
+      publicError(
+        `No ${LIVE_PROVIDER.label} key — add one in Settings › API keys.`,
+      );
+    }
+    const [tools, reasoning, exaKey] = await Promise.all([
+      loadToolManifest(opened),
+      acceptedReasoning({
+        apiKey,
+        model: thursday.backendModel,
+        effort: thursday.reasoningEffort,
+      }),
+      readConfig(EXA_API_KEY),
+    ]);
 
     // Connect before insert: a refused key or model must not leave an open row nobody can close.
     // Free-text model ids are not checked here; the provider refuses them and says why.
@@ -154,8 +234,10 @@ export const openCallAction = serverAction(
       callId,
       sdp: connection.transport.sdp,
       opening: voice.opening,
+      here: voice.here,
       standing,
       opened,
+      relay: null,
     };
   },
 );

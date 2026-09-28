@@ -1,5 +1,5 @@
 ---
-checked: 2026-09-26
+checked: 2026-09-28
 paths:
   - "features/ai/{model,model.schema,chatgpt,openrouter}.ts"
   - "features/ai/components/**"
@@ -18,7 +18,7 @@ MCP servers for them to use.
 ## Start here
 - `features/ai/model.schema.ts` — text and media providers, their shelves with context and effort steps.
 - `features/ai/model.ts` — a model built from a ref and a key; the default and media picks; the catalogs (`readCatalog`).
-- `features/ai/chatgpt.ts` — GPT Subscription: sign-in, renewal, plan usage, the Codex request shape.
+- `features/ai/chatgpt.ts` — GPT Subscription: sign-in, renewal, plan usage, the Codex request shape, its pictures, a call on it.
 - `features/ai/openrouter.ts` — OpenRouter's list read into the gateway's words, and its key's credit.
 - `features/config/config.const.ts` — every key and app-wide model pick, grouped as Settings draws them.
 - `features/connectors/mcp.manager.ts` — MCP sessions, their OAuth, reconnects.
@@ -28,12 +28,15 @@ MCP servers for them to use.
 
 ## How it fits
 Keys, the ChatGPT sign-in and the app-wide model picks are rows of the `config` table, read through
-`readConfig`, where `.env` wins. The provider records in `model.schema.ts` are the source: Settings'
+`readConfig`, where the environment wins (`/api/config` marks it `env`, and the actions refuse
+to change it); the keys and the sign-in are sealed there
+(`lib/secret.ts`), the picks are not. The provider records in `model.schema.ts` are the source: Settings'
 key rows, the save's allow list, the picker's providers and the default-model fallback all derive
-from them. Bots, a call in writing and a memory edit get their model from `model.ts`; a spoken call,
-its backend included, opens on the OpenAI key through `lib/live` instead. Only a bot reaches
-connected tools: its pinned ones as tools of their own, the rest through `tool_search` and
-`tool_call` (`mcp.tool.ts`).
+from them. Bots, a call in writing and a memory edit get their model from `model.ts`; a spoken call
+opens through `lib/live` instead: on the OpenAI key with its backend there, or on the GPT
+Subscription, whose backend `thursday.plan` gets from `model.ts`. Only a bot reaches connected
+tools: its pinned ones as tools of their own, the rest through `tool_search` and `tool_call`
+(`mcp.tool.ts`).
 
 ## What breaks
 - A subscription sign-in other than ChatGPT's gets the user's own account closed: Claude's terms
@@ -42,7 +45,9 @@ connected tools: its pinned ones as tools of their own, the rest through `tool_s
 - A default for a feature that costs per use (a picture, a film, speech, a transcript, a web
   search) spends a key added for one thing on a model nobody chose: such a feature runs on what the
   user picked for it or on the run's own model, and is otherwise absent. Only the model a bot or a
-  call thinks with is chosen for the user (`resolveDefaultModel`, `runsOnOf` in `thursday.text.ts`).
+  call thinks with is chosen for the user (`resolveDefaultModel`, `runsOnOf` in `thursday.text.ts`,
+  `liveLineOf` in `live.schema.ts`), and pictures on a paid GPT Subscription, which bills no key
+  (`planMediaOf` in `model.schema.ts`).
 - A text provider added to `model.schema.ts` alone saves fine, then fails on first use or quietly
   goes without search, `look_at` or its prompt cache: it also takes a case in `buildTextModel`
   (whose `default` refuses it at run time, not at compile time), its native search in
@@ -55,8 +60,9 @@ connected tools: its pinned ones as tools of their own, the rest through `tool_s
   every command a bot runs once it is in `.env`.
 
 ## Check
-No suite is this area's own: `pnpm test:bot` and `pnpm test:reach` fake `getTextModel`, and
-`pnpm test:live` fakes `connected.ts`, so run them when those exports change. To see it, serve a
+`pnpm test:secrets` covers the keys and connector credentials kept sealed, and one that can no
+longer be opened; `pnpm test:bot` and `pnpm test:reach` fake `getTextModel`, and `pnpm test:live`
+fakes `connected.ts`, so run them when those exports change. To see it, serve a
 scratch copy (AGENTS.md › Running the app) and open Settings › API keys, Models and Connectors: a
 model field browses a catalog provider's shelf without a key, and a preset that needs no account
 connects.

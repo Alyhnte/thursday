@@ -6,7 +6,7 @@ import {
   type LiveClose,
   type LiveFragment,
 } from "./live.schema";
-import { createWebRtcTransport } from "./live.transport";
+import { createWebRtcTransport, type Negotiated } from "./live.transport";
 
 /** A revisable display group, independent of audio playback and backend responses. */
 export type LiveTurn = {
@@ -32,6 +32,7 @@ export type LiveToolCall = {
  * and visual context").
  */
 export type LiveToolResult = { output: string; image?: string };
+
 /**
  * One reasoning summary part of the backend, whole. A summary is the backend's
  * own account of its thinking, not its reasoning tokens, and comes only while a
@@ -73,8 +74,11 @@ export type LiveAudio = {
   levels?(): { output: number };
 };
 type LiveOptions = {
-  /** Exchanges the offer on the server and returns the SDP answer. */
-  initialize(sdp: string): Promise<string>;
+  /**
+   * Exchanges the offer on the server and returns the SDP answer; on the GPT subscription's line,
+   * with where the server relays the call's events (live.transport).
+   */
+  initialize(sdp: string): Promise<Negotiated>;
   audio: LiveAudio;
   on: {
     runTool(call: LiveToolCall): Promise<string | LiveToolResult>;
@@ -448,7 +452,7 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
   /**
    * A picture for the backend, as the user's image. One the connection will not carry is
    * said to the backend instead, which was told a picture follows and without a word
-   * described a screen it never saw — and to the user, whose screen went unseen.
+   * described what it never saw — and to the user, whose screen or camera went unseen.
    */
   const sendImage = (image: string) => {
     try {
@@ -473,12 +477,12 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
           content: [
             {
               type: "input_text",
-              text: `The picture of their screen did not go through, so nothing on it was seen: ${reason}`,
+              text: `The picture did not go through, so nothing in it was seen: ${reason}`,
             },
           ],
         },
       });
-      on.warn(`The picture of your screen did not go through: ${reason}`);
+      on.warn(`A picture for her did not go through: ${reason}`);
     }
   };
   const handle = (event: LiveEvent) => {
@@ -734,7 +738,8 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
     audio,
     negotiate: async (sdp) => {
       const answer = await initialize(sdp);
-      if (!answer) throw new Error("OpenAI Live returned no SDP answer.");
+      if (!(typeof answer === "string" ? answer : answer.sdp))
+        throw new Error("OpenAI Live returned no SDP answer.");
       return answer;
     },
     on: { event: handle, dropped: fail },
@@ -805,6 +810,8 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
      * she speaks; only what the caller says meanwhile goes unheard.
      */
     holdInput(ms: number) {
+      // The plan's line takes no mute (live.plan): the room is heard from the start there
+      if (transport.relayed()) return;
       if (!started || closed || closing || held || ms <= 0) return;
       held = { mute: crypto.randomUUID(), unmute: null };
       transport.send({ type: "session.input_audio.mute", event_id: held.mute });

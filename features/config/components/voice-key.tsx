@@ -1,14 +1,24 @@
 "use client";
 
 import { ArrowUpRight, Check, X } from "lucide-react";
-import { type Ref, useImperativeHandle, useState } from "react";
+import { type ReactNode, type Ref, useImperativeHandle, useState } from "react";
 import { queryKey } from "@/app/api/query-key";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { KEY_MIN } from "@/config";
+import { ChatGptSignIn } from "@/features/ai/components/chatgpt-sign-in";
 import { ProviderIcon } from "@/features/ai/components/provider-icon";
-import { LIVE_PROVIDER } from "@/features/ai/live.schema";
 import {
+  LIVE_PROVIDER,
+  type LiveLine,
+  type LiveSettings,
+  liveLineOf,
+} from "@/features/ai/live.schema";
+import {
+  type AiProvider,
+  planCallsOf,
+  planName,
+  type SubscriptionUsage,
   TEXT_MODEL_PROVIDERS,
   type TextModelProviderId,
 } from "@/features/ai/model.schema";
@@ -16,7 +26,12 @@ import { useServerAction } from "@/lib/protocol/use-server-action";
 import { revalidate, useServerRoute } from "@/lib/protocol/use-server-route";
 import { cn, WAITING_INK } from "@/lib/utils";
 import { setConfigAction } from "../config.action";
-import { type ConfigStatus, isConfigSet } from "../config.const";
+import {
+  type ConfigStatus,
+  isConfigSet,
+  isConfigUnreadable,
+  lostWords,
+} from "../config.const";
 
 /**
  * Lets the parent save unsaved fields before navigating away. A ref rather
@@ -48,6 +63,220 @@ export function GetKeyLink() {
         {at.replace(/^https:\/\//, "")}
       </span>
     </a>
+  );
+}
+
+/**
+ * What her voice stands on, as the screen knows it: whether the GPT Subscription is signed in
+ * and on which plan, whether that plan has spoken calls (model.schema planCallsOf), and the line
+ * a call would open on (live.schema liveLineOf). `known` is false until both the keys and, when
+ * signed in, the plan have answered, so a screen keeps its own answer meanwhile.
+ */
+export function useVoiceLine(
+  /** The line picked in Settings › Thursday, which a call opens on while it is set up. */
+  picked: LiveLine | null = null,
+): {
+  known: boolean;
+  signedIn: boolean;
+  /** The plan as the token names it; null when it does not say or nobody is signed in. */
+  plan: string | null;
+  planCalls: boolean;
+  line: LiveLine | null;
+  /**
+   * Whether a key counts toward a call, for the voice group's "ready" (config.const
+   * groupSatisfied): the sign-in only on a plan with calls, so Free does not read as ready.
+   */
+  countsForCall: (key: string) => boolean;
+} {
+  const { data: config } = useServerRoute<ConfigStatus[]>(queryKey.config);
+  const signedIn = isConfigSet(config, TEXT_MODEL_PROVIDERS.chatgpt.apiKeyName);
+  const { data: providers } = useServerRoute<AiProvider[]>(
+    signedIn ? queryKey.llmModel : null,
+  );
+  // The plan as it is now, which its badge shows (config-setting PlanBadge): reading it also
+  // puts it on the sign-in the server gates calls by (ai/chatgpt keepPlan)
+  const { data: usage } = useServerRoute<SubscriptionUsage | null>(
+    signedIn ? queryKey.subscriptionUsage : null,
+  );
+  const plan =
+    (usage && !("refused" in usage) ? usage.plan : null) ??
+    providers?.find((provider) => provider.id === "chatgpt")?.plan ??
+    null;
+  const known = config !== undefined && (!signedIn || providers !== undefined);
+  const planCalls = planCallsOf(signedIn ? { plan } : null);
+  return {
+    known,
+    signedIn,
+    plan,
+    planCalls,
+    line: known
+      ? liveLineOf(picked, (key) => isConfigSet(config, key), plan)
+      : null,
+    countsForCall: (key) =>
+      isConfigSet(config, key) &&
+      (key !== TEXT_MODEL_PROVIDERS.chatgpt.apiKeyName || planCalls),
+  };
+}
+
+/**
+ * The two ways a call gets her voice, side by side: the GPT Subscription first, as the one that
+ * bills nothing per minute and opens bots and pictures too, then an OpenAI key, whose field opens
+ * under both when asked for. The first run and the call screen ask with this while neither is
+ * set, so both read the same; which one a call then opens on is live.schema `liveLineOf`. The
+ * first run keeps both rows once one is set, so a key given before still leaves the plan to pick.
+ */
+export function CallLines({
+  onSaved,
+}: {
+  /** The key was saved here; a sign-in lands on the server and reaches the screen as `config`. */
+  onSaved?: () => void;
+}) {
+  const { data: config } = useServerRoute<ConfigStatus[]>(queryKey.config);
+  const [keyOpen, setKeyOpen] = useState(
+    // a key saved before and no longer readable is asked for again where it was given
+    () => isConfigUnreadable(config, LIVE_PROVIDER.apiKeyName),
+  );
+  const planLost = isConfigUnreadable(
+    config,
+    TEXT_MODEL_PROVIDERS.chatgpt.apiKeyName,
+  );
+  const keySet = isConfigSet(config, LIVE_PROVIDER.apiKeyName);
+  // The line a call opens on, the one picked in Settings › Thursday included (use-thursday)
+  const { data: liveSettings } = useServerRoute<LiveSettings>(
+    queryKey.thursdaySettings,
+  );
+  // Signed in on a plan without spoken calls: the card says so, and signs in another account
+  const voice = useVoiceLine(liveSettings?.runsOn ?? null);
+  const noCalls = voice.signedIn && !voice.planCalls;
+  // Known first: a plan not read yet counts as one with calls (planCallsOf), and Free would
+  // show the check before it turns into Sign in again
+  const planSet = voice.known && voice.signedIn && voice.planCalls && !planLost;
+  return (
+    // Left-aligned wherever it stands: the call screen centres what is under her face
+    <div className="flex w-full flex-col gap-2 text-left">
+      {/* Rows as Settings › API keys draws an account, the plan first: in the first run's
+          narrow column two cards side by side left each button no room (09-28) */}
+      <LineRow
+        provider="chatgpt"
+        title={TEXT_MODEL_PROVIDERS.chatgpt.label}
+        // Recommended by its place and its button, not a tag: the name has no room beside one
+        tag={voice.signedIn ? (planName(voice.plan) ?? undefined) : undefined}
+        about={
+          planLost
+            ? "The sign-in saved before can't be unlocked any more."
+            : noCalls
+              ? "Bots and writing run on this plan; spoken calls don't."
+              : // `line` is null until the plan's line is known: then it says neither
+                planSet && voice.line === "chatgpt"
+                ? "Calls and bots run on your plan."
+                : planSet && voice.line === "openai"
+                  ? "Bots run on your plan; calls run on the key."
+                  : "Your ChatGPT plan. No key, no bill by the minute."
+        }
+        warn={planLost || noCalls}
+      >
+        {planSet ? (
+          <LineSet>Signed in</LineSet>
+        ) : (
+          <ChatGptSignIn
+            variant={noCalls ? "outline" : "brand"}
+            size="sm"
+            // Both rows' buttons round like the brand one (button.tsx), whichever of them is brand
+            className="w-full rounded-full"
+            label={planLost || noCalls ? "Sign in again" : "Sign in"}
+          />
+        )}
+      </LineRow>
+      <LineRow
+        provider="openai"
+        title="OpenAI API key"
+        about={
+          !keySet || !voice.known
+            ? "Billed by the minute of call, apart from ChatGPT."
+            : voice.line === "chatgpt"
+              ? "Calls run on your plan; switch in Settings › Thursday."
+              : "Calls run on it now, billed by the minute."
+        }
+      >
+        {keySet ? (
+          <LineSet>Saved</LineSet>
+        ) : (
+          <Button
+            size="sm"
+            variant={noCalls ? "brand" : "outline"}
+            aria-expanded={keyOpen}
+            onClick={() => setKeyOpen((open) => !open)}
+            className="w-full rounded-full"
+          >
+            Paste a key
+          </Button>
+        )}
+      </LineRow>
+      {keyOpen && !keySet && (
+        <div className="flex animate-in flex-col gap-2.5 pt-1 fade-in slide-in-from-top-1 duration-200">
+          <VoiceKeys dense plain autoFocus onSaved={onSaved} />
+          <GetKeyLink />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Where a row's button stands once its way is set: the intro's check, and what is done. */
+function LineSet({ children }: { children: string }) {
+  return (
+    <span className="flex h-7 items-center justify-center gap-1.5 text-[12.5px] text-muted-foreground">
+      <span className="grid size-4 shrink-0 animate-in place-items-center rounded-full bg-primary text-primary-foreground duration-300 zoom-in-50">
+        <Check className="size-2.5" />
+      </span>
+      {children}
+    </span>
+  );
+}
+
+/** One way to her voice: its mark, name and what it costs, and the one button that sets it up. */
+function LineRow({
+  provider,
+  title,
+  tag,
+  about,
+  warn = false,
+  children,
+}: {
+  provider: TextModelProviderId;
+  title: string;
+  tag?: string;
+  about: string;
+  /** What it says waits on the user: a sign-in lost, or a plan without spoken calls. */
+  warn?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex items-center gap-3 rounded-xl p-3 ring-1 ring-border ring-inset">
+      <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-muted/60">
+        <ProviderIcon provider={provider} className="size-4" />
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="flex items-center gap-2 text-[13px] leading-tight font-medium">
+          <span className="truncate">{title}</span>
+          {tag && (
+            <span className="shrink-0 rounded-full px-1.5 font-mono text-[9.5px] leading-4 font-normal text-muted-foreground ring-1 ring-border ring-inset">
+              {tag}
+            </span>
+          )}
+        </span>
+        <span
+          className={cn(
+            "text-[11.5px] leading-snug text-pretty",
+            warn ? WAITING_INK : "text-muted-foreground",
+          )}
+        >
+          {about}
+        </span>
+      </span>
+      {/* One width for both, so the two buttons stand in one column */}
+      <span className="w-28 shrink-0">{children}</span>
+    </div>
   );
 }
 
@@ -153,7 +382,7 @@ export function VoiceKeys({
         onSubmit={() => void commit(LIVE_PROVIDER)}
       />
 
-      {refused && (
+      {(refused || isConfigUnreadable(config, LIVE_PROVIDER.apiKeyName)) && (
         <p
           className={cn(
             "px-0.5 leading-5 break-words",
@@ -161,7 +390,9 @@ export function VoiceKeys({
             WAITING_INK,
           )}
         >
-          {refused}
+          {/* A key saved before that can no longer be opened is asked for again, saying why */}
+          {refused ??
+            lostWords("The OpenAI key saved before", "Paste it again.")}
         </p>
       )}
 

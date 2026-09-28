@@ -1,7 +1,9 @@
 import { tool } from "ai";
 import * as z from "zod";
+import { lookAtSpec } from "@/features/ai/tools/look.tool";
 import { TOOL_NAMES } from "@/features/ai/tools/tool-name";
 import {
+  DRAW_COLOR_NAMES,
   FACE_WORD_MARKS,
   FACE_WORD_MAX,
 } from "@/features/thursday/ascii.const";
@@ -41,24 +43,56 @@ const emoteTool = tool({
   inputSchema: emoteSpec.parameters,
 });
 
-const lookAtScreenSpec = {
-  description: `See the screen the user is sharing with you, as it is at this moment.
+const drawSpec = {
+  description:
+    "Draw a small picture on your face for a few seconds, as one line in one colour.",
+  parameters: z.object({
+    path: z
+      .string()
+      .describe(
+        "One SVG path, its d attribute, in a 100 × 100 box: M, L, H, V, C, S, Q, T, A and Z.",
+      ),
+    color: z
+      .enum(DRAW_COLOR_NAMES)
+      .describe("Which of your emoji it is drawn in."),
+  }),
+};
 
-The picture comes right after this result. When they are not sharing, the result says so.`,
+/** Deliberately has no `execute`: the page draws it. */
+const drawTool = tool({
+  description: drawSpec.description,
+  inputSchema: drawSpec.parameters,
+});
+
+const lookAtSharedSpec = {
+  description: `See what the user is showing you, their screen or their camera, as it is at this moment.
+
+The picture comes right after this result. When they are showing nothing, the result says so.`,
   parameters: z.object({}),
 };
 
-/** Deliberately has no `execute`: the page holds the shared screen and takes the picture. */
-const lookAtScreenTool = tool({
-  description: lookAtScreenSpec.description,
-  inputSchema: lookAtScreenSpec.parameters,
+/** Deliberately has no `execute`: the page holds what is shown and takes the picture. */
+const lookAtSharedTool = tool({
+  description: lookAtSharedSpec.description,
+  inputSchema: lookAtSharedSpec.parameters,
 });
 
-/** The tools that act on the call itself. */
+/**
+ * Deliberately has no `execute`: a spoken call's backend answers through the page, which fetches
+ * the picture and puts it in after this turn's results, as it does what is shown.
+ */
+const lookAtTool = tool({
+  description: lookAtSpec.description,
+  inputSchema: lookAtSpec.parameters,
+});
+
+/** The tools that act on the call itself, and the picture the page hands it. */
 export function callTools() {
   return {
     [TOOL_NAMES.end_call]: endCallTool,
     [TOOL_NAMES.emote]: emoteTool,
-    [TOOL_NAMES.look_at_screen]: lookAtScreenTool,
+    [TOOL_NAMES.draw]: drawTool,
+    [TOOL_NAMES.look_at_shared]: lookAtSharedTool,
+    [TOOL_NAMES.look_at]: lookAtTool,
   };
 }

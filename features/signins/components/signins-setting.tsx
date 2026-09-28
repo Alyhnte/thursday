@@ -35,7 +35,8 @@ import type { SignIn } from "../signins.schema";
 /**
  * The sign-ins the app keeps: the site, who it signs in as, the bots that may borrow it,
  * and the way to sign out. Nothing is added here — a sign-in comes to be when a bot needs
- * one and the user makes it in the window that bot opened.
+ * one and the user makes it in the window that bot opened. A site keeps one per account:
+ * one account is one row, as it always was, and a second puts each under the site.
  */
 export function SignInsSetting() {
   const { data, isLoading, error } = useServerRoute<SignIn[]>(queryKey.signIns);
@@ -65,9 +66,21 @@ export function SignInsSetting() {
             for its later work.
           </p>
         ) : (
-          all.map((signIn) => (
-            <Row key={signIn.site} signIn={signIn} bots={bots} />
-          ))
+          bySite(all).map((accounts) =>
+            accounts.length === 1 ? (
+              <Row
+                key={`${accounts[0].site}\n${accounts[0].account}`}
+                signIn={accounts[0]}
+                bots={bots}
+              />
+            ) : (
+              <SiteAccounts
+                key={accounts[0].site}
+                accounts={accounts}
+                bots={bots}
+              />
+            ),
+          )
         )}
         <OwnChrome />
       </SettingItems>
@@ -85,7 +98,7 @@ const STEPS: [LucideIcon, string, string][] = [
   [
     LogIn,
     "You sign in there",
-    "The app keeps that sign-in here — the site's session, never your password.",
+    "The app keeps that sign-in here — the site's session, never your password. A second account on a site is kept beside the first.",
   ],
   [
     ShieldCheck,
@@ -116,36 +129,20 @@ function How() {
   );
 }
 
+/** The list's sign-ins by site, in its order: a site's accounts together. */
+function bySite(all: SignIn[]): SignIn[][] {
+  const sites = new Map<string, SignIn[]>();
+  for (const signIn of all)
+    sites.set(signIn.site, [...(sites.get(signIn.site) ?? []), signIn]);
+  return [...sites.values()];
+}
+
+/** A site with one account kept: the site, who it signs in as, and its bots, in one row. */
 function Row({ signIn, bots }: { signIn: SignIn; bots?: Bot[] }) {
-  const done = () => revalidate(queryKey.signIns);
-  const [setBot, setting] = useServerAction(setSignInBotAction, {
-    onOk: done,
-  });
-  const [remove, removing] = useServerAction(removeSignInAction, {
-    onOk: done,
-  });
-
-  const signOut = async () => {
-    const ok = await notify.confirm({
-      title: `Sign out of ${signIn.site}?`,
-      description:
-        "What is kept here is removed, and the bots that used it ask you to sign in again. The site itself may still list the session until it ends it.",
-      okText: "Sign out",
-      destructive: true,
-    });
-    if (ok) void remove(signIn.site);
-  };
-
   return (
     <div className="flex flex-col gap-2.5 p-4">
       <div className="flex items-center gap-3">
-        <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-muted/60">
-          <SiteIcon
-            host={signIn.site}
-            className="size-5 rounded-[5px]"
-            fallback={<KeyRound className="size-4 text-muted-foreground" />}
-          />
-        </span>
+        <SiteBadge site={signIn.site} />
         <span className="min-w-0 flex-1 space-y-0.5">
           <span className="block truncate text-sm font-medium">
             {signIn.site}
@@ -154,68 +151,178 @@ function Row({ signIn, bots }: { signIn: SignIn; bots?: Bot[] }) {
             {signIn.account}
           </span>
         </span>
-        <span className="shrink-0 font-mono text-[11px] text-muted-foreground tabular-nums">
-          {signIn.usedAt
-            ? `used ${whenOf(signIn.usedAt)}`
-            : `kept ${whenOf(signIn.keptAt)}`}
-        </span>
-        <Button
-          variant="outline"
-          size="sm"
-          loading={removing}
-          onClick={() => void signOut()}
-        >
-          <LogOut />
-          Sign out
-        </Button>
+        <When signIn={signIn} />
+        <SignOut signIn={signIn} others={0} />
       </div>
+      <Bots signIn={signIn} bots={bots} className="pl-13" />
+    </div>
+  );
+}
 
-      <div className="flex flex-wrap items-center gap-1.5 pl-13">
-        {signIn.bots.map((name) => (
-          <span
-            key={name}
-            className="flex h-7 items-center gap-1.5 rounded-full bg-muted/60 pr-1 pl-1.5 text-[13px]"
+/**
+ * A site with more than one account kept: the site once, and under it each account with its
+ * own time, sign-out and bots, so none is behind another.
+ */
+function SiteAccounts({
+  accounts,
+  bots,
+}: {
+  accounts: SignIn[];
+  bots?: Bot[];
+}) {
+  const { site } = accounts[0];
+  return (
+    <div className="flex flex-col p-4 pb-1">
+      <div className="flex items-center gap-3">
+        <SiteBadge site={site} />
+        <span className="min-w-0 flex-1 space-y-0.5">
+          <span className="block truncate text-sm font-medium">{site}</span>
+          <span className="block truncate text-[13px] text-muted-foreground">
+            {accounts.length} accounts
+          </span>
+        </span>
+      </div>
+      <div className="mt-3 ml-13 flex flex-col">
+        {accounts.map((signIn) => (
+          <div
+            key={signIn.account}
+            className="flex flex-col gap-2 border-t border-border/60 py-3"
           >
-            <BotMark size={18} seed={name} {...markOf(name, bots)} />
-            {name}
-            <button
-              type="button"
-              disabled={setting}
-              aria-label={`${name} may no longer use it`}
-              onClick={() => void setBot(signIn.site, name, false)}
-              className="grid size-5 place-items-center rounded-full text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
-            >
-              <X className="size-3" />
-            </button>
-          </span>
-        ))}
-        {signIn.bots.length === 0 && signIn.asking.length === 0 && (
-          <span className="text-[13px] text-muted-foreground">
-            No bot may use it. One that needs it will ask.
-          </span>
-        )}
-        {signIn.asking.map((name) => (
-          <span
-            key={name}
-            className={cn(
-              "flex h-7 items-center gap-1.5 rounded-full pr-1 pl-1.5 text-[13px] ring-1 ring-border ring-inset",
-              WAITING_INK,
-            )}
-          >
-            <BotMark size={18} seed={name} {...markOf(name, bots)} />
-            {name} asks
-            <Button
-              size="sm"
-              variant="secondary"
-              className="h-5 rounded-full px-2 text-[11px]"
-              disabled={setting}
-              onClick={() => void setBot(signIn.site, name, true)}
-            >
-              Allow
-            </Button>
-          </span>
+            <div className="flex items-center gap-3">
+              <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium">
+                {signIn.account}
+              </span>
+              <When signIn={signIn} />
+              <SignOut signIn={signIn} others={accounts.length - 1} />
+            </div>
+            <Bots signIn={signIn} bots={bots} />
+          </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function SiteBadge({ site }: { site: string }) {
+  return (
+    <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-muted/60">
+      <SiteIcon
+        host={site}
+        className="size-5 rounded-[5px]"
+        fallback={<KeyRound className="size-4 text-muted-foreground" />}
+      />
+    </span>
+  );
+}
+
+function When({ signIn }: { signIn: SignIn }) {
+  return (
+    <span className="shrink-0 font-mono text-[11px] text-muted-foreground tabular-nums">
+      {signIn.usedAt
+        ? `used ${whenOf(signIn.usedAt)}`
+        : `kept ${whenOf(signIn.keptAt)}`}
+    </span>
+  );
+}
+
+/** Signing out of one account; `others` is how many more the site keeps, which stay. */
+function SignOut({ signIn, others }: { signIn: SignIn; others: number }) {
+  const [remove, removing] = useServerAction(removeSignInAction, {
+    onOk: () => revalidate(queryKey.signIns),
+  });
+
+  const signOut = async () => {
+    const ok = await notify.confirm({
+      title: others
+        ? `Sign out of ${signIn.account} on ${signIn.site}?`
+        : `Sign out of ${signIn.site}?`,
+      description: `What is kept here is removed, and the bots that used it ask you to sign in again.${
+        others
+          ? ` Your other ${signIn.site} ${others === 1 ? "account stays" : "accounts stay"}.`
+          : ""
+      } The site itself may still list the session until it ends it.`,
+      okText: "Sign out",
+      destructive: true,
+    });
+    if (ok) void remove(signIn.site, signIn.account);
+  };
+
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      loading={removing}
+      aria-label={others ? `Sign out of ${signIn.account}` : undefined}
+      onClick={() => void signOut()}
+    >
+      <LogOut />
+      Sign out
+    </Button>
+  );
+}
+
+/** The bots that may use one account's sign-in, each with its ×, then those asking to. */
+function Bots({
+  signIn,
+  bots,
+  className,
+}: {
+  signIn: SignIn;
+  bots?: Bot[];
+  className?: string;
+}) {
+  const [setBot, setting] = useServerAction(setSignInBotAction, {
+    onOk: () => revalidate(queryKey.signIns),
+  });
+
+  return (
+    <div className={cn("flex flex-wrap items-center gap-1.5", className)}>
+      {signIn.bots.map((name) => (
+        <span
+          key={name}
+          className="flex h-7 items-center gap-1.5 rounded-full bg-muted/60 pr-1 pl-1.5 text-[13px]"
+        >
+          <BotMark size={18} seed={name} {...markOf(name, bots)} />
+          {name}
+          <button
+            type="button"
+            disabled={setting}
+            aria-label={`${name} may no longer use it`}
+            onClick={() =>
+              void setBot(signIn.site, signIn.account, name, false)
+            }
+            className="grid size-5 place-items-center rounded-full text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
+          >
+            <X className="size-3" />
+          </button>
+        </span>
+      ))}
+      {signIn.bots.length === 0 && signIn.asking.length === 0 && (
+        <span className="text-[13px] text-muted-foreground">
+          No bot may use it. One that needs it will ask.
+        </span>
+      )}
+      {signIn.asking.map((name) => (
+        <span
+          key={name}
+          className={cn(
+            "flex h-7 items-center gap-1.5 rounded-full pr-1 pl-1.5 text-[13px] ring-1 ring-border ring-inset",
+            WAITING_INK,
+          )}
+        >
+          <BotMark size={18} seed={name} {...markOf(name, bots)} />
+          {name} asks
+          <Button
+            size="sm"
+            variant="secondary"
+            className="h-5 rounded-full px-2 text-[11px]"
+            disabled={setting}
+            onClick={() => void setBot(signIn.site, signIn.account, name, true)}
+          >
+            Allow
+          </Button>
+        </span>
+      ))}
     </div>
   );
 }

@@ -36,6 +36,24 @@ export const LIVE_CALL = {
 };
 
 /**
+ * A spoken call on the GPT subscription (features/thursday/thursday.plan), where the app runs
+ * her backend for the voice instead of the provider.
+ * - `delegationBytes`  the most of the voice's request, and of what was said since the hand-over
+ *   before it, that each hand-over carries to her backend; past it the request keeps its start
+ *   and the talk its end. Codex's own bound (codex-rs core context/realtime_delegation.rs
+ *   `MAX_REALTIME_DELEGATION_FIELD_BYTES`). More hands the backend more of the talk at more
+ *   input; less cuts a long request short.
+ * - `pictureBytes`  the largest picture of what the user shows (features/thursday/show.ts) the
+ *   page sends her backend on this line, where it goes over HTTP instead of a data channel with
+ *   a limit of its own: about what Chrome's channel takes on a key's call. More costs the
+ *   backend more to read, less blurs small text.
+ */
+export const PLAN_CALL = {
+  delegationBytes: 4 * 1024,
+  pictureBytes: 262_144,
+};
+
+/**
  * Background work put to the voice during a call (useThursday). Live never speaks
  * unprompted, so what waits on the user reaches them only when the page puts it in.
  * Each item goes in once a call; once she has voiced it, not on a later call either,
@@ -241,6 +259,13 @@ export const DB_PATH = `${DATA_DIR}/local.db`;
 export const DB_FILE_NAME = `file:${DB_PATH}`;
 
 /**
+ * The data folder's own `.env`, where the key that seals the secrets in DB_PATH is kept when
+ * the environment does not set it (lib/secret). Beside the database, so it goes wherever the
+ * database goes: a copy of the folder carries both.
+ */
+export const ENV_PATH = `${DATA_DIR}/.env`;
+
+/**
  * Relative paths; readers join them with the root that owns them (APP_DIR for
  * the app's, DATA_DIR for the user's).
  */
@@ -271,9 +296,9 @@ export const PATHS = {
   /** Where tool output over TOOL_OUTPUT is written in full. */
   output: ".output",
   /**
-   * The sites the user signed in to (features/signins), one file a site. Under DATA_DIR and
-   * outside the workspace, so no bot comes across another's session among its files; named
-   * here because `pnpm reset` has to find it without the app.
+   * The sites the user signed in to (features/signins), one file per account. Under DATA_DIR
+   * and outside the workspace, so no bot comes across another's session among its files;
+   * named here because `pnpm reset` has to find it without the app.
    */
   signIns: ".sign-ins",
   skills: {
@@ -463,8 +488,8 @@ export const BOT_RUN = {
   compactHeadroom: 0.8,
   summaryWords: { min: 600, max: 3000, perTokens: 200 },
   // Bound concurrent work and the whole conversation between user interjections.
-  participants: 12,
-  concurrent: 4,
+  participants: 8,
+  concurrent: 8,
   turns: 120,
   queuedMessages: 200,
   silenceMs: 5 * 60_000,
@@ -636,7 +661,8 @@ export const BROWSER_VIEWPORT = "700x700";
  * How long the app waits on a browser command it sends itself, not a bot's own
  * (workspace, signins.query, ai/tools/signin.tool).
  * - `readMs`  one that only asks — `list`, the page's address — or closes a job's
- *   browsers when it is cancelled, deleted or swept. A list runs before a sign-in is
+ *   browsers when it is cancelled, deleted or swept. A list, and reading or setting the
+ *   mark that says a browser is the one a sign-in was lent to, run before a sign-in is
  *   lent, kept or renewed too, so a browser that hangs holds each of those this long.
  * - `loadMs`  each step of lending or keeping a sign-in: `state-load`, `state-save`, and
  *   the `close`, `open` and `goto` that take its window away. Shorter fails a slow
@@ -767,8 +793,58 @@ export const HISTORY_KEEP = {
  *   outwaits the prompt goes without while the next has it.
  * - `keptMs`  how long what was found is used before it is found again. Longer asks the
  *   device and the services less often and may name a place they have left.
+ * - `holdMs`  how long the globe (features/thursday/components/here-globe), shown as the
+ *   day's first call opens, stays once their country, sky and weather are all in (about 7.6 s
+ *   after it starts) before she comes back. Longer leaves them up longer, and her face and the
+ *   words beside it off the screen as long.
+ * - `globeFps`  frames a second the globe draws. It draws two or three times her cells, so
+ *   more costs a slow machine its smoothness everywhere else on the screen.
+ * - `windyKmh`, `stormKmh`  gusts past which the globe draws wind blowing across it, and a
+ *   storm turning over it as well. Lower draws them on more ordinary days.
+ * - `coastDeg`  how far off a coast a position still counts as in the country there, when the
+ *   place service named none the map has (features/thursday/here-map). Farther reaches a
+ *   neighbour across a strait; nearer leaves a town on a coast this simple out at sea.
  */
-export const HERE = { waitMs: 3_000, keptMs: 30 * 60_000 };
+export const HERE = {
+  waitMs: 3_000,
+  keptMs: 30 * 60_000,
+  holdMs: 3_400,
+  globeFps: 24,
+  windyKmh: 50,
+  stormKmh: 90,
+  coastDeg: 1.2,
+};
+
+/**
+ * A picture handed to her on a call, drawn in her emoji over her face (features/thursday/
+ * components/seeing).
+ * - `holdMs`  how long it stays whole once every emoji of it is down (about 4.5 s after it
+ *   starts) before they leave. Longer leaves it up longer, and her face and the words beside
+ *   it off the screen as long.
+ * - `fps`  frames a second it draws while its emoji go down and leave; while it holds it draws
+ *   nothing. More costs a slow machine its smoothness everywhere else on the screen.
+ */
+export const SEE = { holdMs: 3_600, fps: 24 };
+
+/**
+ * A drawing she makes on her face (`draw`, features/thursday/components/her-drawing), her body
+ * the pen that draws it.
+ * - `holdMs`  how long the finished drawing stays, her pen resting at its end (about 5.6 s after
+ *   she starts), before it fades and she is herself again. Longer leaves it to be looked at
+ *   longer, and her face off the screen as long.
+ * - `fps`  frames a second it draws. More costs a slow machine its smoothness everywhere else
+ *   on the screen.
+ */
+export const DRAW = { holdMs: 2_000, fps: 24 };
+
+/**
+ * The drawing pad on the write line (features/thursday/components/draw-pad), whose drawing is
+ * handed over as a picture.
+ * - `longestSide`  the longest side, in pixels, a drawing is kept at, cropped to what was drawn.
+ *   Larger keeps thin strokes and writing readable to the model that looks at it, in a heavier
+ *   file; it is never kept larger than it was drawn.
+ */
+export const DRAW_PAD = { longestSide: 1024 };
 
 /**
  * How much of the previous call the prompt carries verbatim: `rows` turns are
@@ -844,20 +920,22 @@ export const MEMORY_EDIT = { maxSteps: 20 };
 export const LOOK = { maxBytes: 4 * 1024 * 1024 };
 
 /**
- * A screen the user shares with a spoken call (features/thursday/screen-share.ts).
- * - `frameRate`  how often the browser grabs the screen while it is shared. Only a still is
- *   ever taken, when she looks: more costs the computer for nothing, fewer makes a look up to
- *   that much older.
+ * What the user shows a spoken call, a screen or their camera (features/thursday/show.ts), and
+ * how a picture for the call's backend is made to fit — of what is shown, or of a picture they
+ * gave her (features/thursday/live-picture.ts).
+ * - `frameRate`  how often the browser grabs the screen or camera while it is shown. Only a
+ *   still is ever taken: more costs the computer for nothing, fewer makes a picture up to that
+ *   much older.
  * - `longestSide`  the longest side, in pixels, a look is taken at. Larger keeps small text on
  *   a big screen readable, and has the picture shrink further to fit the connection's one
  *   message; smaller loses that text first.
  * - `qualities` then `scales`  what a picture too large for that message steps down through:
  *   at each size the JPEG quality, then the size, until it fits.
- * - `firstFrameMs`  how long a look waits for a share that has not shown anything yet, as one
- *   just started has not. Longer gives a slow start its chance before she hears that nothing
+ * - `firstFrameMs`  how long a picture waits for a capture that has not shown anything yet, as
+ *   one just started has not. Longer gives a slow start its chance before she hears that nothing
  *   showed; she is silent that long first.
  */
-export const SCREEN_SHARE = {
+export const SHOWING = {
   frameRate: 5,
   longestSide: 1600,
   qualities: [0.8, 0.6, 0.45],

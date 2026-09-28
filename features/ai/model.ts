@@ -30,11 +30,12 @@ import {
   DEFAULT_MODEL_KEY,
   MEDIA_MODEL_KEYS,
 } from "@/features/config/config.const";
-import { readConfig } from "@/features/config/config.query";
+import { missingKeyWords, readConfig } from "@/features/config/config.query";
 import { logger } from "@/lib/logger";
 import { publicError } from "@/lib/public-error";
 import { clip, errorToString } from "@/lib/utils";
 import {
+  chatGptImageModel,
   chatGptModel,
   chatGptSearch,
   PLAN_SPENT_CODE,
@@ -61,6 +62,7 @@ import {
   type ModelTier,
   parseMediaModel,
   parseTextModel,
+  planMediaOf,
   type SuggestModel,
   TEXT_MODEL_PROVIDER_LIST,
   TEXT_MODEL_PROVIDERS,
@@ -662,9 +664,12 @@ export async function getTextModel(ref: TextModelRef): Promise<TextModel> {
   const apiKey = await readConfig(apiKeyName);
   if (!apiKey) {
     publicError(
-      signIn
-        ? `${label} is not signed in — sign in from Settings › API keys.`
-        : `No ${label} key — add one in Settings › API keys.`,
+      await missingKeyWords(
+        apiKeyName,
+        signIn
+          ? `${label} is not signed in — sign in from Settings › API keys.`
+          : `No ${label} key — add one in Settings › API keys.`,
+      ),
     );
   }
   return buildTextModel(ref, apiKey);
@@ -719,9 +724,12 @@ export async function resolveDefaultModel(
     const { label, apiKeyName, signIn } = TEXT_MODEL_PROVIDERS[chosen.provider];
     if (await readConfig(apiKeyName)) return chosen;
     publicError(
-      signIn
-        ? `The default model is ${chosen.model} on ${label}, which is signed out — sign in again, or pick another in Settings › Models.`
-        : `The default model is ${chosen.model}, and there is no ${label} key any more — add it in Settings › API keys, or pick another in Settings › Models.`,
+      await missingKeyWords(
+        apiKeyName,
+        signIn
+          ? `The default model is ${chosen.model} on ${label}, which is signed out — sign in again, or pick another in Settings › Models.`
+          : `The default model is ${chosen.model}, and there is no ${label} key any more — add it in Settings › API keys, or pick another in Settings › Models.`,
+      ),
     );
   }
 
@@ -744,15 +752,23 @@ type VideoModel = Parameters<typeof experimental_generateVideo>[0]["model"];
 
 /**
  * One app-wide pick per kind, stored in config as `provider/model` (config.const); the gateway
- * accepts any `vendor/model`. There is deliberately no fallback: a picture, a film or a minute of
- * speech costs real money, so a kind nobody picked returns null and the tool is simply absent
- * (tools/studio.tool) rather than running on a model nobody chose.
+ * accepts any `vendor/model`. A picture, a film or a minute of speech on a key costs real money,
+ * so a kind nobody picked runs on no key: it runs on the GPT Subscription when a sign-in makes
+ * it (model.schema `planMediaOf`), which is paid for either way, and otherwise returns null and
+ * the tool is simply absent (tools/studio.tool). A pick whose key is gone is absent too, not
+ * moved to the plan: it is the user's.
  */
 export async function resolveMediaRef(
   kind: MediaKind,
 ): Promise<{ ref: MediaModelRef; apiKey: string } | null> {
   const chosen = parseMediaModel(await readConfig(MEDIA_MODEL_KEYS[kind]));
-  if (!chosen) return null;
+  if (!chosen) {
+    const signIn = await readConfig(MEDIA_MODEL_PROVIDERS.chatgpt.apiKeyName);
+    const ref = signIn
+      ? planMediaOf(kind, { plan: await readChatGptPlan() })
+      : null;
+    return ref && signIn ? { ref, apiKey: signIn } : null;
+  }
   // A chosen provider that cannot make this kind is skipped (canMakeKind); otherwise
   // `build…Model` throws and loadStudio takes both prompts down with it
   if (!canMakeKind(chosen.provider, kind)) return null;
@@ -770,6 +786,9 @@ export function buildImageModel(
   switch (ref.provider) {
     case "openai":
       return createOpenAI({ apiKey }).image(ref.model);
+    case "chatgpt":
+      // Signed with the stored sign-in itself (ai/chatgpt), as its text model is
+      return chatGptImageModel(ref.model);
     case "google":
       return createGoogleGenerativeAI({ apiKey }).image(ref.model);
     case "xai":

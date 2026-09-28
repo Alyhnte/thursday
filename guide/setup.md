@@ -2,15 +2,22 @@
 
 ## The first run
 
-The first time the app opens, six steps run on the call screen itself: a voice key, the
+The first time the app opens, six steps run on the call screen itself: her voice, the
 microphone, which bots come along, what they think with, her style, and the first call. In a narrow
 window each step sits under her face. She talks through it in a recorded English voice; her
 real voice starts with the first call. The speaker button at the top right mutes it.
 
+The first step offers her voice two ways, one above the other: **GPT Subscription** first, with
+**Sign in** (it opens ChatGPT's sign-in window), and **OpenAI API key**, whose
+**Paste a key** opens the key field under both. Either one wakes her. Both rows stay once one is
+set, a key given before included: each then shows a check and what runs on it, and the sign-in row
+the plan it is on, so the plan can still be signed in to. The call screen's **Set up** and
+**Settings › Thursday** ask the same way.
+
 Every step can be skipped and done later in Settings. On the microphone step the main button turns
 the microphone on (the browser asks first, by its address bar); the line under it goes on without
 one. The bots picked there are set up when it ends; they work once there is a model to run on.
-With a key the last button is **Call her**; without one it is **Look around**.
+With a sign-in or a key the last button is **Call her**; without either it is **Look around**.
 
 Once it has been left, by any of its buttons, it does not show again, and **Reset history** does not
 bring it back. Adding `?intro` to the address shows it again; leaving it that way sets up no bots.
@@ -26,15 +33,18 @@ theme — **System**, **Light** or **Dark** — is at the foot of the list.
 
 ## Keys
 
-**Settings › API keys** holds them, and they stay on this computer. One OpenAI key is all a call
-needs: it pays for both her voice and the model behind it. The key is checked when it is saved,
-and one OpenAI refuses is not kept. Bots can run on the same key.
+**Settings › API keys** holds them, and they stay on this computer. A call needs one of two: a GPT
+Subscription sign-in on a paid plan, or an OpenAI key. Either pays for both her voice and the model behind it. The
+key is checked when it is saved, and one OpenAI refuses is not kept. Bots can run on the same key.
 
 Two easier ways for bots come next:
 
-- **GPT Subscription**: sign in with ChatGPT, and bots run on the ChatGPT plan with no key. The row
-  shows how much of the plan is used and when it resets. It does not cover a spoken call, which
-  OpenAI bills by the minute on a key.
+- **GPT Subscription**: sign in with ChatGPT, and bots run on the ChatGPT plan with no key: they
+  think, search the web and, on a paid plan, draw on it. On a paid plan a spoken call runs on it
+  too, in the plan's own voice, **GPT-Live 1 Codex**, the one the Codex CLI's `/voice` uses. The row names the plan
+  (such as **Pro**), and a bar and a percentage show how much of it is used, with when it resets.
+  The **Free** plan runs bots and calls in writing but has no spoken calls: ChatGPT does not open
+  one on it. Signed in on Free, the screens that ask for a voice say so and offer the OpenAI key.
 - **Vercel AI Gateway**: one key for every model; its row shows what credit is left.
 - **OpenRouter**: the same, one key for every model it carries, free ones among them; its row
   shows what credit is left.
@@ -59,6 +69,10 @@ instead.
   the top of a bot's model list puts that bot back on it.
 - **Studio** holds the **Image model**, **Video model**, **Speech model** and **Transcription
   model**. One left unpicked shows *off*, and bots cannot do that kind of work until one is picked.
+  The Image model is the exception: left unpicked while someone is signed in to the GPT Subscription
+  on a paid plan, it shows *auto* and bots draw with **GPT Image 2** on the ChatGPT plan, under a
+  limit of its own that a refusal names. The Free plan does not draw. Picking a model uses that one
+  instead. The GPT Subscription has nothing for video, speech or transcription.
 
 The call's own two models are in **Settings › Thursday**, under Models.
 
@@ -85,6 +99,11 @@ A bot can also find a skill in the open registry while it works, or write a new 
 installs one from the registry it asks, saying who published it, its license and what its security
 checks found. Its report says whether it kept the skill for itself or for every bot.
 
+Unasked, a bot writes a skill only for a kind of job that comes back — a routine's, or one it has
+done before — and only for itself, improving the one it has before adding another. Its report says
+which, in one line; it shows under that bot's group in **Settings › Skills**, where it can be
+switched off or deleted. The skills that ship and the user's own are never changed unasked.
+
 ## Connected services
 
 **Settings › Connectors** connects MCP servers, picked from the list or added by pasting their
@@ -109,13 +128,17 @@ kept is the site's session, never a password, and it stays on this computer.
 
 - The bot that asked for a sign-in may use it. Another bot that needs it asks first; the list then
   shows *… asks* with **Allow**. The **×** on a bot's name takes that back.
+- A site can keep more than one account: ask a bot to sign in to the other one, and it opens a
+  window for it. Each account is its own sign-in, with its own bots and **Sign out**, listed under
+  the site. A bot uses the account the work is for, and asks which one when it cannot tell. On a
+  site that shows no account name, the bot asks what to call the second one.
 - Some sites, Google among them, sign the bot out again on every job however often they sign in.
   For those, a bot can work in a tab of their own Chrome instead, signed in as they already are —
   to every site their Chrome is signed in to, not only that one. That needs the Playwright
   extension installed in their Chrome once and Chrome open: the last row, **Your own Chrome**, has
   **Get the extension**.
-- **Sign out** removes what is kept; the next job that needs the site asks again. On a lost or shared
-  computer, also sign out on the site itself.
+- **Sign out** removes what is kept for that account, and the site's other accounts stay; the next
+  job that needs it asks again. On a lost or shared computer, also sign out on the site itself.
 
 ## Its own window
 
@@ -153,23 +176,26 @@ in the background, closing the terminal changes nothing.
 
 Everything is on this computer, in one folder: `.thursday` in their home folder when started with
 `npx thursday-agent` or installed, or the folder it was started from otherwise; every start prints
-it. It holds the database (calls, memory, bots, keys, her settings), the kept sign-ins, and the
-workspace with finished work, each bot's folder and installed skills. Updating the app never touches
-any of these. On a Mac that keeps it running in the background, `app` in it is the copy that runs
-there, which `start` replaces with each version. Nothing is sent anywhere except to the model
-providers and services they set up. The app listens only to this computer and has no account.
+it. It holds the database (calls, memory, bots, keys, her settings), a `.env` with the key the saved
+keys are sealed with, the kept sign-ins, and the workspace with finished work, each bot's folder and
+installed skills. Updating the app never touches any of these. On a Mac that keeps it running in the
+background, `app` in it is the copy that runs there, which `start` replaces with each version.
+Nothing is sent anywhere except to the model providers and services they set up. The app listens
+only to this computer and has no account.
 
 The bots' browser is the one thing outside it: a download of a few hundred megabytes in the
 computer's cache folder.
 
 To back up, copy that folder with the app stopped; moving to another computer is the same folder
 put in the same place, and `app` need not come along: `start` there installs a copy for that
-computer. If the app ever cannot open the database, the terminal asks whether to set it aside and
-start fresh; the old file is kept beside the new one, with `.corrupt-` in its name.
+computer. The database alone is not a whole copy: the keys saved in it open only with the `.env`
+beside it, and without it each is entered again. If the app ever cannot open the database, the
+terminal asks whether to set it aside and start fresh; the old file is kept beside the new one, with
+`.corrupt-` in its name.
 
 ## What it costs
 
 The user brings their own keys, so the cost is whatever those providers charge: a spoken call by the
 minute it is open, silence included, and everything else by how much text the models read and
-write, a call in writing included. The GPT Subscription uses the ChatGPT plan instead. A long job on
-a large model adds up fastest.
+write, a call in writing included. On the GPT Subscription, calls and bots use the ChatGPT plan
+instead. A long job on a large model adds up fastest.

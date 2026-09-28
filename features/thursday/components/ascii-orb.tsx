@@ -7,7 +7,7 @@ import {
   ALPHA_TOP,
   EMOJI_POOL,
   emojiAlpha,
-  emojiWeight,
+  emojiPx,
   hash,
   LETTERS,
   LEVELS,
@@ -68,6 +68,7 @@ type AsciiOrbProps = {
   /**
    * A word to show (emote): the body steps aside, the letters light in one by
    * one, hold, and go out, and the mode takes the face back. A new `at` shows it again.
+   * One held with no end (`hold` Infinity) goes out when another word or none replaces it.
    */
   word?: FaceWord | null;
   /** Side length (px). Everything scales with it; cell count scales with area. */
@@ -88,10 +89,14 @@ type AsciiOrbProps = {
  * Slack on the frame cap (ms): a frame that comes this close to when her next one is due draws,
  * or a 60 Hz display capped at 30 would now and then wait a frame too long.
  */
-const CAP_SLACK_MS = 1000 / 240;
+export const CAP_SLACK_MS = 1000 / 240;
 
 /** Her glyph size and how tightly her cells pack (config ASCII_FACE). */
 const { fontSize: GLYPH_PX, density: DENSITY } = ASCII_FACE;
+
+/** Her cell pitch, px: what anything drawn on her grid (here-globe) lines up with. */
+export const CELL_W = (GLYPH_PX * 0.95) / DENSITY;
+export const CELL_H = (GLYPH_PX * 1.25) / DENSITY;
 
 /** Her glyphs at a size (px). */
 export const GLYPH_FONT = (px: number) =>
@@ -99,7 +104,7 @@ export const GLYPH_FONT = (px: number) =>
 
 /** The same, for an emoji standing at one rung of the ramp rather than at the top of it. */
 const emojiFont = (px: number, level: number, top: number) =>
-  GLYPH_FONT(px * (0.5 + emojiWeight(level, top) * 0.5));
+  GLYPH_FONT(emojiPx(px, level, top));
 
 /**
  * Every emoji she can show — her own, the washes' and her pieces' — drawn once at every size she draws them,
@@ -826,6 +831,8 @@ export function AsciiOrb({
   /** The word being shown, when it started, and how many letters it has; its cells carry the rest */
   const wordRef = useRef<{
     text: string;
+    /** The showing it is (FaceWord `at`), to tell it from the next one */
+    at: number;
     start: number;
     letters: number;
     hold: number;
@@ -852,8 +859,8 @@ export function AsciiOrb({
     if (!host) return;
 
     // actual px pitch for drawing
-    const cw = (GLYPH_PX * 0.95) / DENSITY;
-    const ch = (GLYPH_PX * 1.25) / DENSITY;
+    const cw = CELL_W;
+    const ch = CELL_H;
     // pitch in reference units, where the tuning constants live
     const norm = DESIGN / size;
     const cwN = cw * norm;
@@ -977,6 +984,11 @@ export function AsciiOrb({
   // a new word starts from its first letter, in place of one still showing; one already up as
   // she mounts (CALL, when the app opens on a ring) starts when she does, lighting in like any other
   useEffect(() => {
+    // A word held with no end (CALL while she rings) goes out once another word, or none, is
+    // handed in its place: its letters leave from now, as any word's do when its hold is over
+    const held = wordRef.current;
+    if (held && held.hold === Number.POSITIVE_INFINITY && word?.at !== held.at)
+      held.hold = performance.now() * 0.001 - held.start;
     if (!word) return;
     // A word is said as it comes. One handed back later — the goodbye still held when a
     // ring's CALL steps aside — would already be over, so it is not said again
@@ -985,6 +997,7 @@ export function AsciiOrb({
     const now = performance.now();
     wordRef.current = {
       text: word.text,
+      at: word.at,
       start: now * 0.001,
       letters: layWord(cellsRef.current, cw, ch, word.text),
       hold: word.hold ?? WORD_HOLD,

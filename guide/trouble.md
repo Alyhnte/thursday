@@ -4,8 +4,15 @@ Say what happened and the one thing that fixes it; most problems are a setting o
 
 ## A call will not open, or ended
 
-- **"Call failed"** shows the provider's reason. A refused key or no credit is fixed in **Settings ›
-  API keys**; a model the key cannot use is changed in **Settings › Thursday**, under Models.
+- **"Could not start the call on your GPT Subscription"** (or **on your OpenAI key**), or **"The
+  call on … failed"**, names what the call ran on and shows the provider's words as they came:
+  they say what went wrong, such as a spent plan or a refused key (**Settings › API keys**). A model the key cannot use is changed in **Settings ›
+  Thursday**, under Models, and **runs on** there moves calls to the other line.
+- **A call on the GPT Subscription is refused**: the reason is the plan's own, such as its usage
+  spent. **runs on** in **Settings › Thursday › Models** moves calls to the OpenAI key, and asks for
+  one there when none is set.
+- **Signed in on the Free plan**: ChatGPT has no spoken calls on it. Add an OpenAI key, or sign in
+  again with a paid plan; bots and calls in writing work on Free as they are.
 - **"One call at a time"**: another tab of the app has a spoken call on. Hang up there first.
 - **She cannot be heard** on a call she opened herself: the browser holds sound until the page is
   touched. A tap anywhere fixes it.
@@ -39,7 +46,7 @@ A job does not fail for good; it pauses and waits.
 ## A bot says it cannot do something
 
 - **Make an image, a video, speech, or a transcript**: pick a model for it in **Settings › Models**,
-  under Studio.
+  under Studio. An image needs none while the GPT Subscription is signed in on a paid plan.
 - **Open a web page**: the bots' browser downloads in the background on first start, a few hundred
   megabytes. On a Linux server it may also need `npx playwright install-deps chromium`, run once
   with administrator rights.
@@ -52,6 +59,29 @@ A job does not fail for good; it pauses and waits.
 - **Reach a connected service**: one that needs signing in again turns red in **Settings ›
   Connectors**; **Reconnect** fixes it.
 - **Take a file**: at most 8 files go with one message, 25 MB each.
+
+## A saved key is asked for again
+
+The keys, tokens, sign-in and connectors saved in Settings are sealed with a key kept in the data
+folder's `.env` (`setup.md`, Where the files are), and nowhere else. When that `.env` is lost or
+replaced, or the database moved without it, the next start makes a new key, and what can no longer
+be opened is marked where it is set: **Enter again** on its row in **Settings › API keys**, with a
+dot on the section, and in the model picker; **Stopped** on its service in **Settings › Phone**,
+where whoever was let in stays; a line on the connector in **Settings › Connectors**. The terminal
+names them too.
+
+Nothing is deleted. The `.env` from a backup, put back and the app started again, opens them, as
+long as nothing was entered anew in between. Otherwise paste each one again, or remove the ones
+no longer wanted. A connector that took a key is added again under the same name with its key, and
+its bots keep their tools; one that signs in waits until **Reconnect**, which asks for the sign-in
+again — a bot or a routine using it meanwhile is told so, and the old sign-in stays until then.
+
+## A key cannot be removed or replaced
+
+A key or token set in the environment the app started with — a `.env` next to the app, or one
+exported in the shell — is used over one saved in Settings. Its row in **Settings › API keys** or
+its step in **Settings › Phone** says it is set in the environment, and offers no Remove or
+Replace, since neither would change the key in use. Change or remove it where it is set, then start the app again.
 
 ## Starting over
 

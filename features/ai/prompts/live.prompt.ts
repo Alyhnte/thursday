@@ -38,7 +38,18 @@ export async function loadLivePrompt(options: {
   persona?: string;
   /** Where they are and the weather there, when the page said (thursday/where). */
   where?: Where | null;
-}): Promise<{ text: string; opening: string }> {
+  /**
+   * The page asks to show them where they are and the sky over it as the call opens, which it
+   * does once a day (here-globe). Granted on a call that opens on nothing else and has the
+   * weather to greet them with; `here` in what comes back says whether it was.
+   */
+  here?: boolean;
+  /**
+   * The call runs on the GPT subscription's voice (thursday.plan), where what comes back to her
+   * arrives on one of two channels rather than as the key's kinds of update.
+   */
+  plan?: boolean;
+}): Promise<{ text: string; opening: string; here: boolean }> {
   const [open, index, calls] = await Promise.all([
     // Written out in the prompt, which is not the user asking for them: no read counted
     readNotes(MEMORY_ALWAYS_LISTED, { touch: false }),
@@ -54,6 +65,7 @@ export async function loadLivePrompt(options: {
     thursdayIdentity(new Date(), options.where),
     personaLines(options.persona),
     always(),
+    options.plan ? channels() : "",
     known(open.notes, index),
     first ? firstCall(!earlier) : "",
     earlier,
@@ -63,6 +75,16 @@ export async function loadLivePrompt(options: {
     .join("\n\n");
   logPromptSize("live", text);
 
+  const introduces = !options.calledBack && first && !earlier;
+  // The globe is drawn while she greets, so the greeting is the weather it shows: a second
+  // message about the screen would come in beside the opening, and the opening is the one
+  // thing everything else on the line waits for (use-thursday)
+  const here = Boolean(
+    options.here &&
+      !options.calledBack &&
+      !introduces &&
+      options.where?.weather,
+  );
   return {
     text,
     // A prompt line alone does not make Live speak first; only an opening does.
@@ -73,11 +95,17 @@ export async function loadLivePrompt(options: {
     // waited for the caller on most first calls
     opening: options.calledBack
       ? "You placed this call because background work has something for the user; it comes in next. Speak first: greet them in one line and say that is why you called."
-      : first && !earlier
+      : introduces
         ? `The call has just started. It is ${clockNow()} for them. Speak first: greet the user in one line, say you are Thursday, and ask what to call them.`
-        : // The hour is a fact of the moment, so it rides on the opening and not in the prompt.
-          // One thing about them, never work: the threads are what opened every call before
-          `The call has just started. It is ${clockNow()} for them. Speak first: greet the user naturally, in one line. You may pick up one thing from what you know about them — never a list, never work.`,
+        : here
+          ? // The weather is already in her prompt (whereLine): this says only that it is the
+            // greeting. Nothing about the screen: the globe can still fail to come up once the
+            // line is open (a page hidden by then), and she spoke of a globe nobody saw
+            `The call has just started. It is ${clockNow()} for them. Speak first: greet the user in one line, with the weather there — never work.`
+          : // The hour is a fact of the moment, so it rides on the opening and not in the prompt.
+            // One thing about them, never work: the threads are what opened every call before
+            `The call has just started. It is ${clockNow()} for them. Speak first: greet the user naturally, in one line. You may pick up one thing from what you know about them — never a list, never work.`,
+    here,
   };
 }
 
@@ -129,7 +157,8 @@ Backend tools:
 - Routines: jobs that start by themselves later.
 - Memory: keeps what the user tells you about themselves, and looks it up.
 - This computer and the web: runs a command, searches.
-- Their screen: looks at what they share with you — a screen, a window or a tab — as it is when they ask.
+- What they show you: looks at a picture they give you, or at their screen — a screen, a window or a tab — or their camera, as it is when they ask.
+- Your face: a short word or a small drawing on it, when you want to show or express something.
 
 Delegate to the backend when:
 - They say goodbye or good night, in whatever words, or want the call to end.
@@ -144,6 +173,18 @@ Do not delegate to the backend when:
 Delegate before giving an answer that depends on backend work. Do not guess the result while waiting.
 
 What they tell you about themselves is handed over quietly: go on talking with them as you were, with no word about noting it, checking or thinking it over, and say nothing more of it when it comes back kept.`;
+}
+
+/**
+ * On the GPT subscription's voice, what the app puts in comes on one of two channels
+ * (live.plan `PlanChannel`): what she is to say, and background she is not to read out. The
+ * lines follow what OpenClaw tells the same voice (extensions/openai
+ * realtime-quicksilver-instructions.ts `OPENAI_QUICKSILVER_CHANNEL_INSTRUCTIONS`).
+ */
+function channels(): string {
+  return `## What comes back to you
+
+Context on the speakable channel is yours to say: the result of what you handed over, or an update for them. Say it naturally, in your own words. Context on the commentary channel is silent background: use it when it matters, and never read it out. Never mention the channel or the hand-over.`;
 }
 
 /**

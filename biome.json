@@ -14,6 +14,7 @@
       "!dist",
       "!build",
       "!database/migrations",
+      "!public/here/world.json",
       "!.design",
       "!skills/artifact/scripts/archify",
       "!skills/artifact/runtime/app",

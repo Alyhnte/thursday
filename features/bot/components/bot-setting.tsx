@@ -51,11 +51,13 @@ import {
 import { EffortSwitch } from "@/features/ai/components/effort-switch";
 import { ModelPicker } from "@/features/ai/components/model-picker";
 import {
+  type AiProvider,
   type CatalogModel,
   compactAtFor,
   contextWindowOf,
   type Effort,
   isCatalogProvider,
+  planMediaOf,
   type TextModelProviderId,
 } from "@/features/ai/model.schema";
 import {
@@ -355,16 +357,18 @@ function sinceWord(at: DateLike): string {
 }
 /**
  * What a seed still needs before it can work, as one line, or null when it needs
- * nothing. A missing studio model is not a fallback — the tool is absent — so the
- * row says so before the bot finds out mid-job. Ticking is never blocked: the list
- * states the cost, it does not cap it.
+ * nothing. A studio kind nobody picked and the GPT Subscription does not make is
+ * absent — the tool is not there — so the row says so before the bot finds out
+ * mid-job. Ticking is never blocked: the list states the cost, it does not cap it.
  */
 function unmetLine(
   seed: BotSeed,
   isSet: (key: string) => boolean,
+  /** The GPT Subscription's sign-in and its plan (model.schema planMediaOf); null when signed out. */
+  signIn: { plan: string | null } | null,
 ): string | null {
   const unmet = (seed.requires ?? []).filter(
-    (kind) => !isSet(MEDIA_MODEL_KEYS[kind]),
+    (kind) => !isSet(MEDIA_MODEL_KEYS[kind]) && !planMediaOf(kind, signIn),
   );
   if (!unmet.length) return null;
   return `needs ${unmet.map(mediaModelWords).join(" and ")}`;
@@ -401,6 +405,10 @@ function useSeedPicks(
   // Same key the Models section and its badge read, so one fetch answers all three.
   const { data: config } = useServerRoute<ConfigStatus[]>(queryKey.config);
   const isSet = (key: string) => isConfigSet(config, key);
+  // The plan the sign-in is on, which decides what it makes (unmetLine)
+  const { data: providers } = useServerRoute<AiProvider[]>(queryKey.llmModel);
+  const plan = providers?.find((provider) => provider.signIn);
+  const signIn = plan?.hasKey ? { plan: plan.plan ?? null } : null;
 
   // Seeds not on the roster yet. `have` is the whole roster, so counting against
   // its size goes negative the moment a bot nobody seeded is on it.
@@ -412,6 +420,7 @@ function useSeedPicks(
 
   return {
     isSet,
+    signIn,
     adding,
     addable,
     wanted,
@@ -460,7 +469,7 @@ function SeedRows({
         const owned = have.has(seed.name);
         const on = picks.ticked(seed);
         const blocked = picks.blocked(seed);
-        const needs = unmetLine(seed, picks.isSet);
+        const needs = unmetLine(seed, picks.isSet, picks.signIn);
         return (
           <div
             key={seed.name}
@@ -805,26 +814,28 @@ function BotPage({
     onOk: () => revalidate(queryKey.bot),
   });
 
-  const ready =
-    name.trim() && description.trim() && provider && model.trim() && !creating;
+  // No model picked is the app default model, which the form says it runs on
+  const picked = Boolean(provider && model.trim());
+  const ready = name.trim() && description.trim() && !creating;
   const missing = [
     !name.trim() && "a name",
     !description.trim() && "a description",
-    !(provider && model.trim()) && "a model",
   ].filter((one): one is string => Boolean(one));
 
   const submit = () => {
-    if (!ready || !provider) return;
+    if (!ready) return;
     create({
       name: name.trim(),
       description: description.trim(),
       systemPrompt: systemPrompt.trim() || undefined,
       icon,
-      provider,
-      model: model.trim(),
+      provider: picked ? provider : null,
+      model: picked ? model.trim() : null,
       compactAt: compactEdited
         ? tokensFromK(compactAt)
-        : filledTokens(pickedWindow),
+        : picked
+          ? filledTokens(pickedWindow)
+          : null,
       effort,
       toolIds,
     });
@@ -925,7 +936,7 @@ function BotPage({
               id={`${fieldId}-name`}
               value={name}
               onChange={(event) => patch({ name: event.target.value })}
-              placeholder="researcher"
+              placeholder="e.g. researcher"
               spellCheck={false}
               maxLength={COMMON_VALIDATE.name.max}
               autoFocus
@@ -950,7 +961,7 @@ function BotPage({
                 commit({ description: next });
               }
             }}
-            placeholder="Searches the web and answers"
+            placeholder="e.g. Searches the web and answers"
             maxLength={COMMON_VALIDATE.description.max}
           />
           <p className="text-xs text-muted-foreground">
@@ -1056,7 +1067,7 @@ function BotPage({
               id={`${fieldId}-compact`}
               inputMode="decimal"
               value={shownK}
-              placeholder={model.trim() ? "" : "Pick a model first"}
+              placeholder={model.trim() ? "" : "From the app default model"}
               onChange={(event) => {
                 setCompactEdited(true);
                 patch({ compactAt: event.target.value });
@@ -1368,9 +1379,13 @@ function compactNote(input: {
   window: number | null;
   shown: number | null;
 }): string {
-  if (!input.model) return "Filled in from the model once one is picked.";
-  const filled = filledTokens(input.window);
   const summarize = "A job summarizes itself here and carries on.";
+  // No model of its own: each run works it out from the model it runs on (model.ts compactBudget)
+  if (!input.model)
+    return input.shown === null
+      ? `Worked out from the app default model's context window at each run. ${summarize}`
+      : `Set by hand. Emptied, it is worked out from the app default model again. ${summarize}`;
+  const filled = filledTokens(input.window);
   if (input.shown !== null && input.shown !== filled) {
     return `Set by hand. Picking a model fills in its own again. ${summarize}`;
   }

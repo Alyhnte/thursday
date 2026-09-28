@@ -3,6 +3,7 @@
 import {
   ArrowDownToLine,
   ArrowUp,
+  Brush,
   ChevronDown,
   Paperclip,
   RotateCw,
@@ -35,6 +36,7 @@ import {
 } from "@/features/bot/thread.store";
 import { openSettings } from "@/features/settings/settings.store";
 import { useCallHeld } from "@/features/thursday/call-signal";
+import { faceMoment } from "@/features/thursday/face-moment";
 import { useThursdayStore } from "@/features/thursday/thursday.store";
 import type { TextCall } from "@/features/thursday/use-text-call";
 import {
@@ -42,10 +44,12 @@ import {
   roomDrop,
   useGivenFiles,
 } from "@/features/workspace/components/given-files";
+import { viewKindOf } from "@/features/workspace/file-kind";
 import { composing, useEscape, windowKey } from "@/hooks/use-hotkey";
 import { useServerAction } from "@/lib/protocol/use-server-action";
 import { revalidate, useServerRoute } from "@/lib/protocol/use-server-route";
 import { cn } from "@/lib/utils";
+import { DrawPad } from "./draw-pad";
 import { ThursdayMark } from "./thursday-mark";
 
 /**
@@ -87,6 +91,12 @@ const mentionOf = (draft: string) => /^@(\S*)$/.exec(draft.split(/\s/, 1)[0]);
 /** How long the line takes to go, so it can be watched leaving. */
 const LEAVE_MS = 200;
 
+/** The first picture of what she was just handed, drawn over her face (face-moment `see`). */
+function showPicture(paths: string[]) {
+  const picture = paths.find((path) => viewKindOf(path) === "image");
+  if (picture) faceMoment.show({ kind: "see", src: queryKey.file(picture) });
+}
+
 export function WriteLine({
   written,
   onCall = false,
@@ -111,15 +121,19 @@ export function WriteLine({
 
   const [open, setOpen] = useState(false);
   const [picking, setPicking] = useState(false);
+  /** The drawing pad is open over the screen (draw-pad). */
+  const [drawing, setDrawing] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [draft, setDraft] = useState("");
   const spoken = useRef(onCall);
   spoken.current = onCall;
   const given = useGivenFiles({
-    // On a call the file is a fact she is given as it lands; what it is for is said aloud
+    // On a call the file is a fact she is given as it lands; what it is for is said aloud.
+    // A picture among them goes on her face as she is given it
     onKept: (paths) => {
       if (!spoken.current) return undefined;
       screenActs.announce({ kind: "gave", paths });
+      showPicture(paths);
       return "she knows it is here";
     },
   });
@@ -263,9 +277,12 @@ export function WriteLine({
     if (!toHer) return void start(to.name, words);
     if (!written) return;
     setReaching(true);
+    const paths = given.files.flatMap((file) => file.path ?? []);
     written
       .say(words)
       .then(() => {
+        // what she was handed with the words is on her face while she reads them
+        showPicture(paths);
         setDraft("");
         given.clear();
       })
@@ -492,6 +509,14 @@ export function WriteLine({
                     event.preventDefault();
                     return walk(event.key === "ArrowDown" ? 1 : -1);
                   }
+                  // Tab completes the name, as it does in any list that finishes a word; with
+                  // nobody by that name it moves on, as Tab does, rather than holding the focus
+                  const tab = event.key === "Tab" && !event.shiftKey;
+                  if (mention && tab && !midWord && matches[at]) {
+                    event.preventDefault();
+                    pick(matches[at]);
+                    return;
+                  }
                   if (event.key !== "Enter" || event.shiftKey || midWord)
                     return;
                   event.preventDefault();
@@ -524,6 +549,14 @@ export function WriteLine({
                   event.target.value = "";
                 }}
               />
+              <button
+                type="button"
+                aria-label="Draw"
+                onClick={() => setDrawing(true)}
+                className="grid size-9 shrink-0 place-items-center rounded-full text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
+              >
+                <Brush className="size-4" />
+              </button>
               <button
                 type="button"
                 aria-label="Add files"
@@ -560,8 +593,8 @@ export function WriteLine({
               {written.error}
             </p>
           )}
-          {/* The way on from a turn that broke: the same words again, and where keys are set.
-              Never by itself: what a turn costs changes with what it runs on, so they press it */}
+          {/* The way on from a turn that broke: the same words again. Never by itself: what a
+              turn costs changes with what it runs on, so they press it */}
           {toHer && written?.error && (
             <div className="flex items-center justify-center gap-3">
               <Button
@@ -582,20 +615,17 @@ export function WriteLine({
                   ? "Send it again on your OpenAI key"
                   : "Send it again"}
               </Button>
-              <span className="font-mono text-[10.5px] text-muted-foreground/70">
-                <KeysLink>API keys</KeysLink>
-              </span>
             </div>
           )}
           <p className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 font-mono text-[10.5px] text-muted-foreground/70">
             {mention ? (
               // an open list has the keys: nothing is sent or left while it is up
               <>
-                <Key>↑↓</Key> walk
+                <Hint keys={["↑↓"]}>walk</Hint>
                 <Dot />
-                <Key>Enter</Key> take
+                <Hint keys={["Tab", "Enter"]}>take</Hint>
                 <Dot />
-                <Key>Esc</Key> close the list
+                <Hint keys={["Esc"]}>close the list</Hint>
               </>
             ) : (
               <>
@@ -604,9 +634,9 @@ export function WriteLine({
                   <RunsOn runsOn={null} />
                 ) : (
                   <>
-                    <Key>Enter</Key> send
+                    <Hint keys={["Enter"]}>send</Hint>
                     <Dot />
-                    <Key>@</Key> {toHer ? "a bot" : "pick a bot"}
+                    <Hint keys={["@"]}>{toHer ? "a bot" : "pick a bot"}</Hint>
                     {toHer && (
                       <>
                         <Dot />
@@ -616,13 +646,25 @@ export function WriteLine({
                   </>
                 )}
                 <Dot />
-                <Key>Esc</Key>{" "}
-                {calling ? (toHer ? "to end" : "back to her") : "close"}
+                <Hint keys={["Esc"]}>
+                  {calling ? (toHer ? "to end" : "back to her") : "close"}
+                </Hint>
               </>
             )}
           </p>
         </div>
       </div>
+      <DrawPad
+        open={drawing}
+        onClose={() => setDrawing(false)}
+        onDone={(file) => {
+          setDrawing(false);
+          take([file]);
+          requestAnimationFrame(() => field.current?.focus());
+        }}
+        // on a spoken call she is shown it the moment it lands; otherwise it goes with the words
+        action={onCall ? "Show Thursday" : "Add to the message"}
+      />
     </>
   );
 }
@@ -687,6 +729,18 @@ function Mark({ bot, size }: { bot: BotRef; size: number }) {
       notify={false}
       className="shrink-0"
     />
+  );
+}
+
+/** A key and what it does, kept on one line: the small print wraps between them, never inside one. */
+function Hint({ keys, children }: { keys: string[]; children: string }) {
+  return (
+    <span className="inline-flex items-center gap-2 whitespace-nowrap">
+      {keys.map((key) => (
+        <Key key={key}>{key}</Key>
+      ))}
+      {children}
+    </span>
   );
 }
 
