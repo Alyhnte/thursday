@@ -20,6 +20,7 @@ const X = {
   colors: null,
   cues: null, // sounds heard in this pass: [second in film, kind, length]
   words: null, // words written in this pass, for the checks
+  faces: null, // faces drawn in this pass, for the checks: words must not cover them
   images: {},
 };
 
@@ -621,5 +622,18 @@ function heard(text, box, size, at) {
     y0: Math.min(...ys),
     y1: Math.max(...ys),
     at,
+  });
+}
+/** Where a face is on the screen, and how tall the one it belongs to stands, for the checks. */
+function faced(kind, x, y, r, tall) {
+  if (!X.faces) return;
+  const m = X.g.getTransform();
+  const k = Math.hypot(m.a, m.b);
+  X.faces.push({
+    kind,
+    x: m.a * x + m.c * y + m.e,
+    y: m.b * x + m.d * y + m.f,
+    r: r * k,
+    tall: tall * k,
   });
 }

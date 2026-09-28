@@ -49,6 +49,9 @@ const PIECE_S = 2;
 const READ_PER_S = 12;
 // The smallest handwriting that reads on a phone, in pixels of a 1080-high frame
 const SMALLEST = 30;
+// How tall the tallest person in a scene must stand, in pixels of a 1080-high frame, for their
+// face to read on a phone
+const SMALLEST_PERSON = 330;
 
 /** `<name>/<name>.html` in the bot's artifacts folder: the film, with its pictures beside it. */
 function fileFor(name) {
@@ -146,6 +149,29 @@ function notes(film) {
           `Scene ${w.scene}: "${words}" leaves ${(w.sceneLen - w.at).toFixed(1)}s to read it once written, and needs ${need.toFixed(1)}s: give the scene more seconds.`,
         );
     }
+  }
+  // Words over a face hide it
+  for (const w of film.words)
+    for (const f of film.faces.filter((f) => f.scene === w.scene)) {
+      const nx = Math.max(w.x0, Math.min(f.x, w.x1));
+      const ny = Math.max(w.y0, Math.min(f.y, w.y1));
+      if (Math.hypot(f.x - nx, f.y - ny) < f.r * 0.75) {
+        const words = w.text.length > 28 ? `${w.text.slice(0, 28)}…` : w.text;
+        const line = `Scene ${w.scene}: "${words}" covers a face (the ${f.kind} at ${Math.round(f.x)}, ${Math.round(f.y)}): move the words above or beside them.`;
+        if (!out.includes(line)) out.push(line);
+      }
+    }
+  const scenes = [...new Set(film.faces.map((f) => f.scene))];
+  for (const scene of scenes) {
+    const people = film.faces.filter(
+      (f) => f.scene === scene && f.kind === "person",
+    );
+    if (!people.length) continue;
+    const tallest = Math.max(...people.map((f) => f.tall)) * k;
+    if (tallest < SMALLEST_PERSON)
+      out.push(
+        `Scene ${scene}: its people are at most ${Math.round(tallest / k)}px tall, too small to see their faces: make who it is about ${Math.ceil(SMALLEST_PERSON / k)}px or taller, or move the camera in.`,
+      );
   }
   return out;
 }

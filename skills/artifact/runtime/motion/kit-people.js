@@ -697,6 +697,13 @@ function personAt(who, x, y, size, o, seed) {
     const [a, b] = out.hands;
     o.holding((a[0] + b[0]) / 2, (a[1] + b[1]) / 2);
   }
+  faced(
+    "person",
+    out.head[0],
+    out.head[1],
+    R * s * 1.1,
+    (R * 1.15 - headY) * s,
+  );
   return out;
 }
 
@@ -910,6 +917,7 @@ const HER_CELLS = (() => {
  */
 function her(x, y, r, o = {}) {
   nextSeed(o);
+  faced("her", x, y, r * 1.1, r * 2);
   if (X.dry) return { head: [x, y], top: [x, y - r * 1.3] };
   const g = X.g;
   const t = X.T;
@@ -1107,6 +1115,7 @@ function bot(color, x, y, size, o = {}) {
     BOT_SHAPES.set(key, pts);
   }
   const out = { head: [x, y - r], top: [x, y - 2 * r] };
+  faced("bot", x, y - r, r, size);
   if (X.dry) return out;
   const g = X.g;
   const t = X.T;
@@ -1174,6 +1183,7 @@ function bot(color, x, y, size, o = {}) {
 /** A dog sitting, facing us, its paws at (x, y), `size` tall. o: color, ear, wag, face. */
 function dog(x, y, size, o = {}) {
   const seed = nextSeed(o);
+  faced("dog", x, y - size * 0.68, size * 0.3, size);
   if (X.dry) return { head: [x, y - size * 0.7], top: [x, y - size] };
   const g = X.g;
   const t = X.T + hash(seed, 2) * 5;
@@ -1223,6 +1233,7 @@ function dog(x, y, size, o = {}) {
 /** A cat sitting, facing us, on (x, y), `size` tall. o: color, face. */
 function cat(x, y, size, o = {}) {
   const seed = nextSeed(o);
+  faced("cat", x, y - size * 0.62, size * 0.26, size);
   if (X.dry) return { head: [x, y - size * 0.7], top: [x, y - size] };
   const g = X.g;
   const t = X.T + hash(seed, 2) * 5;

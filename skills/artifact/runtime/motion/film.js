@@ -402,6 +402,7 @@ function info(cues) {
     errors: F.errors ?? [],
     problems: F.problems,
     words: F.words ?? [],
+    faces: F.faces ?? [],
   };
 }
 
@@ -430,6 +431,7 @@ async function start() {
   await Promise.all(loads);
   F.errors = [];
   F.words = [];
+  F.faces = [];
   const cues = listen();
   window.FILM = info(cues);
   if (!RENDER) player();
@@ -451,11 +453,13 @@ function listen() {
     X.words = [];
     for (let t = 0; t < len; t += 0.1)
       drawScene(s, t, layer(0).getContext("2d"));
-    // Words as they stand once the scene has settled
+    // Words and faces as they stand once the scene has settled
     X.words = [];
+    X.faces = [];
     drawScene(s, len - 0.05, layer(0).getContext("2d"));
     for (const w of X.words)
       F.words.push({ scene: s.i + 1, ...w, sceneLen: len });
+    for (const f of X.faces) F.faces.push({ scene: s.i + 1, ...f });
   }
   for (const [at, kind, len] of X.cues) {
     const key = `${kind}|${Math.round(at * 20)}`;
@@ -477,6 +481,7 @@ function listen() {
   X.dry = false;
   X.cues = null;
   X.words = null;
+  X.faces = null;
   return heardCues.sort((a, b) => a.at - b.at);
 }
 

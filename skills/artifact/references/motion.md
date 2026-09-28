@@ -130,7 +130,7 @@ and write it once as a function you call in every scene it is in.
 ## 4. Look, fix, render
 
 1. `put`: it runs every scene. Fix every error and note it lists — a word off the frame, too
-   small, or written too late to be read — and put again.
+   small, written too late to be read or over a face; people too small to see — and put again.
 2. `shots`, then look_at the sheet. Ask: can I tell the story with the sound off? Is every
    word inside the frame and away from faces? Does the last scene say the thing?
 3. Fix what is weak — usually too many words, things too small, or a scene that does nothing

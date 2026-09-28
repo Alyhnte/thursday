@@ -166,6 +166,7 @@ async function laidOut(code: string) {
   return JSON.parse(JSON.stringify(window.FILM)) as {
     duration: number;
     seed: number;
+    faces: { kind: string; x: number; y: number; r: number; tall: number }[];
     width: number;
     height: number;
     scenes: { t0: number; t1: number; enter: string }[];
@@ -193,6 +194,8 @@ test("the example film runs every scene, its words inside the frame and read in 
   // Scenes follow one another with no gap
   film.scenes.slice(1).forEach((s, i) => assert.equal(s.t0, film.scenes[i].t1));
   assert.ok(film.words.length >= 6);
+  // Every face is known to the checks: 3 + 3 + 1 + 2 people in scenes 2, 3, 4 and 6
+  assert.equal(film.faces.filter((f) => f.kind === "person").length, 9);
   for (const w of film.words) {
     assert.ok(w.x0 >= 0 && w.x1 <= film.width, `"${w.text}" is off the frame`);
     assert.ok(w.y0 >= 0 && w.y1 <= film.height, `"${w.text}" is off the frame`);
