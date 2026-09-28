@@ -148,7 +148,9 @@ export function CallLines({
   // Signed in on a plan without spoken calls: the card says so, and signs in another account
   const voice = useVoiceLine(liveSettings?.runsOn ?? null);
   const noCalls = voice.signedIn && !voice.planCalls;
-  const planSet = voice.signedIn && voice.planCalls && !planLost;
+  // Known first: a plan not read yet counts as one with calls (planCallsOf), and Free would
+  // show the check before it turns into Sign in again
+  const planSet = voice.known && voice.signedIn && voice.planCalls && !planLost;
   return (
     // Left-aligned wherever it stands: the call screen centres what is under her face
     <div className="flex w-full flex-col gap-2 text-left">
