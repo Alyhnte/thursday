@@ -11,6 +11,7 @@ import {
   CALL_LINE,
   CALL_PAGE,
   CALL_RELAY,
+  HERE,
   INBOX_POLL_MS,
   LIVE_CALL,
 } from "@/config";
@@ -46,13 +47,10 @@ import { createOutbox, type Outbox } from "@/lib/queue";
 import { errorToString } from "@/lib/utils";
 import { FACE_WORD_MAX, undrawable } from "./ascii.const";
 import { callSignal, useCallHeld } from "./call-signal";
-import {
-  type HerePhase,
-  type HereScene,
-  loadWorld,
-} from "./components/here-globe";
+import type { HerePhase, HereScene } from "./components/here-globe";
 import { finished, goodbye } from "./face-words";
 import { hereDue, hereShown } from "./here-day";
+import { loadWorld } from "./here-map";
 import {
   openWork,
   startedLine,
@@ -221,22 +219,37 @@ export function useThursday(
   const [faceWord, setFaceWord] = useState<FaceWord | null>(null);
   /**
    * The globe the day's first call opens with (here-globe), and how far it has got; null while
-   * none is up. `emote` shows nothing from its start to its end (`hereUp`), so no word is
-   * drawn under it or cuts it short.
+   * none is up. No word goes on her face from its start to its end (`hereUp`): `emote` is told
+   * so, and the page's own words are let go, so none is drawn under it or cut short by it.
    */
   const [here, setHere] = useState<{
     scene: HereScene;
     phase: HerePhase | null;
   } | null>(null);
   const hereUp = useRef(false);
-  const herePhase = useCallback((phase: HerePhase) => {
-    if (phase === "done") {
-      hereUp.current = false;
-      setHere(null);
-      return;
-    }
-    setHere((up) => (up && up.phase !== phase ? { ...up, phase } : up));
+  /** One place for both, so the gate and the globe never disagree. */
+  const showHere = useCallback((scene: HereScene | null) => {
+    hereUp.current = scene !== null;
+    setHere(scene ? { scene, phase: null } : null);
   }, []);
+  const herePhase = useCallback(
+    (phase: HerePhase) => {
+      if (phase === "done") return showHere(null);
+      // the day is spent on its first frame, not before: one never seen leaves it for the next call
+      if (phase === "covering") hereShown();
+      setHere((up) => (up && up.phase !== phase ? { ...up, phase } : up));
+    },
+    [showHere],
+  );
+  // it plays only while it is looked at: a page left while it is up goes back to her face
+  useEffect(() => {
+    if (!here) return;
+    const hidden = () => {
+      if (document.visibilityState === "hidden") showHere(null);
+    };
+    document.addEventListener("visibilitychange", hidden);
+    return () => document.removeEventListener("visibilitychange", hidden);
+  }, [here, showHere]);
   /** The same value where callbacks can read it, and the timer that ends it. */
   const thinking = useRef<number | null>(null);
   const thinkTail = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -489,7 +502,9 @@ export function useThursday(
       unvoiced.current.add(item.key);
     }
     // Finished work is good news before she says it (an item's key opens with what it is)
-    if (first.key.startsWith("done:")) setFaceWord(finished());
+    // the globe owns her face while it is up; the word would be drawn under it or after its moment
+    if (first.key.startsWith("done:") && !hereUp.current)
+      setFaceWord(finished());
     readAloud();
     onLine.current = due.map((item) => item.key);
     onLineRows.current = due.flatMap((item) => item.relayIds);
@@ -676,8 +691,7 @@ export function useThursday(
       shareNews.current = null;
       stopSharing();
       // the globe is the call's opening, and goes with it
-      hereUp.current = false;
-      setHere(null);
+      showHere(null);
       rang.current = false;
       // What she did not voice goes in again next call; unsent context goes with the session
       for (const key of unvoiced.current) told.current.delete(key);
@@ -848,18 +862,38 @@ export function useThursday(
       // Asked now, from the press, so a first call's permission prompt comes with it and the
       // answer is found beside the lock and the offer
       const found = whereNow();
-      // The globe opens the first call of the day the user places (here-day), in a tab they
-      // are looking at. Its map is fetched beside the rest, and the globe is asked for only
-      // once it is here: the opening that greets them with the weather never comes without it
+      // The globe opens the first call of the day the user places (here-day), in a tab they are
+      // looking at, unless the system asks for less motion. Its map is fetched once there is a
+      // forecast to put over it, and the globe is asked for only if the map is in by the time
+      // the place is (HERE.waitMs from the press): the opening that greets them with the
+      // weather never comes without it, and a slow map never holds the call up
       const mapped =
-        !calledBack && hereDue() && document.visibilityState === "visible"
-          ? loadWorld().then(
-              () => true,
-              (cause) => {
-                console.warn(`No globe on this call: ${errorToString(cause)}`);
-                return false;
-              },
-            )
+        !calledBack &&
+        hereDue() &&
+        document.visibilityState === "visible" &&
+        !window.matchMedia("(prefers-reduced-motion: reduce)").matches
+          ? Promise.race([
+              found.then((place) =>
+                place?.where.weather
+                  ? Promise.all([
+                      loadWorld(),
+                      // its code too, which the screen loads only for it
+                      import("./components/here-globe"),
+                    ]).then(
+                      () => true,
+                      (cause) => {
+                        console.warn(
+                          `No globe on this call: ${errorToString(cause)}`,
+                        );
+                        return false;
+                      },
+                    )
+                  : false,
+              ),
+              new Promise<false>((resolve) =>
+                setTimeout(() => resolve(false), HERE.waitMs),
+              ),
+            ])
           : null;
       // After the audio, which has to be opened inside the click
       const release = await takeCallLock();
@@ -945,7 +979,12 @@ export function useThursday(
         initialize: async (sdp) => {
           const place = await found;
           const sky = place?.where.weather;
-          const showing = Boolean(sky && mapped && (await mapped));
+          const showing = Boolean(
+            sky &&
+              mapped &&
+              (await mapped) &&
+              document.visibilityState === "visible",
+          );
           const handshake = unwrapResult(
             await openCallAction(
               sdp,
@@ -964,7 +1003,7 @@ export function useThursday(
           // the server grants it where the call opens on nothing else (live.prompt)
           line.here =
             handshake.here && place && sky
-              ? { ...place.position, weather: sky }
+              ? { ...place.position, code: place.country, weather: sky }
               : null;
           line.standing = handshake.standing;
           line.opened = handshake.opened;
@@ -1225,13 +1264,10 @@ export function useThursday(
       // The quiet clock starts with the line, so nothing is put to her the moment it opens
       heard.current = Date.now();
 
-      // The globe comes up as she starts to greet them with the weather it shows; the day is
-      // spent only now, so a call that never opened leaves it for the next
-      if (line.here) {
-        hereShown();
-        hereUp.current = true;
-        setHere({ scene: line.here, phase: null });
-      }
+      // The globe comes up as she starts to greet them with the weather it shows, if they are
+      // still looking: a hidden page draws nothing, and it would come up late, over the talk
+      if (line.here && document.visibilityState === "visible")
+        showHere(line.here);
       if (line.opening) {
         // The greeting goes first; open work waits until she has said it. The room is kept
         // from her until she starts it, or she waits on it (config LIVE_CALL.openingHoldMs)

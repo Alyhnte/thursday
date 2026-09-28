@@ -93,7 +93,7 @@ export async function loadLivePrompt(options: {
         ? `The call has just started. It is ${clockNow()} for them. Speak first: greet the user in one line, say you are Thursday, and ask what to call them.`
         : here
           ? // The weather is already in her prompt (whereLine): this says only that it is the greeting
-            `The call has just started. It is ${clockNow()} for them, and their screen is showing where they are with the sky over it now. Speak first: greet the user in one line, with the weather there.`
+            `The call has just started. It is ${clockNow()} for them, and their screen is showing where they are with the sky over it now. Speak first: greet the user in one line, with the weather there — never work.`
           : // The hour is a fact of the moment, so it rides on the opening and not in the prompt.
             // One thing about them, never work: the threads are what opened every call before
             `The call has just started. It is ${clockNow()} for them. Speak first: greet the user naturally, in one line. You may pick up one thing from what you know about them — never a list, never work.`,

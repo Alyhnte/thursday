@@ -6,29 +6,38 @@ https://claude.ai/artifact/CMHZ6oW7wYJ21Sgyq3Ydi2
 Everything is drawn on her own grid (ascii-orb: 8px glyphs on 5.4 × 7.1px cells, so neighbours
 touch), with her glyph ramp, emoji pool, eyes and washes.
 
-## Here: where you are and the sky over it (in the app, work in progress)
+## Here: where you are and the sky over it (in the app)
 
 - When: the first spoken call of the day the user places from this browser, with location
-  allowed and the weather found. Not on a call she places (call-back) and not on the very first
-  call, which introduces her; the day is kept in the browser and spent only when it plays.
+  allowed and the weather found, in a page they are looking at, unless the system asks for less
+  motion. Not on a call she places (call-back) and not on the very first call, which introduces
+  her. The day is kept in the browser and spent only once the globe draws.
 - She greets them with the weather while it plays: on that call the server swaps her opening
-  for one that says so. No extra message goes in, so it cannot mix with open work or screen
-  news, which already wait for the opening. The weather was already in her prompt; gusts are
-  added to it.
-- While it is up, `emote` shows nothing and tells her so; a tap brings her back without hanging
-  up; her words stand under her face instead of beside it. About 11 s, then she comes back.
+  for one that says so (still "never work"). No extra message goes in, so it cannot mix with
+  open work or screen news, which already wait for the opening. Gusts join the weather in her
+  prompt.
+- While it is up, no word goes on her face (`emote` is told so, the page's own "OK" is let go);
+  a tap brings her back without hanging up; the captions beside her are kept, unseen, and her
+  words stand under her face. It holds 3.4 s once everything is in, about 11 s in all; a page
+  left while it is up goes straight back to her face.
 - The globe: she turns into it (the world spreads through her from the middle), spins to them,
   dives until their country fits a field twice her width, everything else falling away. A pin,
-  the sun where it really is (or tonight's moon and stars), the weather lightly over it, wind
-  and a storm from the gusts. At night the country is dark land.
-- The position stays in the page (`where.ts` returns it beside what goes to the server).
-- Map: Natural Earth 50m countries via world-atlas, rebuilt by `scripts/here-map.mts` into
-  `public/here/world.json` (236 KB), credited in `public/here/NOTICE`.
-- Files: `features/thursday/components/here-globe.tsx`, `here-map.ts`, `here-sky.ts`,
-  `here-day.ts`; tests in `scripts/here.test.mts` (in `test:live`).
+  the sun on the pass it is on now (walked from now, so no clock or zone moves it), or tonight's
+  moon and stars, the weather lightly over it, wind and a storm from the gusts. At night the
+  country is dark land.
+- Their country is the one the place service names (ISO code), so a border or strait town is not
+  put in its neighbour; the outlines decide only where it names none the map has.
+- The position and country stay in the page (`where.ts` returns them beside what goes to the
+  server).
+- Map: Natural Earth 50m countries via world-atlas, with ISO codes from i18n-iso-countries,
+  rebuilt by `scripts/here-map.mts` into `public/here/world.json` (239 KB), credited in
+  `public/here/NOTICE`. Rings simplification would collapse (Monaco, Macau) are kept whole;
+  Antarctica's coast is closed along the pole.
+- Files: `features/thursday/components/here-globe.tsx` (loaded only when it plays),
+  `here-map.ts`, `here-sky.ts`, `here-day.ts`; tests in `scripts/here.test.mts` (in `test:live`).
 - Waiting: city lights at night need a city list. Natural Earth's own (public domain, the
-  maintainer's pick) is on naciscdn.org, which this environment's network blocks; GeoNames
-  needs a credit. Findings of a code review are being fixed.
+  maintainer's pick) is on naciscdn.org, which this environment's network blocks; GeoNames needs
+  a credit. Until then the lights are not in the code.
 
 ## Seeing: a picture in emoji pixels (design only)
 

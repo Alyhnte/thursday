@@ -1238,7 +1238,7 @@ test("both call prompts open as one Thursday: the voice gets the guide's delegat
     assert.equal(shown.here, true);
     assert.match(
       shown.opening,
-      /^The call has just started\. It is [^\n]+ for them, and their screen is showing where they are with the sky over it now\. Speak first: greet the user in one line, with the weather there\.$/,
+      /^The call has just started\. It is [^\n]+ for them, and their screen is showing where they are with the sky over it now\. Speak first: greet the user in one line, with the weather there — never work\.$/,
     );
     assert.equal(shown.opening.includes("Lisbon"), false);
     // Never without the weather to greet them with, and never over a call-back's reason
@@ -1676,6 +1676,7 @@ test("the page finds where they are from the browser's position, and goes on wit
       city: "Lisbon",
       locality: "Santa Maria Maior",
       countryName: "Portugal",
+      countryCode: "PT",
     });
   let weather = () =>
     Response.json({
@@ -1696,7 +1697,7 @@ test("the page finds where they are from the browser's position, and goes on wit
   // One module throughout: on Node 22 tsx loads it as CommonJS, cached by path, so a query
   // on the import brings back the same one. What it keeps runs out on the mocked clock.
   const { whereNow } = await import("../features/thursday/where.ts");
-  // What goes to the server is `where`; the position is the page's own, for the globe
+  // What goes to the server is `where`; the position and the country are the page's own, for the globe
   const position = { lat: 38.7223, lon: -9.1393 };
   assert.deepEqual(await whereNow(), {
     where: {
@@ -1712,6 +1713,7 @@ test("the page finds where they are from the browser's position, and goes on wit
       },
     },
     position,
+    country: "PT",
   });
   // The place service gets the device's own position; the forecast, a kilometre's worth
   assert.equal(urls[0]?.searchParams.get("latitude"), "38.7223");
@@ -1725,6 +1727,7 @@ test("the page finds where they are from the browser's position, and goes on wit
   assert.deepEqual(await whereNow(), {
     where: { place: "Lisbon, Portugal", weather: null },
     position,
+    country: "PT",
   });
   assert.equal(asked, 2);
 

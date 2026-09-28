@@ -1,3 +1,5 @@
+import { HERE } from "@/config";
+
 // The globe's map (components/here-globe): Natural Earth's countries as scripts/here-map.mts
 // packs them into public/here/world.json, which country a place is in, and the view that
 // fits that country in a frame. No DOM, so it is tested in node; the rasters the globe is
@@ -6,26 +8,28 @@
 /** `[west, east, south, north]`, degrees. */
 export type Box = [number, number, number, number];
 
-/** A ring is `[lon, lat, lon, lat, …]`, its longitudes unwrapped so it never jumps at 180°. */
-export type Polygon = { rings: Float32Array[]; bbox: Box };
+/**
+ * A ring is `[lon, lat, lon, lat, …]`, its longitudes unwrapped so it never jumps at 180°; the
+ * first is the outline, the rest are holes.
+ */
+type Polygon = { rings: Float32Array[]; bbox: Box };
 
-export type Country = { name: string; polys: Polygon[]; bbox: Box };
-
-export type World = {
-  /** Every arc, decoded to degrees: the outlines' shared pieces. */
-  arcs: Float32Array[];
-  /** The arcs two countries share: the borders between them. */
-  borders: number[];
-  countries: Country[];
+export type Country = {
+  name: string;
+  /** ISO 3166 two letters, as the place service names it; null where it has none (Kosovo). */
+  code: string | null;
+  polys: Polygon[];
+  bbox: Box;
 };
+
+export type World = { countries: Country[] };
 
 /** The file as scripts/here-map.mts writes it. */
 type Packed = {
-  v: 1;
+  v: 2;
   q: number;
   a: number[][];
-  b: number[];
-  c: { n: string; p: number[][][] }[];
+  c: { n: string; k?: string; p: number[][][] }[];
 };
 
 const RAD = Math.PI / 180;
@@ -34,9 +38,16 @@ const RAD = Math.PI / 180;
 export const wrap = (degrees: number) =>
   ((((degrees + 180) % 360) + 360) % 360) - 180;
 
+const areaOf = (ring: Float32Array) => {
+  let sum = 0;
+  for (let i = 0, j = ring.length - 2; i < ring.length; j = i, i += 2)
+    sum += ring[j] * ring[i + 1] - ring[i] * ring[j + 1];
+  return Math.abs(sum / 2);
+};
+
 export function decodeWorld(json: unknown): World {
   const packed = json as Packed;
-  if (packed?.v !== 1 || !Array.isArray(packed.a) || !Array.isArray(packed.c))
+  if (packed?.v !== 2 || !Array.isArray(packed.a) || !Array.isArray(packed.c))
     throw new Error("world.json is not a map this app packs");
   const q = packed.q;
   const arcs = packed.a.map((steps) => {
@@ -52,7 +63,9 @@ export function decodeWorld(json: unknown): World {
     return out;
   });
   // A ring that crosses 180° (Russia, Fiji) runs on past it without a jump; whatever draws it
-  // draws it again 360° to either side
+  // draws it again 360° to either side. One that runs all the way round (Antarctica's coast)
+  // goes round a pole, and on a flat map it is closed along that pole: the file draws it for a
+  // sphere, with a ring of its own lying on the pole, which has no area here and is left out
   const ring = (indices: number[]) => {
     const out: number[] = [];
     let previous: number | null = null;
@@ -70,6 +83,14 @@ export function decodeWorld(json: unknown): World {
         previous = x;
       }
     }
+    const round =
+      out.length >= 4 && Math.abs(out[out.length - 2] - out[0]) > 359;
+    if (round) {
+      let lat = 0;
+      for (let i = 1; i < out.length; i += 2) lat += out[i];
+      const pole = lat < 0 ? -90 : 90;
+      out.push(out[out.length - 2], pole, out[0], pole);
+    }
     return new Float32Array(out);
   };
   const empty = (): Box => [180, -180, 90, -90];
@@ -81,22 +102,50 @@ export function decodeWorld(json: unknown): World {
       box[3] = Math.max(box[3], points[i + 1]);
     }
   };
-  const countries = packed.c.map(({ n, p }) => {
+  const countries = packed.c.map(({ n, k, p }) => {
     const bbox = empty();
-    const polys = p.map((rings) => {
-      const decoded = rings.map(ring);
-      const box = empty();
-      grow(box, decoded[0]);
-      grow(bbox, decoded[0]);
-      return { rings: decoded, bbox: box };
-    });
-    return { name: n, polys, bbox };
+    const polys = p
+      .map((indices) => indices.map(ring).filter((r) => areaOf(r) > 0))
+      .filter((rings) => rings.length > 0)
+      .map((rings) => {
+        const box = empty();
+        grow(box, rings[0]);
+        grow(bbox, rings[0]);
+        return { rings, bbox: box };
+      });
+    return { name: n, code: k ?? null, polys, bbox };
   });
-  return { arcs, borders: packed.b, countries };
+  return { countries };
+}
+
+let load: Promise<World> | null = null;
+
+/**
+ * The map, fetched from the app's own public folder the first time a globe is wanted, and
+ * kept until the globe is over (`releaseWorld`). A failure goes to whoever waits and is not
+ * kept, so the next call asks again. Browser only: the path is the page's.
+ */
+export function loadWorld(): Promise<World> {
+  load ??= fetch("/here/world.json")
+    .then(async (response) => {
+      if (!response.ok)
+        throw new Error(`/here/world.json answered ${response.status}`);
+      return decodeWorld(await response.json());
+    })
+    .catch((cause) => {
+      load = null;
+      throw cause;
+    });
+  return load;
+}
+
+/** The globe is over: the map goes until tomorrow's, rather than staying for the page's life. */
+export function releaseWorld() {
+  load = null;
 }
 
 /** Whether `(x, y)` is inside a ring, by crossings. */
-export function inRing(x: number, y: number, ring: Float32Array): boolean {
+function inRing(x: number, y: number, ring: Float32Array): boolean {
   let inside = false;
   for (let i = 0, j = ring.length - 2; i < ring.length; j = i, i += 2) {
     const xi = ring[i];
@@ -125,20 +174,48 @@ function polygonAt(country: Country, lat: number, lon: number): number {
   return -1;
 }
 
-/** Whether `(lat, lon)` is in country `k`, on the outlines as packed. */
-export const inCountry = (world: World, k: number, lat: number, lon: number) =>
-  polygonAt(world.countries[k], lat, lon) >= 0;
+/** The polygon of `country` nearest `(lat, lon)`, by its box: where a town on its coast is. */
+function nearestPolygon(country: Country, lat: number, lon: number): number {
+  let best = 0;
+  let least = Number.POSITIVE_INFINITY;
+  country.polys.forEach(({ bbox }, p) => {
+    const dx = Math.max(
+      0,
+      Math.abs(wrap(lon - (bbox[0] + bbox[1]) / 2)) - (bbox[1] - bbox[0]) / 2,
+    );
+    const dy = Math.max(0, bbox[2] - lat, lat - bbox[3]);
+    const d = Math.hypot(dx * Math.cos(lat * RAD), dy);
+    if (d < least) {
+      least = d;
+      best = p;
+    }
+  });
+  return best;
+}
 
 /**
- * The country a place is in, and which of its polygons; null out at sea. A city on the
- * water's edge can fall just outside a coast this simple, so what is found within 1.2° of it
- * counts, the nearest ring out first.
+ * The country a place is in, and the polygon of it they are on; null out at sea. The place
+ * service's own answer (`code`, what her prompt names) decides it where the map has that code:
+ * on outlines this simple, a town on a border or a strait falls in its neighbour. Otherwise the
+ * outlines do, and a position just off a coast counts within HERE `coastDeg`, nearest first.
  */
 export function homeOf(
   world: World,
   lat: number,
   lon: number,
+  code?: string | null,
 ): { country: number; poly: number } | null {
+  const named = code
+    ? world.countries.findIndex((country) => country.code === code)
+    : -1;
+  if (named >= 0 && world.countries[named].polys.length) {
+    const country = world.countries[named];
+    const poly = polygonAt(country, lat, lon);
+    return {
+      country: named,
+      poly: poly >= 0 ? poly : nearestPolygon(country, lat, lon),
+    };
+  }
   const at = (la: number, lo: number) => {
     for (let k = 0; k < world.countries.length; k++) {
       const poly = polygonAt(world.countries[k], la, lo);
@@ -147,7 +224,8 @@ export function homeOf(
     return null;
   };
   let found = at(lat, lon);
-  for (let step = 1; !found && step <= 12; step++) {
+  const steps = Math.round(HERE.coastDeg * 10);
+  for (let step = 1; !found && step <= steps; step++) {
     const reach = step / 10;
     for (let k = 0; k < 8 && !found; k++)
       found = at(
@@ -156,33 +234,6 @@ export function homeOf(
       );
   }
   return found;
-}
-
-/**
- * Whether a city belongs to country `home`: inside its outline, or just off a coast this
- * simple with no other country there. A city across a border is not theirs.
- */
-export function cityIn(
-  world: World,
-  home: number,
-  lat: number,
-  lon: number,
-): boolean {
-  if (inCountry(world, home, lat, lon)) return true;
-  for (let k = 0; k < world.countries.length; k++)
-    if (k !== home && inCountry(world, k, lat, lon)) return false;
-  for (const reach of [0.06, 0.12, 0.18])
-    for (let a = 0; a < 8; a++)
-      if (
-        inCountry(
-          world,
-          home,
-          lat + reach * Math.sin((a * Math.PI) / 4),
-          lon + reach * Math.cos((a * Math.PI) / 4),
-        )
-      )
-        return true;
-  return false;
 }
 
 /** Where the globe lands: its centre, its radius and the country it is on. */
@@ -199,7 +250,7 @@ export type View = {
 };
 
 /** The frame, in reference units, and how much of it their country may take. */
-export type Frame = {
+type Frame = {
   width: number;
   height: number;
   /** The smallest the globe is ever drawn at the end of its dive: a little past her own size. */
@@ -224,8 +275,10 @@ export function fitView(
   lat: number,
   lon: number,
   frame: Frame,
+  /** The country the place service named (homeOf). */
+  code?: string | null,
 ): View {
-  const found = homeOf(world, lat, lon);
+  const found = homeOf(world, lat, lon, code);
   const { width, height } = frame;
   let latc = lat;
   let lonc = lon;

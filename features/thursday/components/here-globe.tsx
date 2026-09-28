@@ -3,23 +3,26 @@
 import { useEffect, useRef, useState } from "react";
 import { ASCII_FACE, HERE } from "@/config";
 import { useIsDark } from "@/hooks/use-theme";
+import { errorToString } from "@/lib/utils";
 import {
   ALPHA_TOP,
   emojiAlpha,
-  emojiWeight,
+  emojiPx,
   hash,
   LEVELS,
+  ORB_INK,
   RAMP,
   smoothstep as ss,
 } from "../ascii.const";
 import { faceGlyphs } from "../face-glyphs";
+import { fbm, ihash, vnoise } from "../field";
 import {
   type Box,
   type Country,
-  cityIn,
-  decodeWorld,
   fitView,
+  loadWorld,
   project,
+  releaseWorld,
   type View,
   type World,
   wrap,
@@ -27,94 +30,51 @@ import {
 import {
   type Sky,
   skyAt,
+  solarDay,
   type WeatherLook,
   weatherLook,
   windOf,
 } from "../here-sky";
 import type { Where } from "../thursday.schema";
-import { DESIGN, GLYPH_FONT, REST_R } from "./ascii-orb";
+import {
+  CAP_SLACK_MS,
+  CELL_H,
+  CELL_W,
+  DESIGN,
+  GLYPH_FONT,
+  REST_R,
+} from "./ascii-orb";
 
 /**
  * Her, turned into the world for the start of the day's first call: the globe spins to where
  * they are, dives until their country fills a field wider than her, and puts the sky over it
  * as it is there now — the sun or the moon where they really are, and the weather, lightly.
- * By night the country is dark land with its largest cities lit. Drawn on her own grid in her
- * own glyphs (ascii-orb), over her face, which it hides while it is up (Face `covered`); a tap
- * sends it back. The position never leaves the page (where.ts).
+ * By night their country is dark land. Drawn on her own grid in her own glyphs (ascii-orb),
+ * over her face, which it hides while it is up (Face `covered`); a tap sends it back. The
+ * position never leaves the page (where.ts).
  */
 
 /** What the globe shows: where they are, from this page alone, and the weather there. */
 export type HereScene = {
   lat: number;
   lon: number;
+  /** The country the place service named (ISO two letters), which the globe dives to. */
+  code: string | null;
   weather: NonNullable<Where["weather"]>;
 };
 
 /**
- * Where it has got to, for the page around it: `covering` as the world spreads through her,
- * `world` once she is wholly covered (her face stops drawing), `back` as she comes back (her
- * face returns under it), `done` when it is gone.
+ * Where it has got to, for the page around it: `covering` from its first frame, as the world
+ * spreads through her, `world` once she is wholly covered (her face stops drawing), `back` as
+ * she comes back (her face returns under it), `done` when it is gone or cannot be drawn.
  */
 export type HerePhase = "covering" | "world" | "back" | "done";
 
-// ---------- what it is drawn from ----------
+// ---------- her glyphs ----------
 
-/** A city as public/here/cities.json packs it: name, latitude, longitude, people in thousands. */
-type City = [string, number, number, number];
-
-const loads: {
-  world: Promise<World> | null;
-  cities: Promise<City[]> | null;
-} = { world: null, cities: null };
-
-async function fetchJson(path: string): Promise<unknown> {
-  const response = await fetch(path);
-  if (!response.ok) throw new Error(`${path} answered ${response.status}`);
-  return response.json();
-}
-
-/**
- * The map, fetched the first time a globe is wanted and kept for the page. A failure goes to
- * whoever waits and is not kept, so the next call asks again.
- */
-export function loadWorld(): Promise<World> {
-  loads.world ??= fetchJson("/here/world.json")
-    .then(decodeWorld)
-    .catch((cause) => {
-      loads.world = null;
-      throw cause;
-    });
-  return loads.world;
-}
-
-/** The cities that light up at night, largest first; fetched only for a night. */
-function loadCities(): Promise<City[]> {
-  loads.cities ??= fetchJson("/here/cities.json")
-    .then((json) => {
-      const cities = (json as { c?: unknown })?.c;
-      if (!Array.isArray(cities))
-        throw new Error("cities.json holds no cities");
-      return cities as City[];
-    })
-    .catch((cause) => {
-      loads.cities = null;
-      throw cause;
-    });
-  return loads.cities;
-}
-
-// ---------- her grid and glyphs ----------
-
-const { fontSize: GLYPH_PX, density: DENSITY } = ASCII_FACE;
-/** Her cell pitch (ascii-orb), px. */
-const CELL_W = (GLYPH_PX * 0.95) / DENSITY;
-const CELL_H = (GLYPH_PX * 1.25) / DENSITY;
+const GLYPH_PX = ASCII_FACE.fontSize;
 const TOP = LEVELS - 1;
 const RAD = Math.PI / 180;
-/** Slack on the frame cap (ascii-orb CAP_SLACK_MS). */
-const CAP_SLACK_MS = 1000 / 240;
-/** How many of their country's cities light up at night: the largest, one light each. */
-const LIT_CITIES = 10;
 
 type GlyphSet = {
   emoji: readonly string[];
@@ -123,6 +83,11 @@ type GlyphSet = {
   /** Changes a second, for glyphs not held to the ground under them. */
   churn: number;
 };
+
+/** A cloud in letters, whatever the weather in it. */
+const CLOUD_LETTERS = [".", ":", "-", "~", "=", "c", "o"] as const;
+/** Mist and wind in letters. */
+const DRIFT_LETTERS = ["~", "-", "="] as const;
 
 /** What each part is drawn in: emoji of one colour family, like her washes. */
 const SETS = {
@@ -141,11 +106,6 @@ const SETS = {
     letters: "ramp",
     churn: 0,
   },
-  cityLight: {
-    emoji: ["✨", "🌟", "⭐", "💛", "🟡"],
-    letters: ["+", "*", "*"],
-    churn: 0.6,
-  },
   sunBody: {
     emoji: ["☀️", "🌻", "🍋", "⭐", "💛", "🧡", "🍊", "🌟", "🌼", "🐥"],
     letters: "ramp",
@@ -161,17 +121,17 @@ const SETS = {
   star: { emoji: ["✨", "⭐"], letters: ["·", "+", "*"], churn: 0.4 },
   cloud: {
     emoji: ["☁️", "🤍", "⚪", "☁️", "🤍", "☁️"],
-    letters: [".", ":", "-", "~", "=", "c", "o"],
+    letters: CLOUD_LETTERS,
     churn: 0.25,
   },
   cGrey: {
     emoji: ["☁️", "🌫️", "☁️", "🌥️", "⚪"],
-    letters: [".", ":", "-", "~", "=", "c", "o"],
+    letters: CLOUD_LETTERS,
     churn: 0.25,
   },
   cRain: {
     emoji: ["🌧️", "☁️", "🌫️", "☁️", "💧"],
-    letters: [".", ":", "-", "~", "=", "c", "o"],
+    letters: CLOUD_LETTERS,
     churn: 0.3,
   },
   cStorm: {
@@ -181,22 +141,25 @@ const SETS = {
   },
   cSnow: {
     emoji: ["🌨️", "☁️", "🤍", "❄️", "⚪"],
-    letters: [".", ":", "-", "~", "=", "c", "o"],
+    letters: CLOUD_LETTERS,
     churn: 0.25,
   },
   cyclone: {
     emoji: ["☁️", "🌫️", "☁️", "🌧️", "🌀"],
-    letters: [".", ":", "-", "~", "=", "c", "o"],
+    letters: CLOUD_LETTERS,
     churn: 0.3,
   },
-  fog: { emoji: ["🌫️"], letters: ["~", "-", "="], churn: 0.2 },
+  fog: { emoji: ["🌫️"], letters: DRIFT_LETTERS, churn: 0.2 },
   drop: { emoji: ["💧"], letters: ["'", "|", "|"], churn: 0 },
   flake: { emoji: ["❄️"], letters: ["*", "+"], churn: 0 },
-  wind: { emoji: ["💨"], letters: ["~", "-", "="], churn: 0 },
+  wind: { emoji: ["💨"], letters: DRIFT_LETTERS, churn: 0 },
   bolt: { emoji: ["⚡"], letters: ["/", "\\"], churn: 0 },
 } satisfies Record<string, GlyphSet>;
 
 type SetName = keyof typeof SETS;
+
+/** The two marks drawn whole over the field: the pin, and a storm's own glyph. */
+const MARKS = { pin: ["📍", "◉"], storm: ["🌀", "@"] } as const;
 
 /** How each look of the weather is drawn: small clouds, their set, rain, snow and fog, 0 to 1. */
 const WEATHER: Record<
@@ -215,12 +178,14 @@ const WEATHER: Record<
 };
 
 /**
- * The choreography, in seconds from its start. Drawing, not tuning: how long it stays is the
- * one number that is (config HERE `globeMs`).
+ * The choreography, in seconds from its start. Drawing, not tuning: how long the finished
+ * scene holds is the one number that is (config HERE `holdMs`).
  */
 const AT = {
   /** the world spreads through her from the middle out */
   cover: [0.1, 1.0],
+  /** her face may still be on screen a frame after it is told to go: it is wiped this long more */
+  grace: 0.3,
   /** and she grows a little, as a globe */
   grow: [0.2, 1.8],
   /** turning fast, then gliding to a stop over them */
@@ -233,93 +198,19 @@ const AT = {
   only: [3.3, 4.8],
   /** by night their land goes dark, cell by cell */
   dark: [4.4, 5.4],
-  /** and its cities light up, the largest first */
-  lights: [5.4, 7.2],
   pin: [5.1, 5.5],
   ripple: [5.1, 7.3],
   /** the sun or the moon comes out */
   orb: [5.8, 6.6],
+  /** the weather, the last thing in */
   weather: [6.4, 7.6],
-  /** from its end to gone */
+  /** from going to gone */
   leave: 1.4,
 } as const;
 
-// ---------- noise, on the design's own hashes ----------
-
-/** Integer hash to [0, 1): the same (x, y) always gives the same. */
-function ih(x: number, y: number) {
-  let h =
-    Math.imul(x | 0, 0x27d4eb2d) ^ Math.imul((y | 0) + 0x165667b1, 0x85ebca6b);
-  h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d);
-  h = Math.imul(h ^ (h >>> 12), 0x297a2d39);
-  h ^= h >>> 15;
-  return (h >>> 0) / 4294967296;
-}
-
-const ih3 = (x: number, y: number, z: number) =>
-  ih(x + Math.imul(z, 7919), y - Math.imul(z, 104729));
-
-function valueNoise(x: number, y: number) {
-  const xi = Math.floor(x);
-  const yi = Math.floor(y);
-  const xf = x - xi;
-  const yf = y - yi;
-  const u = xf * xf * (3 - 2 * xf);
-  const v = yf * yf * (3 - 2 * yf);
-  const a = ih(xi, yi);
-  const b = ih(xi + 1, yi);
-  const c = ih(xi, yi + 1);
-  const d = ih(xi + 1, yi + 1);
-  return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
-}
-
-function fbm2(x: number, y: number, octaves: number) {
-  let sum = 0;
-  let amp = 0.5;
-  let freq = 1;
-  let norm = 0;
-  for (let i = 0; i < octaves; i++) {
-    sum += amp * valueNoise(x * freq + i * 17.3, y * freq - i * 9.1);
-    norm += amp;
-    amp *= 0.5;
-    freq *= 2;
-  }
-  return sum / norm;
-}
-
-function noise3(x: number, y: number, z: number) {
-  const xi = Math.floor(x);
-  const yi = Math.floor(y);
-  const zi = Math.floor(z);
-  const xf = x - xi;
-  const yf = y - yi;
-  const zf = z - zi;
-  const u = xf * xf * (3 - 2 * xf);
-  const v = yf * yf * (3 - 2 * yf);
-  const w = zf * zf * (3 - 2 * zf);
-  const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
-  const plane = (z0: number) =>
-    lerp(
-      lerp(ih3(xi, yi, z0), ih3(xi + 1, yi, z0), u),
-      lerp(ih3(xi, yi + 1, z0), ih3(xi + 1, yi + 1, z0), u),
-      v,
-    );
-  return lerp(plane(zi), plane(zi + 1), w);
-}
-
-function fbm3(x: number, y: number, z: number, octaves: number) {
-  let sum = 0;
-  let amp = 0.5;
-  let freq = 1;
-  let norm = 0;
-  for (let i = 0; i < octaves; i++) {
-    sum += amp * noise3(x * freq + i * 5.7, y * freq, z * freq);
-    norm += amp;
-    amp *= 0.5;
-    freq *= 2;
-  }
-  return sum / norm;
-}
+/** Hashes a cell's held key (a hash itself) with a salt, through her own integer hash. */
+const keyed = (key: number, salt: number) =>
+  ihash(key & 0xffff, key >>> 16, salt);
 
 const clamp01 = (x: number) => (x < 0 ? 0 : x > 1 ? 1 : x);
 const bump = (x: number, c: number, w: number) =>
@@ -344,6 +235,9 @@ type Raster = {
   data: Uint8Array;
 };
 
+/** Every outline is also drawn 360° to either side, for a window across 180°. */
+const SHIFTS = [-360, 0, 360] as const;
+
 /** Land (1) and their country (2) over a window, `step` degrees a pixel, from the outlines. */
 function rasterize(
   world: World,
@@ -366,13 +260,13 @@ function rasterize(
   canvas.width = w;
   canvas.height = h;
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  if (!ctx) throw new Error("The browser gave no canvas to draw the map on.");
-  // every ring again 360° to either side, for a window across 180° and a ring unwrapped past it
-  const shifts = [-360, 0, 360];
-  const hit = (box: Box) =>
+  if (!ctx) throw new Error("the browser gave no canvas to draw the map on");
+  // only the copies that fall on the window: drawing all three cost a busy main thread half a second
+  const meets = (box: Box, shift: number) =>
     box[3] >= win.south &&
     box[2] <= win.north &&
-    shifts.some((s) => box[1] + s >= win.west && box[0] + s <= win.east);
+    box[1] + shift >= win.west &&
+    box[0] + shift <= win.east;
   const trace = (path: Path2D, ring: Float32Array, shift: number) => {
     for (let i = 0; i < ring.length; i += 2) {
       const px = (ring[i] + shift - win.west) / dlon;
@@ -383,15 +277,17 @@ function rasterize(
     path.closePath();
   };
   const country = (path: Path2D, c: Country) => {
-    for (const poly of c.polys)
-      if (hit(poly.bbox))
-        for (const shift of shifts)
+    for (const shift of SHIFTS) {
+      if (!meets(c.bbox, shift)) continue;
+      for (const poly of c.polys)
+        if (meets(poly.bbox, shift))
           for (const ring of poly.rings) trace(path, ring, shift);
+    }
   };
   if (all) {
     const land = new Path2D();
     world.countries.forEach((c, k) => {
-      if (k !== home && hit(c.bbox)) country(land, c);
+      if (k !== home) country(land, c);
     });
     ctx.fillStyle = "#ff0000";
     ctx.fill(land, "evenodd");
@@ -421,33 +317,14 @@ function sample(r: Raster | null, lat: number, lon: number) {
   return r.data[py * r.w + px];
 }
 
-/** The whole world once a page, for the globe while it turns. */
-let wholeWorld: { world: World; raster: Raster } | null = null;
-function worldRaster(world: World): Raster {
-  if (wholeWorld?.world !== world)
-    wholeWorld = {
-      world,
-      raster: rasterize(
-        world,
-        { west: -180, east: 180, south: -90, north: 90 },
-        360 / 2048,
-        -1,
-        true,
-      ),
-    };
-  return wholeWorld.raster;
-}
-
 // ---------- the grid ----------
 
 type Grid = {
   width: number;
   height: number;
-  /** Her canvas, px: the globe starts at her size, on her cells. */
-  face: number;
-  /** px per reference unit (ascii-orb DESIGN). */
+  /** px per reference unit (ascii-orb DESIGN): her canvas is the frame's height. */
   k: number;
-  /** The unit the weather, the lights and the marks are sized in, px. */
+  /** The unit the weather and the marks are sized in, px. */
   p: number;
   cols: number;
   rows: number;
@@ -490,7 +367,6 @@ function buildGrid(width: number, height: number): Grid {
   const grid: Grid = {
     width,
     height,
-    face,
     k,
     p: Math.max(6.5, Math.min(10, face / 44)),
     cols,
@@ -530,7 +406,7 @@ function buildGrid(width: number, height: number): Grid {
       grid.seed[i] = hash(gx * 1.7, gy * 2.3);
       grid.grain[i] = hash(gx + 31.3, gy + 17.9);
       grid.edge[i] = (fx ** 4 + fy ** 4) ** 0.25;
-      grid.fray[i] = valueNoise(gx * 0.2, gy * 0.26);
+      grid.fray[i] = vnoise(gx * 0.2, gy * 0.26, 0);
       grid.onFace[i] =
         Math.abs(x - width / 2) <= face / 2 &&
         Math.abs(y - height / 2) <= face / 2
@@ -542,16 +418,7 @@ function buildGrid(width: number, height: number): Grid {
 
 // ---------- where it lands, and the sky there ----------
 
-type Lights = {
-  /** Per cell, how brightly a city lights it. */
-  glow: Float32Array;
-  /** Per cell, which city it belongs to, largest first: they come on in that order. */
-  order: Float32Array;
-  count: number;
-};
-
 type Stage = {
-  world: World;
   view: View;
   /** Sharp where it lands; the rest of the world comes from the coarse one. */
   region: Raster;
@@ -562,8 +429,6 @@ type Stage = {
   ms: number;
   look: WeatherLook | null;
   wind: 0 | 1 | 2;
-  /** Their cities by night; null until they have been placed, or with none to place. */
-  lights: Lights | null;
 };
 
 function stageFor(world: World, scene: HereScene, grid: Grid): Stage {
@@ -573,7 +438,7 @@ function stageFor(world: World, scene: HereScene, grid: Grid): Stage {
     height: grid.height / k,
     least: REST_R * 1.6,
   };
-  const view = fitView(world, scene.lat, scene.lon, frame);
+  const view = fitView(world, scene.lat, scene.lon, frame, scene.code);
   const aH = Math.asin(Math.min(1, frame.height / 2 / view.radius)) / RAD;
   const aW = Math.asin(Math.min(1, frame.width / 2 / view.radius)) / RAD;
   const south = Math.max(-89.9, view.latc - aH * 1.3 - 1);
@@ -614,63 +479,21 @@ function stageFor(world: World, scene: HereScene, grid: Grid): Stage {
   }
   const ms = Date.now();
   return {
-    world,
     view,
     region,
-    global: worldRaster(world),
+    global: rasterize(
+      world,
+      { west: -180, east: 180, south: -90, north: 90 },
+      360 / 2048,
+      -1,
+      true,
+    ),
     home,
-    sky: skyAt(scene.lat, scene.lon, ms, -new Date(ms).getTimezoneOffset()),
+    sky: skyAt(scene.lat, scene.lon, ms),
     ms,
     look: weatherLook(scene.weather.code),
     wind: windOf(scene.weather.gusts),
-    lights: null,
   };
-}
-
-/** Their largest cities where they fall on the frame, each a glow as wide as the city is big. */
-function lightsOf(stage: Stage, grid: Grid, cities: City[]): Lights {
-  const { view, world } = stage;
-  const lit: [number, number, number][] = [];
-  for (const [, lat, lon, people] of cities) {
-    if (lit.length >= LIT_CITIES) break;
-    const at = project(lat, lon, view.latc, view.lonc, view.radius);
-    if (!at.seen) continue;
-    const x = grid.width / 2 + at.x * grid.k;
-    const y = grid.height / 2 + at.y * grid.k;
-    if (x < 0 || y < 0 || x > grid.width || y > grid.height) continue;
-    // a borough beside its city, or a suburb, is part of the same light
-    if (lit.some(([cx, cy]) => Math.hypot(cx - x, cy - y) < grid.p * 2.6))
-      continue;
-    if (cityIn(world, view.home, lat, lon)) lit.push([x, y, people]);
-  }
-  const glow = new Float32Array(grid.n);
-  const order = new Float32Array(grid.n).fill(99);
-  lit.forEach(([x, y, people], which) => {
-    const r = grid.p * (0.7 + 0.9 * Math.log10(people / 250 + 1));
-    const c0 = Math.max(
-      0,
-      Math.floor((x - r - grid.left) / CELL_W) - grid.col0,
-    );
-    const c1 = Math.min(
-      grid.cols - 1,
-      Math.ceil((x + r - grid.left) / CELL_W) - grid.col0,
-    );
-    const r0 = Math.max(0, Math.floor((y - r - grid.top) / CELL_H) - grid.row0);
-    const r1 = Math.min(
-      grid.rows - 1,
-      Math.ceil((y + r - grid.top) / CELL_H) - grid.row0,
-    );
-    for (let row = r0; row <= r1; row++)
-      for (let col = c0; col <= c1; col++) {
-        const i = row * grid.cols + col;
-        const b = ss(r, r * 0.35, Math.hypot(grid.x[i] - x, grid.y[i] - y));
-        if (b > glow[i]) {
-          glow[i] = b;
-          order[i] = Math.min(order[i], which);
-        }
-      }
-  });
-  return { glow, order, count: lit.length };
 }
 
 // ---------- a frame ----------
@@ -691,7 +514,6 @@ type Plan = {
   t: number;
   cover: number;
   back: number;
-  stay: number;
   latc: number;
   lonc: number;
   /** The globe's radius, reference units. */
@@ -705,7 +527,6 @@ type Plan = {
   only: number;
   night: number;
   dark: number;
-  lightsOn: number;
   pinA: number;
   ripple: number;
   pinX: number;
@@ -727,8 +548,7 @@ type Plan = {
   flash: number;
   flashCloud: number;
   storm: { x: number; y: number; R: number; dir: number; rot: number } | null;
-  /** The still part, drawn once and kept (the country between the dive and the leaving). */
-  layered: boolean;
+  /** The still country, drawn once and kept, and what it was drawn at; null while it moves. */
   key: string | null;
 };
 
@@ -744,6 +564,32 @@ type Out = {
 };
 
 type Pass = "all" | "base" | "overlay";
+
+/** How a frame is inked, and the scratch it is drawn from. */
+type Look = {
+  ink: string;
+  /** The page's own colour: what a wiped cell is filled with. */
+  page: string;
+  /** One per half pixel of glyph size, up to twice hers: a font is set once per size a frame. */
+  buckets: { x: number[]; y: number[]; alpha: number[]; glyph: string[] }[];
+  wipe: number[];
+};
+
+function lookFor(dark: boolean): Look {
+  const [r, g, b] = dark ? ORB_INK.dark : ORB_INK.light;
+  return {
+    ink: `rgb(${r},${g},${b})`,
+    // wiped cells must be the page exactly, whatever it is painted with
+    page: getComputedStyle(document.body).backgroundColor,
+    buckets: Array.from({ length: GLYPH_PX * 4 + 1 }, () => ({
+      x: [],
+      y: [],
+      alpha: [],
+      glyph: [],
+    })),
+    wipe: [],
+  };
+}
 
 /** The globe, ready to draw frames: its grid, where it lands, and what the frames share. */
 class Globe {
@@ -761,10 +607,8 @@ class Globe {
   baseLand: Uint8Array;
   baseHK: Int32Array;
   baseSet: (SetName | null)[];
-  plan: Plan;
+  plan = {} as Plan;
   out: Out = { v: 0, set: "trees", hk: null, big: 1, land: false, a: 1 };
-  /** Asked for cities once: the night's lights come when they arrive. */
-  askedCities = false;
 
   constructor(grid: Grid, stage: Stage, letters: boolean) {
     this.grid = grid;
@@ -777,7 +621,32 @@ class Globe {
     this.baseLand = new Uint8Array(grid.n);
     this.baseHK = new Int32Array(grid.n);
     this.baseSet = new Array(grid.n).fill(null);
-    this.plan = {} as Plan;
+  }
+
+  /**
+   * Every glyph it will draw, at every size it draws them, once and wiped, before its first
+   * frame: a colour emoji met for the first time at a size costs most of a frame (ascii-orb
+   * warmEmoji), and the globe comes up just as she starts to speak.
+   */
+  warm(ctx: CanvasRenderingContext2D) {
+    if (this.letters) return;
+    const sizes = new Set<number>();
+    for (let level = 1; level <= TOP; level++)
+      for (const big of [0.8, 0.85, 1, 1.15])
+        sizes.add(Math.round(emojiPx(GLYPH_PX, level, TOP) * big * 2) / 2);
+    const g = this.grid;
+    for (const size of sizes) {
+      ctx.font = GLYPH_FONT(size);
+      for (const set of Object.values(SETS))
+        for (const glyph of set.emoji)
+          ctx.fillText(glyph, g.width / 2, g.height / 2);
+    }
+    for (const size of [Math.round(g.p * 3), Math.round(g.p * 3.6)]) {
+      ctx.font = GLYPH_FONT(size);
+      ctx.fillText(MARKS.pin[0], g.width / 2, g.height / 2);
+      ctx.fillText(MARKS.storm[0], g.width / 2, g.height / 2);
+    }
+    ctx.clearRect(0, 0, g.width, g.height);
   }
 
   /** A glyph put at a point for this frame, over whatever the cell holds. */
@@ -805,18 +674,17 @@ class Globe {
     return theirs > 0 && theirs & 2 ? 3 : 1;
   }
 
-  /** The frame at `tt` seconds in, gone from `backAt`. */
+  /** The frame at `tt` seconds in, going from `backAt`. */
   planAt(tt: number, t: number, backAt: number): Plan {
     const f = this.plan;
     const g = this.grid;
     const s = this.stage;
     const V = s.view;
-    const S = s.sky;
     f.tt = tt;
     f.t = t;
     f.cover = ss(AT.cover[0], AT.cover[1], tt);
     f.back = ss(backAt, backAt + AT.leave, tt);
-    f.stay = 1 - ss(backAt - 0.2, backAt + 0.4, tt);
+    const stay = 1 - ss(backAt - 0.2, backAt + 0.4, tt);
     // she turns into the globe and spins to them
     const grown =
       REST_R + REST_R * 0.32 * backOut(ss(AT.grow[0], AT.grow[1], tt));
@@ -838,43 +706,24 @@ class Globe {
     f.zoomed = clamp01((f.R / (REST_R * 1.32) - 1) / 3);
     f.open = ss(AT.open[0], AT.open[1], tt);
     f.only = ss(AT.only[0], AT.only[1], tt);
-    f.pinA = ss(AT.pin[0], AT.pin[1], tt) * f.stay;
+    f.pinA = ss(AT.pin[0], AT.pin[1], tt) * stay;
     f.ripple =
       tt > AT.ripple[0] && tt < AT.ripple[1]
         ? ((tt - AT.ripple[0]) % 1.1) / 1.1
         : -1;
-    f.orbA = ss(AT.orb[0], AT.orb[1], tt) * f.stay;
-    f.orbGrow = backOut(ss(AT.orb[0], AT.orb[0] + 1.2, tt)) * f.stay;
-    f.wAmt = ss(AT.weather[0], AT.weather[1], tt) * f.stay;
+    f.orbA = ss(AT.orb[0], AT.orb[1], tt) * stay;
+    f.orbGrow = backOut(ss(AT.orb[0], AT.orb[0] + 1.2, tt)) * stay;
+    f.wAmt = ss(AT.weather[0], AT.weather[1], tt) * stay;
     // how dark it is there now: day, dusk, night
-    f.night = ss(0.06, -0.1, Math.sin(S.alt));
+    f.night = ss(0.06, -0.1, Math.sin(s.sky.alt));
     f.dark = f.night * ss(AT.dark[0], AT.dark[1], tt);
-    f.lightsOn = ss(AT.lights[0], AT.lights[1], tt);
-    if (f.dark > 0 && !this.askedCities) {
-      this.askedCities = true;
-      loadCities().then(
-        (cities) => {
-          s.lights = lightsOf(s, g, cities);
-          this.baseKey = null;
-        },
-        (cause) =>
-          console.warn(
-            `No city lights on the globe: ${cause instanceof Error ? cause.message : String(cause)}`,
-          ),
-      );
-    }
-    this.planSky(f, S, s.ms, t);
+    this.planSky(f, s.sky, s.ms, t);
     this.planWeather(f, t);
     // still between the dive and the leaving: their country is drawn once and kept
-    const still = tt >= AT.dive[1] + 0.05 && f.back <= 0;
-    f.layered = still;
-    f.key = still
-      ? [
-          Math.round(f.dark * 12),
-          Math.round(f.lightsOn * 12),
-          s.lights ? 1 : 0,
-        ].join("|")
-      : null;
+    f.key =
+      tt >= AT.dive[1] + 0.05 && f.back <= 0
+        ? String(Math.round(f.dark * 12))
+        : null;
     const pin = project(V.lat, V.lon, f.latc, f.lonc, f.R);
     f.pinX = g.width / 2 + pin.x * g.k;
     f.pinY = g.height / 2 + pin.y * g.k;
@@ -887,8 +736,8 @@ class Globe {
     const g = this.grid;
     f.orb = null;
     if (f.orbA <= 0) return;
-    const at = (from: number, to: number, alt: number, top: number) => [
-      g.width * (0.12 + (0.76 * (ms - from)) / (to - from)),
+    const at = (share: number, alt: number, top: number) => [
+      g.width * (0.12 + 0.76 * share),
       g.height * (0.3 - (0.2 * Math.max(0, alt)) / Math.max(0.05, top)),
     ];
     const R = Math.max(3.2 * g.p, g.height * 0.06) / g.k;
@@ -906,17 +755,21 @@ class Globe {
       set,
       shadow,
     });
-    if (S.up || S.polarDay) {
-      const from = S.rise !== null && !S.polarDay ? S.rise : S.midnight;
-      const to =
-        S.set !== null && !S.polarDay ? S.set : S.midnight + 86_400_000;
-      const [x, y] = at(from, to, S.alt, S.top);
+    if (S.up && S.sun) {
+      const { rise, set, top } = S.sun;
+      // along today's arc; through a polar summer, where it neither rose nor sets, by the hour
+      const share =
+        rise !== null && set !== null
+          ? (ms - rise) / (set - rise)
+          : solarDay(ms, this.stage.view.lon);
+      const [x, y] = at(share, S.alt, top);
       f.orb = orb(x, y, R, "sunBody", null);
       return;
     }
     if (S.moon) {
       // lit as it is tonight: the shadow slides off one side as it waxes and back over the other as it wanes
-      const [x, y] = at(S.moon.rise, S.moon.set, S.moon.alt, S.moon.top);
+      const { rise, set, alt, top } = S.moon;
+      const [x, y] = at((ms - rise) / (set - rise), alt, top);
       f.orb = orb(
         x,
         y,
@@ -926,13 +779,14 @@ class Globe {
       );
     }
     for (let i = 0; i < 18; i++) {
-      const twinkle = 0.5 + 0.5 * Math.sin(t * (1 + ih(i, 73) * 1.5) + i * 2.1);
+      const twinkle =
+        0.5 + 0.5 * Math.sin(t * (1 + ihash(i, 73, 0) * 1.5) + i * 2.1);
       this.put(
-        g.width * (0.04 + 0.92 * ih(i, 71)),
-        g.height * (0.03 + 0.26 * ih(i, 72)),
+        g.width * (0.04 + 0.92 * ihash(i, 71, 0)),
+        g.height * (0.03 + 0.26 * ihash(i, 72, 0)),
         (0.2 + 0.5 * twinkle * twinkle) * f.orbA,
         "star",
-        0.85 + 0.3 * ih(i, 74),
+        0.85 + 0.3 * ihash(i, 74, 0),
       );
     }
   }
@@ -950,15 +804,17 @@ class Globe {
     f.flashCloud = -1;
     f.clouds = [];
     f.storm = null;
-    if (f.wAmt <= 0 || !look) return;
-    const n = w.clouds;
+    if (f.wAmt <= 0) return;
+    const n = look ? w.clouds : 0;
     for (let i = 0; i < n; i++) {
-      const r = p * (2 + 0.8 * ih(i, 11)) * (look === "overcast" ? 1.3 : 1);
+      const r =
+        p * (2 + 0.8 * ihash(i, 11, 0)) * (look === "overcast" ? 1.3 : 1);
       const span = g.width + 8 * r;
       const base =
-        4 * r + ((i + 0.5) / n + (ih(i, 13) - 0.5) * (0.5 / n)) * g.width;
-      const x = ((base + p * (0.3 + 0.35 * ih(i, 12)) * t) % span) - 4 * r;
-      const y = g.height * (0.07 + 0.2 * ih(i, 14));
+        4 * r + ((i + 0.5) / n + (ihash(i, 13, 0) - 0.5) * (0.5 / n)) * g.width;
+      const x =
+        ((base + p * (0.3 + 0.35 * ihash(i, 12, 0)) * t) % span) - 4 * r;
+      const y = g.height * (0.07 + 0.2 * ihash(i, 14, 0));
       f.clouds.push({
         x,
         y,
@@ -988,12 +844,12 @@ class Globe {
       for (let lane = 0; lane < lanes; lane++) {
         const lx =
           g.width * ((lane + 0.5) / lanes) +
-          (ih(lane, 21) - 0.5) * (g.width / lanes);
+          (ihash(lane, 21, 0) - 0.5) * (g.width / lanes);
         const speed =
-          p * (14 + 8 * ih(lane, 22)) * (look === "drizzle" ? 0.6 : 1);
+          p * (14 + 8 * ihash(lane, 22, 0)) * (look === "drizzle" ? 0.6 : 1);
         for (let j = 0; j < drops; j++) {
           const d =
-            (t * speed + ih(lane, 23) * span + (j * span) / drops) % span;
+            (t * speed + ihash(lane, 23, 0) * span + (j * span) / drops) % span;
           for (let q = 0; q < len * 1.4; q++) {
             const y = d - q * CELL_H;
             if (y < 0) break;
@@ -1013,11 +869,13 @@ class Globe {
       const flakes = Math.max(4, Math.round((g.width / p) * 0.22 * w.snow));
       const span = g.height + p * 4;
       for (let k = 0; k < flakes; k++) {
-        const y = (t * p * (1.4 + 1.2 * ih(k, 31)) + ih(k, 32) * span) % span;
+        const y =
+          (t * p * (1.4 + 1.2 * ihash(k, 31, 0)) + ihash(k, 32, 0) * span) %
+          span;
         this.put(
-          g.width * ih(k, 33) + Math.sin(t * 1.1 + k) * p * 0.9,
+          g.width * ihash(k, 33, 0) + Math.sin(t * 1.1 + k) * p * 0.9,
           y,
-          (0.55 + 0.25 * ih(k, 34)) * f.wAmt,
+          (0.55 + 0.25 * ihash(k, 34, 0)) * f.wAmt,
           "flake",
           0.8,
         );
@@ -1032,11 +890,11 @@ class Globe {
       f.flash = Math.exp(-((phase - 0.3) ** 2) / 0.008) * f.wAmt;
       f.flashCloud = which;
       if (phase > 0.22 && phase < 0.7) {
-        let x = cloud.x + (ih(slot, 41) - 0.5) * cloud.r;
+        let x = cloud.x + (ihash(slot, 41, 0) - 0.5) * cloud.r;
         let y = cloud.bottom;
         for (let q = 0; q < 11; q++) {
           this.put(x, y, (1 - ss(0.5, 0.7, phase)) * f.wAmt, "bolt", 1);
-          x += (ih(slot * 9 + q, 42) - 0.5) * p * 1.3;
+          x += (ihash(slot * 9 + q, 42, 0) - 0.5) * p * 1.3;
           y += CELL_H;
         }
       }
@@ -1046,12 +904,13 @@ class Globe {
     if (wind > 0) {
       for (let i = 0; i < (wind === 2 ? 10 : 6); i++) {
         const x =
-          ((ih(i, 52) * g.width + t * p * (9 + 5 * ih(i, 53))) %
+          ((ihash(i, 52, 0) * g.width + t * p * (9 + 5 * ihash(i, 53, 0))) %
             (g.width + p * 6)) -
           p * 3;
         this.put(
           x,
-          g.height * (0.1 + 0.75 * ih(i, 51)) + Math.sin(t * 2 + i) * p * 0.4,
+          g.height * (0.1 + 0.75 * ihash(i, 51, 0)) +
+            Math.sin(t * 2 + i) * p * 0.4,
           0.5 * f.wAmt,
           "wind",
           0.8,
@@ -1119,7 +978,7 @@ class Globe {
     const dy = g.dy[i] - cy;
     const d = Math.hypot(dx, dy);
     if (d > R * 1.6) return 0;
-    const nz = fbm3(dx * 0.0085 + 3.1, dy * 0.0085, t * 0.32, 3);
+    const nz = fbm(dx * 0.0085 + 3.1, dy * 0.0085, t * 0.32, 3);
     const edge = R * (0.86 + 0.34 * nz);
     let v = ss(edge, edge * 0.45, d);
     if (v < 0.25 && g.seed[i] < 0.3) {
@@ -1139,15 +998,11 @@ class Globe {
     if (progress >= 1) return true;
     const g = this.grid;
     const d = Math.hypot(g.dx[i], g.dy[i]);
-    const nz = fbm2(
-      g.dx[i] * 0.011 + slot * 7.3,
-      g.dy[i] * 0.011 + slot * 1.9,
-      2,
-    );
+    const nz = fbm(g.dx[i] * 0.011 + slot * 7.3, g.dy[i] * 0.011, slot, 2);
     return d + (nz - 0.5) * 220 < progress * 640 - 60;
   }
 
-  /** The ground under a cell: land as trees, sea as water; by night their land dark and their cities lit. */
+  /** The ground under a cell: land as trees, sea as water; by night their land dark. */
   mapCell(i: number, f: Plan, o: Out) {
     const g = this.grid;
     const R = f.R;
@@ -1173,37 +1028,31 @@ class Globe {
     const code = this.land(la, lo);
     const home = (code & 3) === 3;
     // on the way in, everything but their country falls away, cell by cell
-    if (!home && f.only > 0 && ih(g.gx[i] + 9001, g.gy[i]) < f.only) {
+    if (!home && f.only > 0 && ihash(g.gx[i] + 9001, g.gy[i], 1) < f.only) {
       o.v = 0;
       return;
     }
     const limb = 0.55 + 0.45 * z;
     o.hk =
-      Math.imul(Math.floor((la + 90) / f.bin), 73856093) ^
-      Math.imul(Math.floor((lo + 180) / f.bin), 19349663) ^
-      f.lvl;
+      (ihash(
+        Math.floor((la + 90) / f.bin),
+        Math.floor((lo + 180) / f.bin),
+        f.lvl,
+      ) *
+        2147483647) |
+      0;
     if (code & 1) {
       o.land = home;
       o.v = 0.95 * limb;
       o.set = "trees";
-      if (home && f.dark > 0 && ih(g.gx[i] + 77, g.gy[i] + 5) < f.dark) {
+      if (home && f.dark > 0 && ihash(g.gx[i] + 77, g.gy[i] + 5, 2) < f.dark) {
         o.set = "nightLand";
         // in letters, dark is less ink, as her own dim cells are
         if (this.letters) o.v = 0.42 * limb;
-        const lights = this.stage.lights;
-        if (
-          lights &&
-          lights.glow[i] > 0.12 &&
-          f.lightsOn * lights.count > lights.order[i]
-        ) {
-          o.set = "cityLight";
-          o.v = 0.45 + 0.55 * lights.glow[i];
-          o.hk = null;
-        }
       }
     } else {
       // closer in, the sea thins, so the land reads
-      if (ih(o.hk, 11) > 1 - 0.76 * f.zoomed) {
+      if (keyed(o.hk, 11) > 1 - 0.76 * f.zoomed) {
         o.v = 0;
         return;
       }
@@ -1225,7 +1074,8 @@ class Globe {
     let has = false;
     if (f.ripple >= 0 && f.pinA > 0 && o.v > 0) {
       const d = Math.hypot(g.x[i] - f.pinX, g.y[i] - f.pinY);
-      const rr = f.ripple * g.height * 0.22;
+      // a ring from the start: from a point it began as a block
+      const rr = g.p + f.ripple * g.height * 0.22;
       if (Math.abs(d - rr) < g.p * 0.7) {
         o.v = 0.9 * (1 - f.ripple) * f.pinA;
         o.set = "spark";
@@ -1257,7 +1107,7 @@ class Globe {
       o.land &&
       !has &&
       o.hk !== null &&
-      ih(o.hk, 29) < 0.22 * f.wAmt
+      keyed(o.hk, 29) < 0.22 * f.wAmt
     ) {
       o.set = "snowGround";
       has = true;
@@ -1267,12 +1117,11 @@ class Globe {
       if (cloud > 0.12) {
         o.v = Math.min(1, 0.3 + 0.6 * cloud);
         o.a = 1 - 0.3 * f.night;
-        o.set = f.storm && !f.clouds.length ? "cyclone" : f.cloudSet;
-        if (
+        o.set =
           f.storm &&
           Math.hypot(g.x[i] - f.storm.x, g.y[i] - f.storm.y) < f.storm.R
-        )
-          o.set = "cyclone";
+            ? "cyclone"
+            : f.cloudSet;
         o.hk = null;
         has = true;
       }
@@ -1292,9 +1141,10 @@ class Globe {
           ss(
             0.45,
             0.75,
-            fbm2(
+            fbm(
               g.gx[i] * 0.07 + (band ? t : -t) * 0.2 + band * 13,
               band * 3.1,
+              0,
               2,
             ),
           ) *
@@ -1315,10 +1165,10 @@ class Globe {
     const g = this.grid;
     const set: GlyphSet = SETS[o.set];
     let hv: number;
-    if (o.hk !== null) hv = ih(o.hk, 3);
+    if (o.hk !== null) hv = keyed(o.hk, 3);
     else {
       const epoch = Math.floor(t * set.churn + g.seed[i] * 7);
-      hv = ih(g.gx[i] * 7 + epoch * 131, g.gy[i] * 13 + epoch * 71);
+      hv = ihash(g.gx[i] * 7 + epoch * 131, g.gy[i] * 13 + epoch * 71, 4);
     }
     if (!this.letters)
       return set.emoji[Math.floor(hv * set.emoji.length) % set.emoji.length];
@@ -1340,8 +1190,8 @@ class Globe {
 
   /**
    * One pass over the cells: `all` draws everything, `base` the still country alone (kept),
-   * `overlay` what goes over it. `face` is where her face still is under the globe: those cells
-   * are wiped before they are drawn, so she and it are never both in one place.
+   * `overlay` what goes over it. Where her face may still be under the globe, cells are wiped
+   * before they are drawn, so she and it are never both in one place.
    */
   pass(ctx: CanvasRenderingContext2D, mode: Pass, look: Look) {
     const g = this.grid;
@@ -1357,6 +1207,8 @@ class Globe {
     }
     const wipe = look.wipe;
     wipe.length = 0;
+    // her face is mounted until a frame after she is told to go, and again from `back`
+    const faceUnder = f.tt < AT.cover[1] + AT.grace || f.back > 0;
     for (let i = 0; i < g.n; i++) {
       o.v = 0;
       o.set = "trees";
@@ -1372,9 +1224,8 @@ class Globe {
       )
         continue;
       // coming: the world spreads through her from the middle; beyond it she is still there
-      const covering = f.cover < 1;
-      if (covering && !this.reached(i, f.cover, 1)) continue;
-      const underFace = g.onFace[i] === 1 && (covering || f.back > 0);
+      if (f.cover < 1 && !this.reached(i, f.cover, 1)) continue;
+      const underFace = faceUnder && g.onFace[i] === 1;
       let over = false;
       if (mode === "overlay") {
         o.v = this.baseV[i];
@@ -1392,7 +1243,7 @@ class Globe {
           this.baseSet[i] = o.set;
         } else this.overlay(i, t, f, o);
       }
-      if (mode !== "base" && !(f.open > 0 && this.pastEdge(i, f))) {
+      if (mode !== "base" && !this.pastEdge(i, f)) {
         const ov = this.over[i];
         if (ov > 0 && ov >= o.v) {
           o.v = ov;
@@ -1414,7 +1265,7 @@ class Globe {
       if (glyph === " ") continue;
       const size = this.letters
         ? GLYPH_PX * o.big
-        : GLYPH_PX * (0.5 + 0.5 * emojiWeight(level, TOP)) * o.big;
+        : emojiPx(GLYPH_PX, level, TOP) * o.big;
       const alpha = this.letters
         ? ALPHA_TOP * (level / TOP) * o.a
         : emojiAlpha(level, TOP) * o.a;
@@ -1449,13 +1300,14 @@ class Globe {
   marks(ctx: CanvasRenderingContext2D, look: Look) {
     const g = this.grid;
     const f = this.plan;
+    const which = this.letters ? 1 : 0;
     ctx.fillStyle = look.ink;
     if (f.pinA > 0 && f.pinSeen) {
       const size = g.p * 3 * (1 + 0.3 * bump(f.tt, AT.pin[0] + 0.2, 0.2));
       ctx.globalAlpha = this.letters ? f.pinA * ALPHA_TOP : f.pinA;
       ctx.font = GLYPH_FONT(Math.round(this.letters ? size * 0.8 : size));
       ctx.fillText(
-        this.letters ? "◉" : "📍",
+        MARKS.pin[which],
         f.pinX,
         this.letters ? f.pinY : f.pinY - size * 0.42,
       );
@@ -1467,7 +1319,7 @@ class Globe {
       ctx.translate(f.storm.x, f.storm.y);
       if (!this.letters) ctx.rotate(f.storm.rot);
       ctx.font = GLYPH_FONT(Math.round(this.letters ? size * 0.8 : size));
-      ctx.fillText(this.letters ? "@" : "🌀", 0, 0);
+      ctx.fillText(MARKS.storm[which], 0, 0);
       ctx.restore();
     }
     ctx.globalAlpha = 1;
@@ -1479,7 +1331,7 @@ class Globe {
     const f = this.plan;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, g.width, g.height);
-    if (f.layered && f.key) {
+    if (f.key !== null) {
       if (!this.base || this.baseKey !== f.key) {
         this.base ??= document.createElement("canvas");
         this.base.width = Math.round(g.width * dpr);
@@ -1500,35 +1352,13 @@ class Globe {
   }
 }
 
-/** How a frame is inked, and the scratch it is drawn from. */
-type Look = {
-  ink: string;
-  /** The page's own colour: what a wiped cell is filled with. */
-  page: string;
-  /** One per half pixel of glyph size, up to twice hers: a font is set once per size a frame. */
-  buckets: { x: number[]; y: number[]; alpha: number[]; glyph: string[] }[];
-  wipe: number[];
-};
-
-function lookFor(dark: boolean, page: string): Look {
-  return {
-    ink: dark ? "rgb(247,247,247)" : "rgb(10,10,10)",
-    page,
-    buckets: Array.from({ length: GLYPH_PX * 4 + 1 }, () => ({
-      x: [],
-      y: [],
-      alpha: [],
-      glyph: [],
-    })),
-    wipe: [],
-  };
-}
-
 // ---------- the component ----------
 
 /**
  * The globe over her face, in a field twice as wide as her canvas where the window has room.
  * Placed inside the box her face is laid out in (thursday.tsx), which it reads its size from.
+ * It is drawn at the size it opened at: a window resized under it stretches it for the few
+ * seconds left rather than building it again.
  */
 export function HereGlobe({
   scene,
@@ -1542,6 +1372,8 @@ export function HereGlobe({
   const [size, setSize] = useState<{ width: number; height: number } | null>(
     null,
   );
+  /** Its clock has started: until then a tap is her face's, which ends the call. */
+  const [started, setStarted] = useState(false);
   const dark = useIsDark();
   const darkRef = useRef(dark);
   darkRef.current = dark;
@@ -1557,7 +1389,7 @@ export function HereGlobe({
     const observer = new ResizeObserver(([entry]) => {
       const width = Math.round(entry.contentRect.width);
       const height = Math.round(entry.contentRect.height);
-      if (width > 0 && height > 0) setSize({ width, height });
+      if (width > 0 && height > 0) setSize((was) => was ?? { width, height });
     });
     observer.observe(host);
     return () => observer.disconnect();
@@ -1568,48 +1400,42 @@ export function HereGlobe({
     if (!canvas || !size) return;
     let raf = 0;
     let gone = false;
-    let globe: Globe | null = null;
     let sent: HerePhase | null = null;
     const tell = (phase: HerePhase) => {
-      if (sent === phase) return;
+      if (sent === phase || sent === "done") return;
       sent = phase;
+      if (phase === "done") {
+        gone = true;
+        cancelAnimationFrame(raf);
+        // nothing of it is wanted again until tomorrow's
+        releaseWorld();
+      }
       phaseRef.current(phase);
     };
+    // Drawn only while it is looked at: a hidden page runs no frames, and a globe that came
+    // back minutes later would cover her in the middle of the conversation
+    const hidden = () => {
+      if (document.visibilityState === "hidden") tell("done");
+    };
+    document.addEventListener("visibilitychange", hidden);
+    const letters = faceGlyphs() === "letters";
+    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     canvas.width = Math.round(size.width * dpr);
     canvas.height = Math.round(size.height * dpr);
     const ctx = canvas.getContext("2d");
-    if (!ctx) {
-      console.warn("No globe: the browser gave no canvas to draw it on.");
+    if (!ctx || still || document.visibilityState === "hidden") {
+      if (!ctx)
+        console.warn("No globe: the browser gave no canvas to draw it on.");
       tell("done");
-      return;
+      return () => document.removeEventListener("visibilitychange", hidden);
     }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    const grid = buildGrid(size.width, size.height);
-    let look = lookFor(darkRef.current, pageColour());
+    let look = lookFor(darkRef.current);
     let lookDark = darkRef.current;
-
-    loadWorld().then(
-      (world) => {
-        if (gone) return;
-        globe = new Globe(
-          grid,
-          stageFor(world, scene, grid),
-          faceGlyphs() === "letters",
-        );
-        // a globe resized part way keeps its clock
-        clockRef.current ??= performance.now();
-        raf = requestAnimationFrame(draw);
-      },
-      (cause) => {
-        if (gone) return;
-        console.warn(
-          `No globe: the map did not load (${cause instanceof Error ? cause.message : String(cause)}).`,
-        );
-        tell("done");
-      },
-    );
+    let globe: Globe | null = null;
 
     let drawnAt = Number.NEGATIVE_INFINITY;
     const draw = (now: number) => {
@@ -1619,17 +1445,17 @@ export function HereGlobe({
       if (!globe || clockRef.current === null) return;
       if (lookDark !== darkRef.current) {
         lookDark = darkRef.current;
-        look = lookFor(lookDark, pageColour());
+        look = lookFor(lookDark);
         globe.baseKey = null;
       }
       const tt = (now - clockRef.current) / 1000;
+      // the finished scene holds once its last part is in; a tap sends it back sooner
       const backAt = Math.min(
-        HERE.globeMs / 1000,
+        AT.weather[1] + HERE.holdMs / 1000,
         leaveRef.current ?? Number.POSITIVE_INFINITY,
       );
       if (tt >= backAt + AT.leave) {
-        cancelAnimationFrame(raf);
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.clearRect(0, 0, size.width, size.height);
         tell("done");
         return;
       }
@@ -1639,18 +1465,49 @@ export function HereGlobe({
       tell(tt >= backAt ? "back" : f.cover >= 1 ? "world" : "covering");
     };
 
+    loadWorld().then(
+      (world) => {
+        if (gone) return;
+        // A globe that cannot be built is said, and goes: nothing of it may stay over her face
+        try {
+          const grid = buildGrid(size.width, size.height);
+          globe = new Globe(grid, stageFor(world, scene, grid), letters);
+          globe.warm(ctx);
+        } catch (cause) {
+          console.warn(`No globe: ${errorToString(cause)}`);
+          tell("done");
+          return;
+        }
+        clockRef.current = performance.now();
+        setStarted(true);
+        raf = requestAnimationFrame(draw);
+      },
+      (cause) => {
+        if (gone) return;
+        console.warn(
+          `No globe: the map did not load (${errorToString(cause)}).`,
+        );
+        tell("done");
+      },
+    );
+
     return () => {
       gone = true;
       cancelAnimationFrame(raf);
+      document.removeEventListener("visibilitychange", hidden);
     };
   }, [size, scene]);
 
   return (
     // The field her face is laid out in, carried out to either side (thursday.tsx sizes it);
-    // a tap sends it back to her and places nothing
+    // once it draws, a tap sends it back to her and places nothing
     <div
       ref={hostRef}
-      className="absolute top-[calc(-1*var(--face-bleed))] bottom-[calc(-1*var(--face-bleed))] left-1/2 w-[min(calc(2*(100%+2*var(--face-bleed))),calc(100vw-2rem))] -translate-x-1/2 cursor-pointer"
+      className={
+        started
+          ? "absolute top-[calc(-1*var(--face-bleed))] bottom-[calc(-1*var(--face-bleed))] left-1/2 w-[min(calc(2*(100%+2*var(--face-bleed))),calc(100vw-2rem))] -translate-x-1/2 cursor-pointer"
+          : "pointer-events-none absolute top-[calc(-1*var(--face-bleed))] bottom-[calc(-1*var(--face-bleed))] left-1/2 w-[min(calc(2*(100%+2*var(--face-bleed))),calc(100vw-2rem))] -translate-x-1/2"
+      }
       onClick={() => {
         if (clockRef.current === null) return;
         leaveRef.current ??= (performance.now() - clockRef.current) / 1000;
@@ -1659,17 +1516,8 @@ export function HereGlobe({
     >
       <canvas
         ref={canvasRef}
-        style={{
-          display: "block",
-          width: size?.width ?? 0,
-          height: size?.height ?? 0,
-        }}
+        style={{ display: "block", width: "100%", height: "100%" }}
       />
     </div>
   );
-}
-
-/** The page's own colour, as the wiped cells must match it exactly. */
-function pageColour() {
-  return getComputedStyle(document.body).backgroundColor || "transparent";
 }

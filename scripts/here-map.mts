@@ -1,22 +1,28 @@
 // Builds public/here/world.json, the map the globe is drawn from (features/thursday/here-map.ts):
 // Natural Earth's 1:50m countries, which are in the public domain, as world-atlas 2.0.2
-// redistributes them (ISC; public/here/NOTICE), simplified and packed small. The file is
-// committed; run this again only to change the map:
+// redistributes them (ISC; public/here/NOTICE), simplified and packed small, each with its ISO
+// 3166 two-letter code from i18n-iso-countries 7.14.0 (MIT), which is how the globe matches the
+// country the place service names. The file is committed; run this again only to change it:
 //
 //   node scripts/here-map.mts
 //
-// Plain node on purpose: nothing it needs is installed, the release comes from the registry
+// Plain node on purpose: nothing it needs is installed; each release comes from the registry
 // and is checked against the integrity the registry published for it.
 import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { gunzipSync } from "node:zlib";
 
-const TARBALL =
-  "https://registry.npmjs.org/world-atlas/-/world-atlas-2.0.2.tgz";
-const INTEGRITY =
-  "sha512-IXfV0qwlKXpckz1FhwXVwKRjiIhOnWttOskm5CtxMsjgE/MXAYRHWJqgXOpM8IkcPBoXnyTU5lFHcYa5ChG0LQ==";
-const FILE = "package/countries-50m.json";
+const ATLAS = {
+  url: "https://registry.npmjs.org/world-atlas/-/world-atlas-2.0.2.tgz",
+  integrity:
+    "sha512-IXfV0qwlKXpckz1FhwXVwKRjiIhOnWttOskm5CtxMsjgE/MXAYRHWJqgXOpM8IkcPBoXnyTU5lFHcYa5ChG0LQ==",
+};
+const CODES = {
+  url: "https://registry.npmjs.org/i18n-iso-countries/-/i18n-iso-countries-7.14.0.tgz",
+  integrity:
+    "sha512-nXHJZYtNrfsi1UQbyRqm3Gou431elgLjKl//CYlnBGt5aTWdRPH1PiS2T/p/n8Q8LnqYqzQJik3Q7mkwvLokeg==",
+};
 /**
  * How far a simplified coast may stray, in degrees (Douglas–Peucker, east–west shrunk by the
  * latitude): 0.03 is about 3 km, under one of her cells at the closest the globe zooms to a
@@ -25,6 +31,11 @@ const FILE = "package/countries-50m.json";
 const TOLERANCE = 0.03;
 /** Points are stored to a hundredth of a degree, about a kilometre. */
 const Q = 100;
+/**
+ * A ring simplified to less than this share of its own area keeps every point it has: Monaco and
+ * Macau, drawn with a few points, fell to a line and were never found.
+ */
+const KEEP_AREA = 0.5;
 
 type Topology = {
   transform: { scale: [number, number]; translate: [number, number] };
@@ -34,18 +45,23 @@ type Topology = {
       geometries: {
         type: string;
         arcs: number[][] | number[][][];
+        id?: string;
         properties: { name: string };
       }[];
     };
   };
 };
 
-const response = await fetch(TARBALL);
-if (!response.ok) throw new Error(`${TARBALL} answered ${response.status}`);
-const packed = Buffer.from(await response.arrayBuffer());
-const digest = `sha512-${createHash("sha512").update(packed).digest("base64")}`;
-if (digest !== INTEGRITY)
-  throw new Error(`${TARBALL} is not the release it was: ${digest}`);
+/** A release from the registry, refused unless it is the one that was published. */
+async function release(from: { url: string; integrity: string }) {
+  const response = await fetch(from.url);
+  if (!response.ok) throw new Error(`${from.url} answered ${response.status}`);
+  const packed = Buffer.from(await response.arrayBuffer());
+  const digest = `sha512-${createHash("sha512").update(packed).digest("base64")}`;
+  if (digest !== from.integrity)
+    throw new Error(`${from.url} is not the release it was: ${digest}`);
+  return gunzipSync(packed);
+}
 
 /** One file out of a tar: 512-byte headers, each followed by its file in 512-byte blocks. */
 function untar(tar: Buffer, name: string): Buffer {
@@ -61,12 +77,20 @@ function untar(tar: Buffer, name: string): Buffer {
     if (path === name) return tar.subarray(at + 512, at + 512 + size);
     at += 512 + Math.ceil(size / 512) * 512;
   }
-  throw new Error(`${name} is not in ${TARBALL}`);
+  throw new Error(`${name} is not in the release`);
 }
 
 const topology = JSON.parse(
-  untar(gunzipSync(packed), FILE).toString("utf8"),
+  untar(await release(ATLAS), "package/countries-50m.json").toString("utf8"),
 ) as Topology;
+/** ISO 3166 numeric (world-atlas's ids) to the two letters a place service names. */
+const twoLetters = new Map(
+  (
+    JSON.parse(
+      untar(await release(CODES), "package/codes.json").toString("utf8"),
+    ) as [string, string, string][]
+  ).map(([two, , numeric]) => [numeric, two]),
+);
 const [sx, sy] = topology.transform.scale;
 const [tx, ty] = topology.transform.translate;
 const arcs = topology.arcs.map((arc) => {
@@ -131,27 +155,58 @@ function simplify(points: [number, number][]): [number, number][] {
 }
 
 const geometries = topology.objects.countries.geometries;
-/** The arcs two countries share are the borders between them. */
-const uses = new Uint16Array(arcs.length);
 const polygonsOf = (geometry: (typeof geometries)[number]): number[][][] =>
   geometry.type === "Polygon"
     ? [geometry.arcs as number[][]]
     : geometry.type === "MultiPolygon"
       ? (geometry.arcs as number[][][])
       : [];
+
+/** A ring's area in square degrees, its arcs joined and run on past 180° without a jump. */
+function areaOf(ring: number[], from: [number, number][][]) {
+  const points: [number, number][] = [];
+  for (const index of ring) {
+    const arc = from[index >= 0 ? index : ~index];
+    const ordered = index >= 0 ? arc : arc.slice().reverse();
+    for (const [x0, y] of ordered.slice(points.length ? 1 : 0)) {
+      let x = x0;
+      const before = points.at(-1);
+      if (before) {
+        while (x - before[0] > 180) x -= 360;
+        while (x - before[0] < -180) x += 360;
+      }
+      points.push([x, y]);
+    }
+  }
+  let sum = 0;
+  for (let i = 0, j = points.length - 1; i < points.length; j = i++)
+    sum += points[j][0] * points[i][1] - points[i][0] * points[j][1];
+  return Math.abs(sum / 2);
+}
+
+const simple = arcs.map(simplify);
+// what simplifying took the shape of goes back whole
+let kept = 0;
 for (const geometry of geometries)
   for (const polygon of polygonsOf(geometry))
-    for (const ring of polygon)
-      for (const arc of ring) uses[arc < 0 ? ~arc : arc]++;
+    for (const ring of polygon) {
+      const whole = areaOf(ring, arcs);
+      if (whole > 0 && areaOf(ring, simple) < whole * KEEP_AREA) {
+        kept++;
+        for (const index of ring)
+          simple[index >= 0 ? index : ~index] =
+            arcs[index >= 0 ? index : ~index];
+      }
+    }
 
 const world = {
-  v: 1,
+  v: 2,
   q: Q,
   // each arc as whole hundredths of a degree from (-180, -90), every point after the first a step from the one before
-  a: arcs.map((arc) => {
+  a: simple.map((arc) => {
     let px = 0;
     let py = 0;
-    return simplify(arc).flatMap(([x, y]) => {
+    return arc.flatMap(([x, y]) => {
       const qx = Math.round((x + 180) * Q);
       const qy = Math.round((y + 90) * Q);
       const step = [qx - px, qy - py];
@@ -160,9 +215,10 @@ const world = {
       return step;
     });
   }),
-  b: [...uses.keys()].filter((arc) => uses[arc] > 1),
+  // a country with no ISO code of its own (Kosovo, Somaliland) has none here, and is found by its outline alone
   c: geometries.map((geometry) => ({
     n: geometry.properties.name,
+    k: (geometry.id && twoLetters.get(geometry.id)) || undefined,
     p: polygonsOf(geometry),
   })),
 };
@@ -171,6 +227,7 @@ const out = join(import.meta.dirname, "..", "public", "here");
 mkdirSync(out, { recursive: true });
 const json = JSON.stringify(world);
 writeFileSync(join(out, "world.json"), json);
+const unnamed = world.c.filter((c) => !c.k).map((c) => c.n);
 console.log(
-  `public/here/world.json: ${world.c.length} countries, ${world.b.length} border arcs, ${Math.round(json.length / 1024)} KB`,
+  `public/here/world.json: ${world.c.length} countries (${unnamed.join(", ")} without a code), ${kept} rings kept whole, ${Math.round(json.length / 1024)} KB`,
 );

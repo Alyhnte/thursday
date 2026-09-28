@@ -12,6 +12,7 @@ import {
   Settings2,
   X,
 } from "lucide-react";
+import dynamic from "next/dynamic";
 import {
   type ReactNode,
   useCallback,
@@ -87,7 +88,7 @@ import { cn, errorToString, plainText } from "@/lib/utils";
 import { CaptionWords } from "./caption-words";
 import { ConnectWave } from "./connect-wave";
 import { Face } from "./face";
-import { HereGlobe, type HerePhase, type HereScene } from "./here-globe";
+import type { HerePhase, HereScene } from "./here-globe";
 import {
   SideCaptions,
   type Turn,
@@ -102,6 +103,12 @@ import { WriteLine, type WrittenCall } from "./write-line";
  * never a list. CallScreen holds no call of its own: a spoken call and a call in
  * writing drive the same markup (Thursday, below).
  */
+
+/** The globe plays once a day at most (here-globe): its code loads when it does. */
+const HereGlobe = dynamic(
+  () => import("./here-globe").then((module) => module.HereGlobe),
+  { ssr: false },
+);
 
 type CallScreenProps = {
   status: CallStatus;
@@ -189,9 +196,10 @@ function CallScreen({
   // captions are where they were when it closes. A window too narrow for three columns
   // draws her last line instead, whatever the setting.
   const wide = useWide(SIDES_MIN_WIDTH);
-  // While the globe spreads past her on either side, her words stand under her face
-  const sided =
-    captionView === "sides" && status !== "idle" && wide && here === null;
+  const sided = captionView === "sides" && status !== "idle" && wide;
+  // While the globe spreads past her on either side the columns beside her are kept, unseen, so
+  // nothing is typed out again when it goes, and her words stand under her face meanwhile
+  const under = !sided || here !== null;
   const talk = useMemo(() => turnsOf(messages), [messages]);
   const turns = useTurnFocus(talk, sided);
   const lastRole = talk.at(-1)?.role;
@@ -281,31 +289,35 @@ function CallScreen({
           {here && onHere && <HereGlobe scene={here} onPhase={onHere} />}
 
           {sided && (
-            <SideCaptions
-              turns={talk}
-              pinned={turns.pinned}
-              live={saying}
-              onPick={turns.pick}
-              under={
-                work.held && kept.pending.length > 0 ? (
-                  <WorkStack lines={kept.pending} shown={work.on} />
-                ) : null
-              }
-              // with the work gone and her answer not yet begun, her last words come back level;
-              // thinking alone takes nothing from them, since it stands under her face
-              ahead={making && work.held && kept.pending.length > 0}
-              typed={writing}
-              workOf={(turn) => {
-                // with her words last, work she has said nothing after stands under them
-                const lines = [
-                  ...(kept.turns[turn] ?? []),
-                  ...(turn === kept.latest && lastRole === "assistant"
-                    ? kept.pending
-                    : []),
-                ];
-                return lines.length ? <WorkStack lines={lines} shown /> : null;
-              }}
-            />
+            <div className={cn("contents", here && "*:invisible")}>
+              <SideCaptions
+                turns={talk}
+                pinned={turns.pinned}
+                live={saying}
+                onPick={turns.pick}
+                under={
+                  work.held && kept.pending.length > 0 ? (
+                    <WorkStack lines={kept.pending} shown={work.on} />
+                  ) : null
+                }
+                // with the work gone and her answer not yet begun, her last words come back level;
+                // thinking alone takes nothing from them, since it stands under her face
+                ahead={making && work.held && kept.pending.length > 0}
+                typed={writing}
+                workOf={(turn) => {
+                  // with her words last, work she has said nothing after stands under them
+                  const lines = [
+                    ...(kept.turns[turn] ?? []),
+                    ...(turn === kept.latest && lastRole === "assistant"
+                      ? kept.pending
+                      : []),
+                  ];
+                  return lines.length ? (
+                    <WorkStack lines={lines} shown />
+                  ) : null;
+                }}
+              />
+            </div>
           )}
         </div>
 
@@ -331,7 +343,7 @@ function CallScreen({
             <ActivityRow
               // beside her face the lines are on her side (WorkStack); what she is thinking
               // about and the meter stay here in either view
-              tool={sided ? null : drawn}
+              tool={under ? drawn : null}
               toolUp={drawn !== null}
               thinkingSince={thinkingSince}
               thinkingTitle={thinkingTitle}
@@ -349,7 +361,7 @@ function CallScreen({
             {/* Reserved even outside a call so the face does not shift. No
               `text-balance`: rebalancing changes the line count under the pager. */}
             <Flow
-              text={sided || status === "idle" ? "" : hers}
+              text={!under || status === "idle" ? "" : hers}
               fadeIn
               className="w-full max-w-160 text-center text-base"
             />

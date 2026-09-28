@@ -60,14 +60,14 @@ const altitude = (hour: number, lat: number, dec: number) =>
   );
 
 /** The sun's altitude over `(lat, lon)` at `ms`, radians. */
-export function sunAltitude(ms: number, lat: number, lon: number) {
+function sunAltitude(ms: number, lat: number, lon: number) {
   const d = daysOf(ms);
   const sun = sunCoords(d);
   return altitude(sidereal(d, lon) - sun.ra, lat * RAD, sun.dec);
 }
 
 /** The moon's, the same way. */
-export function moonAltitude(ms: number, lat: number, lon: number) {
+function moonAltitude(ms: number, lat: number, lon: number) {
   const d = daysOf(ms);
   const moon = moonCoords(d);
   return altitude(sidereal(d, lon) - moon.ra, lat * RAD, moon.dec);
@@ -107,105 +107,93 @@ export function moonLight(ms: number): { lit: number; phase: number } {
   };
 }
 
+/** A body's pass across the sky: when it rose, when it sets (ms), null past the walk, and its highest. */
+type Pass = { rise: number | null; set: number | null; top: number };
+
+/**
+ * The pass a body above `horizon` at `ms` is on: walked back to its rise and on to its set in
+ * `step`-minute steps, at most `reach` minutes each way. Walked from now, not across a calendar
+ * day, so neither a clock set to another zone nor a sunset after midnight (a northern summer)
+ * puts the rise after the set.
+ */
+function passOf(
+  ms: number,
+  altitudeAt: (at: number) => number,
+  horizon: number,
+  step: number,
+  reach: number,
+): Pass {
+  const stepMs = step * 60_000;
+  let top = altitudeAt(ms);
+  const walk = (direction: -1 | 1) => {
+    let before = top;
+    for (let minute = step; minute <= reach; minute += step) {
+      const at = ms + direction * minute * 60_000;
+      const now = altitudeAt(at);
+      if (now < horizon)
+        return at - direction * stepMs * ((horizon - now) / (before - now));
+      top = Math.max(top, now);
+      before = now;
+    }
+    return null;
+  };
+  const rise = walk(-1);
+  const set = walk(1);
+  return { rise, set, top };
+}
+
 /** The sky at a place and a moment: what the globe puts over their country. */
 export type Sky = {
   /** The sun's altitude now, radians. */
   alt: number;
-  /** Today's sunrise and sunset (ms); null where the sun does not cross the horizon today. */
-  rise: number | null;
-  set: number | null;
-  /** The highest the sun gets today, radians. */
-  top: number;
-  /** Local midnight that began today (ms). */
-  midnight: number;
-  /** The sun stays up, or down, all day. */
-  polarDay: boolean;
-  polarNight: boolean;
   up: boolean;
+  /** The pass the sun is on while it is up; a polar summer's never rose or sets (null). */
+  sun: Pass | null;
   /** The moon, on the pass it is on now: null while it is down. */
-  moon: {
-    alt: number;
-    rise: number;
-    set: number;
-    top: number;
-    lit: number;
-    phase: number;
-  } | null;
+  moon:
+    | (Pass & {
+        rise: number;
+        set: number;
+        alt: number;
+        lit: number;
+        phase: number;
+      })
+    | null;
 };
 
 /**
- * The sky over `(lat, lon)` at `ms`, the place `offset` minutes ahead of UTC. Rise and set
- * are found by walking the day in five-minute steps: the day's own shape, polar days
- * included, rather than a formula that has none.
+ * The sky over `(lat, lon)` at `ms`. Only where the bodies are, and on what pass: no clock
+ * or zone is read, so it holds wherever the device thinks it is.
  */
-export function skyAt(
-  lat: number,
-  lon: number,
-  ms: number,
-  offset: number,
-): Sky {
-  const midnight =
-    Math.floor((ms + offset * 60_000) / DAY_MS) * DAY_MS - offset * 60_000;
-  let rise: number | null = null;
-  let set: number | null = null;
-  let top = -Math.PI;
-  let before = sunAltitude(midnight, lat, lon);
-  let always = before >= RISE_ALT;
-  let never = !always;
-  for (let minute = 5; minute <= 1440; minute += 5) {
-    const at = midnight + minute * 60_000;
-    const now = sunAltitude(at, lat, lon);
-    const was = at - 5 * 60_000;
-    if (before < RISE_ALT && now >= RISE_ALT && rise === null)
-      rise = was + ((RISE_ALT - before) / (now - before)) * 5 * 60_000;
-    if (before >= RISE_ALT && now < RISE_ALT)
-      set = was + ((before - RISE_ALT) / (before - now)) * 5 * 60_000;
-    if (now >= RISE_ALT) never = false;
-    else always = false;
-    top = Math.max(top, now);
-    before = now;
-  }
+export function skyAt(lat: number, lon: number, ms: number): Sky {
   const alt = sunAltitude(ms, lat, lon);
-
-  // the moon's pass: back to where it rose and on to where it sets, while it is up now
+  const up = alt >= RISE_ALT;
+  const sun = up
+    ? passOf(ms, (at) => sunAltitude(at, lat, lon), RISE_ALT, 5, 1440)
+    : null;
   let moon: Sky["moon"] = null;
   const moonNow = moonAltitude(ms, lat, lon);
   if (moonNow > 0) {
-    let moonRise: number | null = null;
-    let moonSet: number | null = null;
-    let moonTop = moonNow;
-    for (let minute = 10; minute <= 1080 && moonRise === null; minute += 10) {
-      const a = moonAltitude(ms - minute * 60_000, lat, lon);
-      if (a <= 0) moonRise = ms - minute * 60_000;
-      else moonTop = Math.max(moonTop, a);
-    }
-    for (let minute = 10; minute <= 1080 && moonSet === null; minute += 10) {
-      const a = moonAltitude(ms + minute * 60_000, lat, lon);
-      if (a <= 0) moonSet = ms + minute * 60_000;
-      else moonTop = Math.max(moonTop, a);
-    }
-    // a moon that has not set within the walk is circling a polar sky: no pass to place it on
-    if (moonRise !== null && moonSet !== null)
+    const pass = passOf(ms, (at) => moonAltitude(at, lat, lon), 0, 10, 1080);
+    // a moon that neither rose nor sets within the walk circles a polar sky: no pass to place it on
+    if (pass.rise !== null && pass.set !== null)
       moon = {
+        ...pass,
+        rise: pass.rise,
+        set: pass.set,
         alt: moonNow,
-        rise: moonRise,
-        set: moonSet,
-        top: moonTop,
         ...moonLight(ms),
       };
   }
-  return {
-    alt,
-    rise,
-    set,
-    top,
-    midnight,
-    polarDay: always,
-    polarNight: never,
-    up: alt >= RISE_ALT,
-    moon,
-  };
+  return { alt, up, sun, moon };
 }
+
+/**
+ * Where in its own day a place is, 0 at its solar midnight to 1 at the next, from its
+ * longitude: how the sun is placed through a polar summer, when it neither rises nor sets.
+ */
+export const solarDay = (ms: number, lon: number) =>
+  ((((ms / 60_000 + lon * 4) % 1440) + 1440) % 1440) / 1440;
 
 /** What the globe draws of the weather: Open-Meteo's WMO code, grouped the way it looks. */
 export type WeatherLook =

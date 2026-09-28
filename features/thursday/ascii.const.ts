@@ -123,6 +123,17 @@ export function emojiAlpha(level: number, top: number) {
   return 0.06 + emojiWeight(level, top) * 0.94;
 }
 
+/** How large an emoji is drawn at that level, of her glyph size `px`: the dim end is smaller too. */
+export function emojiPx(px: number, level: number, top: number) {
+  return px * (0.5 + emojiWeight(level, top) * 0.5);
+}
+
+/** Her ink (RGB), which takes no colour: white in the dark theme, black otherwise. */
+export const ORB_INK: Record<"dark" | "light", [number, number, number]> = {
+  dark: [247, 247, 247],
+  light: [10, 10, 10],
+};
+
 /** Letter changes per second in the wave that leaves her face. */
 export const CHAR_RATE = 2.2;
 /** Emoji changes per second in the same wave; emoji are expensive to draw. */

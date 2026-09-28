@@ -767,21 +767,26 @@ export const HISTORY_KEEP = {
  *   outwaits the prompt goes without while the next has it.
  * - `keptMs`  how long what was found is used before it is found again. Longer asks the
  *   device and the services less often and may name a place they have left.
- * - `globeMs`  how long the globe (features/thursday/components/here-globe), shown as the
- *   day's first call opens, stays before she comes back. Longer leaves their sky and weather up
- *   longer, and her face and the words beside it off the screen as long.
+ * - `holdMs`  how long the globe (features/thursday/components/here-globe), shown as the
+ *   day's first call opens, stays once their country, sky and weather are all in (about 7.6 s
+ *   after it starts) before she comes back. Longer leaves them up longer, and her face and the
+ *   words beside it off the screen as long.
  * - `globeFps`  frames a second the globe draws. It draws two or three times her cells, so
  *   more costs a slow machine its smoothness everywhere else on the screen.
  * - `windyKmh`, `stormKmh`  gusts past which the globe draws wind blowing across it, and a
  *   storm turning over it as well. Lower draws them on more ordinary days.
+ * - `coastDeg`  how far off a coast a position still counts as in the country there, when the
+ *   place service named none the map has (features/thursday/here-map). Farther reaches a
+ *   neighbour across a strait; nearer leaves a town on a coast this simple out at sea.
  */
 export const HERE = {
   waitMs: 3_000,
   keptMs: 30 * 60_000,
-  globeMs: 11_000,
+  holdMs: 3_400,
   globeFps: 24,
   windyKmh: 50,
   stormKmh: 90,
+  coastDeg: 1.2,
 };
 
 /**

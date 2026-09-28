@@ -33,8 +33,9 @@ screen, and shows the sky over it as it is there now — the sun or the moon whe
 and the weather, lightly — while she greets them with that weather. At night the country is
 dark. After about eleven seconds she is back; tapping the globe brings her back sooner and does
 not hang up. It waits for the next call on a call she placed herself and on the very first
-call, and the day is counted in this browser only. The map is drawn in the browser, so the
-position still goes nowhere.
+call, and does not play when the system is set to reduce motion or the app's page is not the
+one in front. The day counts only once it has played, in this browser only. The map is drawn
+in the browser, so the position still goes nowhere.
 
 ## What she does on the line, and what goes to a bot
 

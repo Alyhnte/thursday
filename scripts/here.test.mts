@@ -47,6 +47,35 @@ test("the map knows which country a place is in, across 180° and just off a coa
   assert.equal(nameAt(-33.8688, 151.2093), "Australia");
   // out in the Pacific there is none, and none is guessed
   assert.equal(nameAt(0, -150), null);
+  // a state a few kilometres across keeps an outline through the packing, not a line
+  for (const name of ["Monaco", "Macao"]) {
+    const [poly] = world.countries.find((c) => c.name === name)?.polys ?? [];
+    assert.ok(poly && poly.rings[0].length >= 8, name);
+  }
+  // Antarctica goes round the pole: its coast is closed along it, not treated as a hole
+  assert.equal(nameAt(-80, 0), "Antarctica");
+  assert.equal(nameAt(-89.5, 120), "Antarctica");
+});
+
+test("the country the place service names is the one the globe dives to, across a strait or a border", () => {
+  const home = (lat: number, lon: number, code: string | null) => {
+    const found = homeOf(world, lat, lon, code);
+    return found ? world.countries[found.country].name : null;
+  };
+  // Helsingør looks across the Øresund at Sweden, which its outline cannot tell apart
+  assert.equal(home(56.036, 12.614, "DK"), "Denmark");
+  assert.equal(home(43.4, 39.95, "RU"), "Russia");
+  // Monte Carlo is at sea on this scale's straightened coast, and Monaco by its name
+  assert.equal(home(43.7384, 7.4246, "MC"), "Monaco");
+  assert.equal(home(22.1987, 113.5439, "MO"), "Macao");
+  // a code the map does not have falls back on the outlines
+  assert.equal(home(37.5665, 126.978, "XX"), "South Korea");
+  assert.equal(home(37.5665, 126.978, null), "South Korea");
+  // and a town just off the drawn coast is put on the part of the country beside it
+  const jeju = homeOf(world, 33.2, 126.2, "KR");
+  assert.ok(jeju);
+  const box = world.countries[jeju.country].polys[jeju.poly].bbox;
+  assert.ok(box[2] < 34 && box[3] > 33 && box[1] < 127.5, `${box}`);
 });
 
 test("the view fits the country they are in, the part of it they are on, whole and low in the frame", () => {
@@ -98,30 +127,45 @@ test("the view fits the country they are in, the part of it they are on, whole a
   assert.equal(sea.lonc, -150);
 });
 
-test("the sun rises and sets where and when it does, and stays up through a polar summer", () => {
-  const minutes = (ms: number | null, offset: number) => {
-    assert.notEqual(ms, null);
-    const at = new Date((ms as number) + offset * 60_000);
+test("the sun is on the pass it is on now, whatever the clock says, through a northern summer and a polar one", () => {
+  const minutes = (ms: number | null | undefined, offset: number) => {
+    assert.ok(typeof ms === "number");
+    const at = new Date(ms + offset * 60_000);
     return at.getUTCHours() * 60 + at.getUTCMinutes();
   };
-  // Seoul, 28 September 2026, at noon there (UTC+9): sunrise 06:24, sunset 18:21
+  /** Where the sun is along its arc, 0 at its rise to 1 at its set: on the frame between. */
+  const along = (sky: ReturnType<typeof skyAt>, ms: number) => {
+    assert.ok(sky.sun && sky.sun.rise !== null && sky.sun.set !== null);
+    return (ms - sky.sun.rise) / (sky.sun.set - sky.sun.rise);
+  };
+  // Seoul, 28 September 2026, at noon there (UTC+9): sunrise 06:24, sunset 18:21. No clock or
+  // zone goes in, so a device set to another zone places it the same
   const noon = Date.UTC(2026, 8, 28, 3, 0);
-  const seoul = skyAt(37.5665, 126.978, noon, 540);
-  assert.ok(Math.abs(minutes(seoul.rise, 540) - (6 * 60 + 24)) <= 4);
-  assert.ok(Math.abs(minutes(seoul.set, 540) - (18 * 60 + 21)) <= 4);
+  const seoul = skyAt(37.5665, 126.978, noon);
   assert.equal(seoul.up, true);
+  assert.ok(Math.abs(minutes(seoul.sun?.rise, 540) - (6 * 60 + 24)) <= 4);
+  assert.ok(Math.abs(minutes(seoul.sun?.set, 540) - (18 * 60 + 21)) <= 4);
+  assert.ok(Math.abs(along(seoul, noon) - 0.47) < 0.03);
   // as high as it gets today, near the equinox: about 90° less the latitude
-  assert.ok(Math.abs((seoul.top * 180) / Math.PI - 50.8) < 1.5);
+  assert.ok(Math.abs(((seoul.sun?.top ?? 0) * 180) / Math.PI - 50.8) < 1.5);
   // at midnight it is down, and the moon two days past full is up
-  const midnight = skyAt(37.5665, 126.978, Date.UTC(2026, 8, 28, 15, 0), 540);
+  const midnight = skyAt(37.5665, 126.978, Date.UTC(2026, 8, 28, 15, 0));
   assert.equal(midnight.up, false);
+  assert.equal(midnight.sun, null);
   assert.notEqual(midnight.moon, null);
   assert.ok((midnight.moon?.lit ?? 0) > 0.9);
 
-  // Tromsø in June: the sun never sets
-  const tromso = skyAt(69.6492, 18.9553, Date.UTC(2026, 5, 21, 10, 0), 120);
-  assert.equal(tromso.polarDay, true);
-  assert.equal(tromso.set, null);
+  // Reykjavik at midsummer noon: the sun set a few minutes past midnight, and still the noon
+  // sun is on its arc, not off the frame
+  const reykjavik = Date.UTC(2026, 5, 21, 12, 0);
+  const share = along(skyAt(64.1466, -21.9426, reykjavik), reykjavik);
+  assert.ok(share > 0.3 && share < 0.7, `${share}`);
+
+  // Tromsø in June: the sun neither rises nor sets
+  const tromso = skyAt(69.6492, 18.9553, Date.UTC(2026, 5, 21, 10, 0));
+  assert.equal(tromso.up, true);
+  assert.equal(tromso.sun?.rise, null);
+  assert.equal(tromso.sun?.set, null);
 });
 
 test("the moon is lit as it is: full, then new", () => {
@@ -180,7 +224,12 @@ test("the globe plays once a day on a browser, and once a visit where nothing is
   const tomorrow = new Date(2026, 8, 29, 0, 5);
   assert.equal(hereDue(morning), true);
   hereShown(morning);
+  // kept by the browser, so a page loaded again that day finds it
+  assert.deepEqual([...kept], [["thursday.here.shown", "2026-09-28"]]);
   assert.equal(hereDue(evening), false);
+  kept.set("thursday.here.shown", "2026-09-27");
+  assert.equal(hereDue(evening), true);
+  kept.set("thursday.here.shown", "2026-09-28");
   // the day turns at the device's own midnight
   assert.equal(hereDue(tomorrow), true);
   // a browser that keeps nothing: once, and then not again that visit

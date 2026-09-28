@@ -8,12 +8,14 @@ import type { Where } from "./thursday.schema";
 // the Geolocation API — so a server anywhere, local or not, never sees the position.
 
 /**
- * What the page found: `where` goes to the server for her prompts; `position` stays on this
- * page, where the globe is drawn (here-globe), and is never sent anywhere.
+ * What the page found: `where` goes to the server for her prompts; `position` and `country`
+ * stay on this page, where the globe is drawn (here-globe), and are never sent anywhere.
  */
 export type Found = {
   where: Where;
   position: { lat: number; lon: number };
+  /** The country the place service names there, ISO two letters: the one her prompt names. */
+  country: string | null;
 };
 
 /** What was found last, and when: used again for `HERE.keptMs`. */
@@ -36,11 +38,11 @@ async function getJson(url: string, signal: AbortSignal): Promise<unknown> {
   return response.json();
 }
 
-/** `Lisbon, Portugal`, in English like the rest of the prompt. */
+/** `Lisbon, Portugal`, in English like the rest of the prompt, and its country's code (`PT`). */
 async function placeOf(
   at: GeolocationCoordinates,
   signal: AbortSignal,
-): Promise<string | null> {
+): Promise<{ name: string | null; country: string | null }> {
   const body = (await getJson(
     `https://api.bigdatacloud.net/data/reverse-geocode-client?${new URLSearchParams(
       {
@@ -50,11 +52,21 @@ async function placeOf(
       },
     )}`,
     signal,
-  )) as { city?: string; locality?: string; countryName?: string };
-  const place = [body.city || body.locality, body.countryName]
+  )) as {
+    city?: string;
+    locality?: string;
+    countryName?: string;
+    countryCode?: string;
+  };
+  const name = [body.city || body.locality, body.countryName]
     .filter(Boolean)
     .join(", ");
-  return place || null;
+  return {
+    name: name || null,
+    country: /^[A-Z]{2}$/.test(body.countryCode ?? "")
+      ? (body.countryCode as string)
+      : null,
+  };
 }
 
 async function weatherAt(
@@ -116,12 +128,17 @@ async function find(signal: AbortSignal): Promise<Found | null> {
     if (result.status === "rejected")
       console.warn(`No ${what} for the call: ${errorToString(result.reason)}`);
   }
+  const named = place.status === "fulfilled" ? place.value : null;
   const where = {
-    place: place.status === "fulfilled" ? place.value : null,
+    place: named?.name ?? null,
     weather: weather.status === "fulfilled" ? weather.value : null,
   };
   return where.place || where.weather
-    ? { where, position: { lat: at.latitude, lon: at.longitude } }
+    ? {
+        where,
+        position: { lat: at.latitude, lon: at.longitude },
+        country: named?.country ?? null,
+      }
     : null;
 }
 

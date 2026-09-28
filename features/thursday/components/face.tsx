@@ -1,6 +1,7 @@
 "use client";
 
 import { memo, useEffect, useRef, useState } from "react";
+import { ORB_INK } from "@/features/thursday/ascii.const";
 import {
   AsciiOrb,
   type AsciiOrbMode,
@@ -44,10 +45,6 @@ const ORB_MODE: Record<CallStatus, AsciiOrbMode> = {
   delegating: "working",
 };
 
-/** The orb takes no color: white in dark theme, black otherwise. */
-const ORB_DARK: [number, number, number] = [247, 247, 247];
-const ORB_LIGHT: [number, number, number] = [10, 10, 10];
-
 function OrbFace({
   status,
   failed,
@@ -63,7 +60,7 @@ function OrbFace({
       mode={failed ? "error" : ORB_MODE[status]}
       word={word}
       size={size}
-      color={dark ? ORB_DARK : ORB_LIGHT}
+      color={dark ? ORB_INK.dark : ORB_INK.light}
       getSpectrum={getSpectrum}
       waking={waking}
       className={className}
