@@ -9,6 +9,8 @@ yet: the work so far is a design canvas, https://claude.ai/artifact/CMHZ6oW7wYJ2
 - She turns into a globe (land as trees, sea as water; the night side dark, with lights), spins to
   the user's location, then dives until their country fits and widens past her circle into a 2:1
   field. On the way in everything else falls away: only their country is left, low in the frame.
+- At night the field is a dark night sky: the land darkens, its lights come on, stars come out.
+  Dusk is in between.
 - Country outlines from Natural Earth 50m (world-atlas `countries-50m`, simplified to ~240 KB).
 - A pin at the location. In the sky above, the sun as a small living cluster of emoji, where it
   really is now (suncalc's formulas): up left in the morning, high at noon, down right toward
