@@ -3,9 +3,9 @@
 ## Who the bots are
 
 A bot is a text model with a name, one sentence about what it is for, and a face. That sentence is
-how a job finds its bot. The roster is **Settings › Bots**. **New bot** makes one — it needs a name,
-a description and a model, and the name cannot be changed later. A bot's page holds what it
-**Runs on**, its **Effort**, when it **Compacts at**, its **Tools**, its own **Prompt**, its recent
+how a job finds its bot. The roster is **Settings › Bots**. **New bot** makes one — it needs a name
+and a description, and the name cannot be changed later; left without a model it runs on the app
+default one. A bot's page holds what it **Runs on**, its **Effort**, when it **Compacts at**, its **Tools**, its own **Prompt**, its recent
 threads and its own memory. A bot can be switched off without being deleted. Deleting one keeps what
 it finished (**Settings › Files** still shows it under that bot's name), but its memory and the
 skills it installed go with it. **Ready-made bots**, beside New bot, adds the ready-made ones; the

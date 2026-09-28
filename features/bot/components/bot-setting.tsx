@@ -814,26 +814,28 @@ function BotPage({
     onOk: () => revalidate(queryKey.bot),
   });
 
-  const ready =
-    name.trim() && description.trim() && provider && model.trim() && !creating;
+  // No model picked is the app default model, which the form says it runs on
+  const picked = Boolean(provider && model.trim());
+  const ready = name.trim() && description.trim() && !creating;
   const missing = [
     !name.trim() && "a name",
     !description.trim() && "a description",
-    !(provider && model.trim()) && "a model",
   ].filter((one): one is string => Boolean(one));
 
   const submit = () => {
-    if (!ready || !provider) return;
+    if (!ready) return;
     create({
       name: name.trim(),
       description: description.trim(),
       systemPrompt: systemPrompt.trim() || undefined,
       icon,
-      provider,
-      model: model.trim(),
+      provider: picked ? provider : null,
+      model: picked ? model.trim() : null,
       compactAt: compactEdited
         ? tokensFromK(compactAt)
-        : filledTokens(pickedWindow),
+        : picked
+          ? filledTokens(pickedWindow)
+          : null,
       effort,
       toolIds,
     });

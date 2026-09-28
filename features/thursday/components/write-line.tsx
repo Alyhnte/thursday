@@ -492,6 +492,13 @@ export function WriteLine({
                     event.preventDefault();
                     return walk(event.key === "ArrowDown" ? 1 : -1);
                   }
+                  // Tab completes the name, as it does in any list that finishes a word
+                  const tab = event.key === "Tab" && !event.shiftKey;
+                  if (mention && tab && !midWord) {
+                    event.preventDefault();
+                    if (matches[at]) pick(matches[at]);
+                    return;
+                  }
                   if (event.key !== "Enter" || event.shiftKey || midWord)
                     return;
                   event.preventDefault();
@@ -590,7 +597,7 @@ export function WriteLine({
               <>
                 <Key>↑↓</Key> walk
                 <Dot />
-                <Key>Enter</Key> take
+                <Key>Tab</Key> <Key>Enter</Key> take
                 <Dot />
                 <Key>Esc</Key> close the list
               </>

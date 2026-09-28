@@ -63,9 +63,9 @@ as on a spoken call, with no voice and no per-minute billing.
   the call, a web page in a new tab.
 - **Files**: the paperclip, a paste, or a drop anywhere on the window — at most 8 at a time, 25 MB
   each. She can look at a picture herself, so "what does this say?" is answered on the spot.
-- **Who it goes to**: the chip at the left of the line, or `@` and a name at the start. A bot picked
-  there gets that one message, then the line goes back to her; **Esc** with a bot picked also goes
-  back to her.
+- **Who it goes to**: the chip at the left of the line, or `@` and a name at the start (**Tab** or
+  **Enter** takes the highlighted one). A bot picked there gets that one message, then the line goes
+  back to her; **Esc** with a bot picked also goes back to her.
 - **What it runs on**: the GPT Subscription when one is signed in, else the OpenAI key. The small
   **runs on** button under the line shows which, and can pick another model, from any provider with
   a key, for writing only. With nothing to run on it says so; keys are in **Settings › API keys**.
