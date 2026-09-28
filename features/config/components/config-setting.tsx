@@ -59,7 +59,9 @@ import {
   type ConfigStatus,
   DEFAULT_EFFORT_KEY,
   EXA_API_KEY,
+  envWords,
   groupSatisfied,
+  isConfigFromEnv,
   isConfigSet,
   isConfigUnreadable,
   lostWords,
@@ -137,6 +139,7 @@ function ConfigScreen({ screen }: { screen: keyof typeof SCREENS }) {
 
   const isSet = (key: string) => isConfigSet(data, key);
   const isLost = (key: string) => isConfigUnreadable(data, key);
+  const isEnv = (key: string) => isConfigFromEnv(data, key);
   // A group is met by what can use it: the voice group by a sign-in on a plan with calls
   const meets = (group: ConfigGroup) =>
     groupSatisfied(
@@ -187,6 +190,7 @@ function ConfigScreen({ screen }: { screen: keyof typeof SCREENS }) {
                   entry={entry}
                   set={isSet(entry.key)}
                   lost={isLost(entry.key)}
+                  env={isEnv(entry.key)}
                   needed={false}
                 />
               ))}
@@ -199,6 +203,7 @@ function ConfigScreen({ screen }: { screen: keyof typeof SCREENS }) {
                   entry={entry}
                   set={isSet(entry.key)}
                   lost={isLost(entry.key)}
+                  env={isEnv(entry.key)}
                 />
               ))}
             </div>
@@ -220,6 +225,7 @@ function ConfigScreen({ screen }: { screen: keyof typeof SCREENS }) {
                     entry={entry}
                     set={isSet(entry.key)}
                     lost={isLost(entry.key)}
+                    env={isEnv(entry.key)}
                     // Amber only where something is actually missing: an
                     // unsatisfied required group is waiting on the user
                     needed={!meets(group)}
@@ -248,6 +254,7 @@ export function AccountsSetup({
   const { data } = useServerRoute<ConfigStatus[]>(queryKey.config);
   const isSet = (key: string) => isConfigSet(data, key);
   const isLost = (key: string) => isConfigUnreadable(data, key);
+  const isEnv = (key: string) => isConfigFromEnv(data, key);
   const entries = (id: ConfigGroup["id"]) =>
     CONFIG_GROUPS.find((group) => group.id === id)?.entries ?? [];
   // A newcomer reads one row: the providers most people have a key for, and any that is
@@ -278,6 +285,7 @@ export function AccountsSetup({
             entry={entry}
             set={isSet(entry.key)}
             lost={isLost(entry.key)}
+            env={isEnv(entry.key)}
             needed={false}
           />
         ))}
@@ -289,6 +297,7 @@ export function AccountsSetup({
             entry={entry}
             set={isSet(entry.key)}
             lost={isLost(entry.key)}
+            env={isEnv(entry.key)}
           />
         ))}
         {rest.length > 0 && (
@@ -314,6 +323,7 @@ export function AccountsSetup({
                   entry={entry}
                   set={isSet(entry.key)}
                   lost={isLost(entry.key)}
+                  env={isEnv(entry.key)}
                 />
               ))}
             </PopoverContent>
@@ -328,6 +338,7 @@ export function AccountsSetup({
           entry={entry}
           set={isSet(entry.key)}
           lost={isLost(entry.key)}
+          env={isEnv(entry.key)}
           needed={false}
         />
       ))}
@@ -337,22 +348,26 @@ export function AccountsSetup({
 
 /**
  * One provider's key as its mark: tap it, paste the key. A key that is set wears a check; one
- * saved but no longer readable (config.const ConfigStatus `unreadable`), the waiting mark.
+ * saved but no longer readable (config.const ConfigStatus `unreadable`), the waiting mark. One
+ * the environment sets says so under its name, since its dialog cannot change it.
  */
 function KeyTile({
   entry,
   set,
   lost,
+  env,
 }: {
   entry: ConfigEntry;
   set: boolean;
   lost: boolean;
+  /** Set in the environment (config.const ConfigStatus `env`). */
+  env: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={() => openConfigDialog(entry, set)}
-      aria-label={`${entry.label}: ${set ? "set" : lost ? "enter it again" : "not set"}`}
+      aria-label={`${entry.label}: ${env ? "set in env" : set ? "set" : lost ? "enter it again" : "not set"}`}
       className="group flex w-17 flex-col items-center gap-1.5 rounded-xl py-1 outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
     >
       <span className="relative grid size-10.5 place-items-center rounded-[13px] bg-muted/60 transition-colors group-hover:bg-muted">
@@ -377,6 +392,11 @@ function KeyTile({
       >
         {entry.label}
       </span>
+      {env && (
+        <span className="-mt-1.5 font-mono text-[10px] text-muted-foreground">
+          env
+        </span>
+      )}
     </button>
   );
 }
@@ -414,6 +434,7 @@ function KeyRow({
   entry,
   set,
   lost,
+  env,
   needed,
   card = false,
   narrow = false,
@@ -422,6 +443,8 @@ function KeyRow({
   set: boolean;
   /** Saved, but no longer readable: asked for again (config.const ConfigStatus `unreadable`). */
   lost: boolean;
+  /** Set in the environment (config.const ConfigStatus `env`): said at the row's end. */
+  env: boolean;
   /** Drawn as a card of its own rather than a row in a list. */
   card?: boolean;
   /** In a narrow column the state takes the second line, where the key's name is of no use. */
@@ -432,9 +455,10 @@ function KeyRow({
   const credits = useKeyCredits(entry, set);
   const usage = useSubscriptionUsage(entry, set);
   const plan = useSignInPlan(entry, set);
+  // A plan's use keeps the row as it is, narrow as the card is; its dialog says where it is set
   const state = usage.data
     ? usageState(usage.data)
-    : keyState(set, needed, credits.data, entry.signIn, lost);
+    : keyState(set, needed, credits.data, entry.signIn, lost, env);
 
   const waiting = credits.isLoading || usage.isLoading;
   const stateLine = (
@@ -519,6 +543,33 @@ const USD = new Intl.NumberFormat("en-US", {
  * provider's, which also says what is left on it: the waiting colour for a top-up, red is a refusal.
  */
 function keyState(
+  set: boolean,
+  needed: boolean,
+  credits: KeyCredits | null | undefined,
+  signIn?: true,
+  lost = false,
+  env = false,
+): { text: string; ink: string; warn: boolean } {
+  const state = keyStateText(set, needed, credits, signIn, lost);
+  return set ? envState(state, env, Boolean(credits)) : state;
+}
+
+/**
+ * Where a key is set, said at its row's end since its dialog cannot change it (config.const
+ * envWords): beside the credit it has left, else in place of "Set".
+ */
+function envState(
+  state: { text: string; ink: string; warn: boolean },
+  env: boolean,
+  figure: boolean,
+): { text: string; ink: string; warn: boolean } {
+  if (!env) return state;
+  return figure
+    ? { ...state, text: `${state.text} · env` }
+    : { ...state, text: "Set in env" };
+}
+
+function keyStateText(
   set: boolean,
   needed: boolean,
   credits: KeyCredits | null | undefined,
@@ -844,6 +895,8 @@ function SignInDialog({
   const { data } = useServerRoute<ConfigStatus[]>(queryKey.config);
   const signedIn = isConfigSet(data, entry.key);
   const lost = isConfigUnreadable(data, entry.key);
+  // Held in the environment: signing out here would change nothing that is used
+  const env = isConfigFromEnv(data, entry.key);
   const plan = useSignInPlan(entry, signedIn);
   const usage = useSubscriptionUsage(entry, signedIn);
   const state = usage.data ? usageState(usage.data) : null;
@@ -882,7 +935,7 @@ function SignInDialog({
       }
       footer={
         <>
-          {(signedIn || lost) && (
+          {(signedIn || lost) && !env && (
             <Button
               variant="ghost"
               loading={signingOut}
@@ -924,6 +977,11 @@ function SignInDialog({
             {lostWords("The sign-in saved here", "Sign in again.")}
           </SettingNote>
         )}
+        {env && (
+          <SettingNote className="wrap-break-word">
+            {envWords(entry.label)}
+          </SettingNote>
+        )}
       </div>
     </SettingDialogContent>
   );
@@ -955,6 +1013,8 @@ function ConfigDialog({
   const { data: status } = useServerRoute<ConfigStatus[]>(queryKey.config);
   const set = status ? isConfigSet(status, entry.key) : opened;
   const lost = isConfigUnreadable(status, entry.key);
+  // Set where this dialog cannot reach: it says where, and offers nothing that would not stick
+  const env = isConfigFromEnv(status, entry.key);
   const { data: credits } = useKeyCredits(entry, set);
   const state = credits ? keyState(set, false, credits) : null;
 
@@ -995,7 +1055,7 @@ function ConfigDialog({
       description={
         <>
           <span className="font-mono">{entry.key}</span>
-          {entry.hint && <> · {entry.hint}</>}
+          {env ? <> · set in env</> : entry.hint && <> · {entry.hint}</>}
           {state && (
             <>
               {" · "}
@@ -1005,52 +1065,62 @@ function ConfigDialog({
         </>
       }
       footer={
-        <>
-          {/* set apart from what saves, at the far end and in red; a key that can no longer be
+        env ? (
+          <Button onClick={onDone}>Close</Button>
+        ) : (
+          <>
+            {/* set apart from what saves, at the far end and in red; a key that can no longer be
               read can go without a new one */}
-          {(set || lost) && (
-            <Button
-              variant="ghost"
-              loading={removing}
-              onClick={() => void confirmRemove()}
-              className="mr-auto text-destructive hover:text-destructive"
-            >
-              Remove
+            {(set || lost) && (
+              <Button
+                variant="ghost"
+                loading={removing}
+                onClick={() => void confirmRemove()}
+                className="mr-auto text-destructive hover:text-destructive"
+              >
+                Remove
+              </Button>
+            )}
+            <Button variant="ghost" onClick={onDone}>
+              Cancel
             </Button>
-          )}
-          <Button variant="ghost" onClick={onDone}>
-            Cancel
-          </Button>
-          <Button
-            loading={saving}
-            disabled={value.trim().length < KEY_MIN}
-            onClick={() => save(entry.key, value)}
-          >
-            {set ? "Replace" : "Save"}
-          </Button>
-        </>
+            <Button
+              loading={saving}
+              disabled={value.trim().length < KEY_MIN}
+              onClick={() => save(entry.key, value)}
+            >
+              {set ? "Replace" : "Save"}
+            </Button>
+          </>
+        )
       }
     >
       <div className="space-y-2">
-        <Input
-          value={value}
-          onChange={(event) => setValue(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && value.trim().length >= KEY_MIN)
-              save(entry.key, value);
-          }}
-          // what a key looks like says more than the setting's name, which is above
-          placeholder={
-            set
-              ? "New value — replaces the current key"
-              : lost
-                ? "Paste the key again"
-                : (entry.keyLooks ?? "Paste the key")
-          }
-          spellCheck={false}
-          type="password"
-          autoFocus
-        />
+        {env ? (
+          <SettingNote className="wrap-break-word">
+            {envWords(entry.label)}
+          </SettingNote>
+        ) : (
+          <Input
+            value={value}
+            onChange={(event) => setValue(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && value.trim().length >= KEY_MIN)
+                save(entry.key, value);
+            }}
+            // what a key looks like says more than the setting's name, which is above
+            placeholder={
+              set
+                ? "New value — replaces the current key"
+                : lost
+                  ? "Paste the key again"
+                  : (entry.keyLooks ?? "Paste the key")
+            }
+            spellCheck={false}
+            type="password"
+            autoFocus
+          />
+        )}
         {!set && entry.keysAt && (
           <a
             href={entry.keysAt}
