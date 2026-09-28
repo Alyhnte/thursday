@@ -215,6 +215,66 @@ const THINGS = {
       { rim: 1, shadow: 2 },
     );
   },
+  flowerbed(o) {
+    // 240 wide: flowers growing out of the ground, swaying a little
+    const cols = o.colors ?? [
+      "#e0463f",
+      "#f27caa",
+      "#f8d65c",
+      "#fff6ea",
+      "#b07ad8",
+    ];
+    const n = o.n ?? 9;
+    for (let i = 0; i < n; i++) {
+      const x = -108 + (216 * i) / (n - 1) + (hash(i, 7) - 0.5) * 14;
+      const h = 55 + hash(i, 8) * 40;
+      const sway = Math.sin(X.T * 1.6 + i) * 3;
+      crayon(
+        curve([x, -6], [x + sway * 0.5, -h * 0.5], [x + sway, -h]),
+        3,
+        "#4f9f5b",
+        { shine: false, seed: 950 + i },
+      );
+      X.g.save();
+      X.g.translate(x - 8, -h * 0.45);
+      X.g.rotate(-0.6);
+      paper(ellipse(0, 0, 9, 4.5, 10), "#5fa35a", {
+        rim: 0.8,
+        shadow: 1,
+        seed: 960 + i,
+      });
+      X.g.restore();
+      const c = cols[i % cols.length];
+      for (let k = 0; k < 5; k++) {
+        const a = (k / 5) * TAU + i;
+        paper(
+          ellipse(
+            x + sway + Math.cos(a) * 7,
+            -h + Math.sin(a) * 7,
+            6.5,
+            6.5,
+            12,
+          ),
+          c,
+          { rim: 0.8, shadow: 2, seed: 970 + i * 7 + k },
+        );
+      }
+      blob(ellipse(x + sway, -h, 3.6, 3.6, 8), i % 2 ? "#f8d65c" : "#e5762c");
+    }
+    paper(
+      [
+        [-124, 0],
+        [-110, -16],
+        [-60, -24],
+        [0, -26],
+        [60, -24],
+        [110, -16],
+        [124, 0],
+      ],
+      o.soil ?? "#8a5a3c",
+      { rim: 2, shadow: 4 },
+    );
+  },
   plant(o) {
     paper(
       [
@@ -816,7 +876,7 @@ const THINGS = {
   },
 };
 /**
- * A thing standing on (x, y), `size` tall: cake, gift, balloons, flowers, plant, heart, letter,
+ * A thing standing on (x, y), `size` tall: cake, gift, balloons, flowers, flowerbed, plant, heart, letter,
  * photo, mug, ring, star, sun, moon, cloud, tree, house, suitcase, plane, car, book, camera,
  * table, sofa, bench, music. o: its own options, and rot (turned), flip.
  */

@@ -83,7 +83,9 @@ and things stand on (x, y): x is their middle, y where their feet or bottom touc
 - `d.shake(amount)`
 
 **Places** (fill the frame)
-- `d.sky({ time: "day"|"dusk"|"night"|"dawn", sun, moon, stars, clouds, color })`
+- `d.sky({ time: "day"|"dusk"|"night"|"dawn", sun, moon, stars, clouds, color })` — a day's sun
+  is high on the right, a dusk or dawn sun low on the left, a night's moon high on the right: give
+  `sun: [x, y]` or `sun: false` where it would sit on someone or on words
 - `d.ground(kind, { y, color })`: hills, field, town, city, sea, beach, snow, road — after a sky
 - `d.room({ wall, floor, y, window: "day"|"dusk"|"night"|false, curtains, lamp, frames })`
 - `d.desk({ color, cloth })` a table seen from above · `d.plain(color)` plain paper
@@ -105,7 +107,7 @@ and things stand on (x, y): x is their middle, y where their feet or bottom touc
 
 **Things** — `d.thing(name, x, y, size, o)`
 - cake `{ candles, lit (0..1), smoke (0..1), color, tiers: 2 }` · gift `{ color, ribbon, open (0..1) }`
-- balloons `{ n, colors }` · flowers `{ colors, wrap }` · plant · heart `{ color, beat }`
+- balloons `{ n, colors }` · flowers (a bouquet) `{ colors, wrap }` · flowerbed (240 wide, growing) `{ colors, n }` · plant · heart `{ color, beat }`
 - letter `{ open (0..1) }` · photo `{ caption }` (`d.photo(name, x, y, size)` shows a picture from `images`)
 - mug · ring `{ open }` · star · sun · moon · cloud · tree `{ kind: round|pine|blossom|autumn }`
 - house `{ wall, roof, lit }` · suitcase · plane · car `{ drive }` · book · camera `{ flash }`
