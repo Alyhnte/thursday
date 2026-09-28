@@ -44,7 +44,7 @@ const SUBFRAMES = 4;
 // Tabs drawing at once: past this the browser's one compositor is the limit
 const MOST_TABS = 4;
 // Frames drawn and encoded at a time, so the pictures on disk never outgrow one piece
-const PIECE_S = 2;
+const PIECE_S = 4;
 // Letters a viewer reads in a second of handwriting, before a scene is too quick for its words
 const READ_PER_S = 12;
 // The smallest handwriting that reads on a phone, in pixels of a 1080-high frame
@@ -357,7 +357,7 @@ async function render(name, ...rest) {
   const tabs = Math.max(1, Math.min(MOST_TABS, availableParallelism() - 1));
   const work = mkdtempSync(join(dir, `.${basename(file, ".html")}-frames-`));
   const out = file.replace(/\.html$/, ".mp4");
-  const served = await serveFolder(dir);
+  const served = await serveFolder(dir, { take: work });
   const url = `${served.url(basename(file))}?render`;
   const began = Date.now();
   try {
@@ -397,31 +397,40 @@ async function render(name, ...rest) {
       for (let f0 = 0; f0 < frames; f0 += per) {
         const f1 = Math.min(frames, f0 + per);
         await inPage(
-          async (page, { from, to, sub, work }) => {
+          async (page, { from, to, sub }) => {
             const tabs = page
               .context()
               .pages()
               .filter((p) => p.url().includes("?render"));
             const share = Math.ceil((to - from) / tabs.length);
+            // Each tab draws its share and hands each frame back to the script as a jpeg
             await Promise.all(
-              tabs.map(async (tab, k) => {
-                const a = from + k * share;
-                const b = Math.min(to, a + share);
-                for (let n = a; n < b; n++) {
-                  await tab.evaluate(
-                    ([n, sub]) => window.frame(n, sub),
-                    [n, sub],
-                  );
-                  await tab.locator("#film").screenshot({
-                    path: `${work}/f${String(n).padStart(7, "0")}.jpg`,
-                    type: "jpeg",
-                    quality: 94,
-                  });
-                }
-              }),
+              tabs.map((tab, k) =>
+                tab.evaluate(
+                  async ([a, b, sub]) => {
+                    const canvas = document.getElementById("film");
+                    for (let n = a; n < b; n++) {
+                      window.frame(n, sub);
+                      // toDataURL, not toBlob: a tab in the background runs toBlob late
+                      const b64 = canvas
+                        .toDataURL("image/jpeg", 0.94)
+                        .slice("data:image/jpeg;base64,".length);
+                      const jpeg = Uint8Array.from(atob(b64), (c) =>
+                        c.charCodeAt(0),
+                      );
+                      const sent = await fetch(
+                        `/__take/f${String(n).padStart(7, "0")}.jpg`,
+                        { method: "POST", body: jpeg },
+                      );
+                      if (!sent.ok) throw new Error(`frame ${n} was not taken`);
+                    }
+                  },
+                  [from + k * share, Math.min(to, from + (k + 1) * share), sub],
+                ),
+              ),
             );
           },
-          { from: f0, to: f1, sub, work },
+          { from: f0, to: f1, sub },
         );
         // Encoded while the next piece is drawn; one at a time, beside the browser
         await encoding;
@@ -475,7 +484,7 @@ function encodePiece(ffmpeg, { work, f0, f1, fps, draft }) {
     "-c:v",
     "libx264",
     "-preset",
-    draft ? "veryfast" : "medium",
+    draft ? "veryfast" : "fast",
     "-crf",
     draft ? "22" : "19",
     "-pix_fmt",

@@ -33,7 +33,9 @@ const SOUND_KINDS = [
 const Q = new URLSearchParams(location.search);
 const RENDER = Q.has("render");
 const canvas = document.getElementById("film");
-const g0 = canvas.getContext("2d");
+// Rendering headless, drawn on the processor: faster there than a graphics card emulated
+const CPU = RENDER ? { willReadFrequently: true } : undefined;
+const g0 = canvas.getContext("2d", CPU);
 let F = null; // the film, laid out
 const layers = [];
 const layer = (i) => {
@@ -530,7 +532,7 @@ function lineOf(error) {
 }
 
 // ---------------------------------------------------------------- one frame
-function paintAt(time, g) {
+function paintAt(time, g, post = true) {
   const t = clamp(time, 0, F.duration - 1e-6);
   const i = Math.max(
     0,
@@ -550,7 +552,7 @@ function paintAt(time, g) {
     drawScene(s, local, B.getContext("2d"));
     transition(s.enter, q, A, B, g, s.i);
   }
-  grain(g, Math.round(t * F.fps));
+  if (post) grain(g, Math.round(t * F.fps));
 }
 
 /** From the scene before (A) to this one (B), `q` of the way. */
@@ -720,20 +722,25 @@ window.frame = (n, sub = 1) => {
   const s =
     F.scenes.find((x) => t >= x.t0 && t < x.t1) ??
     F.scenes[F.scenes.length - 1];
-  const acc = layer(3).getContext("2d");
-  const one = layer(4);
+  // Each picture is drawn on the page's own canvas and averaged into a layer beside it
+  const acc = layer(3).getContext("2d", CPU);
   for (let k = 0; k < sub; k++) {
     const tk = clamp(
       t + ((k + 0.5) / sub - 0.5) * (0.5 / F.fps),
       s.t0,
       s.t1 - 1e-4,
     );
-    paintAt(tk, one.getContext("2d"));
+    paintAt(tk, g0, false);
     acc.globalAlpha = 1 / (k + 1);
-    acc.drawImage(one, 0, 0);
+    acc.drawImage(canvas, 0, 0);
   }
+  g0.save();
+  g0.setTransform(1, 0, 0, 1, 0, 0);
   g0.globalAlpha = 1;
   g0.drawImage(layer(3), 0, 0);
+  g0.restore();
+  // The paper's grain and the vignette over the finished frame, once
+  grain(g0, n);
 };
 
 // ---------------------------------------------------------------- the player

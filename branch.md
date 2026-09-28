@@ -28,5 +28,8 @@ those made every video look the same. Now:
   runs clean in a fake canvas, errors are named, the music is whole and seeded, the page holds
   its code).
 
-Open: not yet run end to end by a bot in the real app; a 30 s film takes about 3.5 minutes to
-render here.
+Tried by Sonnet bots from the skill alone (a MapleStory short, a mother's 60th): both finished;
+what they tripped on became put's face and size checks, a flowerbed, and a line on the sky's sun.
+
+Open: not yet run end to end by a bot in the real app; a 30 s film takes about 3 minutes to
+render here (1.5 as a draft), most of it drawing the crayon textures four times a frame.
