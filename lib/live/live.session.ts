@@ -477,12 +477,12 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
           content: [
             {
               type: "input_text",
-              text: `The picture of what they show did not go through, so nothing on it was seen: ${reason}`,
+              text: `The picture did not go through, so nothing in it was seen: ${reason}`,
             },
           ],
         },
       });
-      on.warn(`The picture of what you show did not go through: ${reason}`);
+      on.warn(`A picture for her did not go through: ${reason}`);
     }
   };
   const handle = (event: LiveEvent) => {

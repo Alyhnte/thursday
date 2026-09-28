@@ -27,6 +27,16 @@ known within three seconds, the call goes on without it and nothing is sent. The
 the answer; it is changed in the browser's site settings for this app (the icon left of the
 address). A phone chat has no browser, so she does not know it there.
 
+Once a day, with the location allowed, the first spoken call placed from this browser opens
+with her turning into a globe: it spins to where they are, dives until their country fills the
+screen, and shows the sky over it as it is there now — the sun or the moon where it really is,
+and the weather, lightly — while she greets them with that weather. At night the country is
+dark. After about eleven seconds she is back; tapping the globe brings her back sooner and does
+not hang up. It waits for the next call on a call she placed herself and on the very first
+call, and does not play when the system is set to reduce motion or the app's page is not the
+one in front. The day counts only once it has played, in this browser only. The map is drawn
+in the browser, so the position still goes nowhere.
+
 ## What she does on the line, and what goes to a bot
 
 She answers from what she knows about them, searches the web, runs a single command on their
@@ -62,7 +72,12 @@ as on a spoken call, with no voice and no per-minute billing.
 - **Her answers** keep their shape (lists, tables), and what she names is a link: a file opens over
   the call, a web page in a new tab.
 - **Files**: the paperclip, a paste, or a drop anywhere on the window — at most 8 at a time, 25 MB
-  each. She can look at a picture herself, so "what does this say?" is answered on the spot.
+  each. She can look at a picture herself, so "what does this say?" is answered on the spot. The
+  first picture sent to her is drawn over her face in her own emoji for about ten seconds (below).
+- **Drawing**: the brush beside the paperclip opens a drawing pad: pick a colour, draw, and
+  **Add to the message** puts the drawing on the line as a picture (on a spoken call the button
+  reads **Show Thursday**, and she is shown it at once). **Clear** starts over; closing the pad
+  keeps what is drawn for next time.
 - **Who it goes to**: the chip at the left of the line, or `@` and a name at the start (**Tab** or
   **Enter** takes the highlighted one). A bot picked there gets that one message, then the line goes
   back to her; **Esc** with a bot picked also goes back to her.
@@ -84,8 +99,21 @@ as on a spoken call, with no voice and no per-minute billing.
 It is kept with the other calls, marked *in writing*.
 
 During a spoken call the line writes to bots only. A file put down then is one she is told about —
-its chip says *she knows it is here* — and what to do with it can simply be said; she hands it to a
-bot.
+its chip says *she knows it is here* — and what to do with it can simply be said: she looks at a
+picture herself when what they ask needs it, and it goes to the model behind her, nowhere else;
+anything else she hands to a bot.
+
+A picture handed to her, in writing or put down on a spoken call, is drawn over her face in her own
+emoji — each spot of it in the emoji nearest its colour, or in her letters where she is drawn in
+letters — larger than her, with what is clear in it left empty. The emoji go down one by one, stay
+a few seconds, and go, and she is back after about ten seconds; tapping it brings her back sooner
+and does not hang up. Of several pictures at once, the first is drawn. Nothing is drawn while the
+globe or another picture is over her face, when the system is set to reduce motion, or when the
+app's page is not the one in front.
+
+On a spoken call she can draw on her own face too, when asked for a drawing or when one says it
+better — a heart, a star, a check: she shrinks into a pen, draws it in her emoji of one colour,
+and is herself again after about ten seconds. Tapping it brings her back sooner.
 
 ## Seeing the words
 
