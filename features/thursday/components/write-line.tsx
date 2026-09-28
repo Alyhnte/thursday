@@ -595,11 +595,11 @@ export function WriteLine({
             {mention ? (
               // an open list has the keys: nothing is sent or left while it is up
               <>
-                <Key>↑↓</Key> walk
+                <Hint keys={["↑↓"]}>walk</Hint>
                 <Dot />
-                <Key>Tab</Key> <Key>Enter</Key> take
+                <Hint keys={["Tab", "Enter"]}>take</Hint>
                 <Dot />
-                <Key>Esc</Key> close the list
+                <Hint keys={["Esc"]}>close the list</Hint>
               </>
             ) : (
               <>
@@ -608,9 +608,9 @@ export function WriteLine({
                   <RunsOn runsOn={null} />
                 ) : (
                   <>
-                    <Key>Enter</Key> send
+                    <Hint keys={["Enter"]}>send</Hint>
                     <Dot />
-                    <Key>@</Key> {toHer ? "a bot" : "pick a bot"}
+                    <Hint keys={["@"]}>{toHer ? "a bot" : "pick a bot"}</Hint>
                     {toHer && (
                       <>
                         <Dot />
@@ -620,8 +620,9 @@ export function WriteLine({
                   </>
                 )}
                 <Dot />
-                <Key>Esc</Key>{" "}
-                {calling ? (toHer ? "to end" : "back to her") : "close"}
+                <Hint keys={["Esc"]}>
+                  {calling ? (toHer ? "to end" : "back to her") : "close"}
+                </Hint>
               </>
             )}
           </p>
@@ -691,6 +692,18 @@ function Mark({ bot, size }: { bot: BotRef; size: number }) {
       notify={false}
       className="shrink-0"
     />
+  );
+}
+
+/** A key and what it does, kept on one line: the small print wraps between them, never inside one. */
+function Hint({ keys, children }: { keys: string[]; children: string }) {
+  return (
+    <span className="inline-flex items-center gap-2 whitespace-nowrap">
+      {keys.map((key) => (
+        <Key key={key}>{key}</Key>
+      ))}
+      {children}
+    </span>
   );
 }
 

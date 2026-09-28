@@ -936,7 +936,7 @@ function BotPage({
               id={`${fieldId}-name`}
               value={name}
               onChange={(event) => patch({ name: event.target.value })}
-              placeholder="researcher"
+              placeholder="e.g. researcher"
               spellCheck={false}
               maxLength={COMMON_VALIDATE.name.max}
               autoFocus
@@ -961,7 +961,7 @@ function BotPage({
                 commit({ description: next });
               }
             }}
-            placeholder="Searches the web and answers"
+            placeholder="e.g. Searches the web and answers"
             maxLength={COMMON_VALIDATE.description.max}
           />
           <p className="text-xs text-muted-foreground">
@@ -1067,7 +1067,7 @@ function BotPage({
               id={`${fieldId}-compact`}
               inputMode="decimal"
               value={shownK}
-              placeholder={model.trim() ? "" : "Pick a model first"}
+              placeholder={model.trim() ? "" : "From the app default model"}
               onChange={(event) => {
                 setCompactEdited(true);
                 patch({ compactAt: event.target.value });
@@ -1379,9 +1379,13 @@ function compactNote(input: {
   window: number | null;
   shown: number | null;
 }): string {
-  if (!input.model) return "Filled in from the model once one is picked.";
-  const filled = filledTokens(input.window);
   const summarize = "A job summarizes itself here and carries on.";
+  // No model of its own: each run works it out from the model it runs on (model.ts compactBudget)
+  if (!input.model)
+    return input.shown === null
+      ? `Worked out from the app default model's context window at each run. ${summarize}`
+      : `Set by hand. Emptied, it is worked out from the app default model again. ${summarize}`;
+  const filled = filledTokens(input.window);
   if (input.shown !== null && input.shown !== filled) {
     return `Set by hand. Picking a model fills in its own again. ${summarize}`;
   }
