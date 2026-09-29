@@ -620,9 +620,10 @@ function OfficeHead({
   from: string;
 }) {
   const captioned = useOfficeCaption();
-  const [all, setAll] = useState(false);
+  const [unfolded, setUnfolded] = useState(false);
   // Folding away a single file saves nothing
   const folds = files.length > HEAD_FILES + 1;
+  const all = unfolded && folds;
   const shown = folds && !all ? files.slice(0, HEAD_FILES) : files;
   return (
     <div
@@ -669,7 +670,7 @@ function OfficeHead({
             {folds && (
               <button
                 type="button"
-                onClick={() => setAll((was) => !was)}
+                onClick={() => setUnfolded((was) => !was)}
                 aria-expanded={all}
                 className="flex h-7 items-center rounded-full bg-foreground/7 px-3 text-[12.5px] outline-none transition-colors hover:bg-foreground/12 focus-visible:ring-3 focus-visible:ring-ring/50"
               >

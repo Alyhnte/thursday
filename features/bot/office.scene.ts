@@ -146,8 +146,11 @@ const MARGIN = { top: 96, side: 20, bottom: 16 };
 
 /** A ground unit is this many of the sign's own pixels, as it lies on the ground (office-stage GroundSign). */
 const SIGN_PX = 10;
-/** The plot of ground the job's sign is stamped on, in its own pixels: room for its widest stamp and the time under it. */
-export const SIGN_BOX = { w: 640, h: 260 };
+/**
+ * The plot of ground the job's sign is stamped on, in its own pixels: room for its widest stamp
+ * turned as it lands (YOUR TURN, 682 wide) and its tallest (STOPPED with the time under it, 271).
+ */
+export const SIGN_BOX = { w: 700, h: 280 };
 
 /** The building, and the plot of ground its sign lies on, fitted into a box on screen. */
 function fitOf(
