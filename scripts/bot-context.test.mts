@@ -192,7 +192,7 @@ const { BOT_RUN } = await import("../config.ts");
 BOT_RUN.retryMs = 1;
 const { eq } = await import("drizzle-orm");
 const { threadFromRow } = await import("../features/bot/thread.store.ts");
-const { officeOf, plateOf, progressOf, reportAt, sceneOf, seatAt, watch } =
+const { briefOf, officeOf, plateOf, reportAt, sceneOf, seatAt, signOf, watch } =
   await import("../features/bot/office.ts");
 /** A thread as the office reads it at a first look, off the view the screen gets (features/bot/office.ts). */
 const officeNow = async (id: string) => {
@@ -762,14 +762,7 @@ test("the office holds a hand-off in its tray and walks it out with the answer w
       [plate("Alpha").line, plate("Alpha").folded],
       [{ kind: "quiet", text: "waiting on Beta and Gamma" }, true],
     );
-    assert.deepEqual(progressOf(held.scene), {
-      seats: [
-        { bot: "Beta", key: "run" },
-        { bot: "Gamma", key: "held" },
-      ],
-      word: "0 of 2 back",
-      you: false,
-    });
+    assert.equal(signOf(held.scene), "work");
     assert.deepEqual(
       held.scene.events.find(
         (event) => event.kind === "give" && event.to === "Gamma",
@@ -849,7 +842,38 @@ test("the office holds a hand-off in its tray and walks it out with the answer w
     kind: "quiet",
     text: "Reported to you",
   });
-  assert.equal(progressOf(done.scene).word, "Done");
+  assert.equal(signOf(done.scene), "done");
+  // Pressed, a plate opens to what its bot was asked and what it answered
+  const brief = briefOf(done.scene, "Gamma", 30);
+  assert.deepEqual(
+    [brief.asked, brief.answer, brief.question],
+    ["Make a card with the red chair's price.", "Card says $40", ""],
+  );
+  assert.match(briefOf(done.scene, "Alpha", 30).sofar, /Reported to you$/);
+  // Seen done: everyone leaps as the report reaches your counter, and Gamma hopped as the card it
+  // held was let out to it; nothing leaps for what was there before the office opened
+  const { stageOf, tricksOf, tripsOf } = await import(
+    "../features/bot/office.scene.ts"
+  );
+  const trips = tripsOf(
+    done.scene,
+    stageOf(done.scene, { w: 1200, h: 800 }).plan,
+  );
+  const tricks = tricksOf(done.scene, trips);
+  const reached = trips.find((trip) => trip.out === "report")?.arrive ?? 0;
+  const cheers = tricks.filter((one) => one.kind === "cheer");
+  assert.deepEqual(
+    cheers.map((one) => one.bot),
+    ["Alpha", "Beta", "Gamma"],
+  );
+  assert.ok(cheers.every((one) => one.at > reached));
+  const letOut = trips.find((trip) => trip.out === "copy")?.arrive ?? 0;
+  assert.ok(
+    tricks.some(
+      (one) => one.bot === "Gamma" && one.kind === "hop" && one.at > letOut,
+    ),
+  );
+  assert.ok(tricks.every((one) => one.at >= done.scene.opened));
   // A first look at the finished room draws the card as sent: nothing it can read says it was held
   const late = await officeNow(id);
   assert.ok(!late.scene.events.some((event) => event.kind === "release"));
@@ -1115,6 +1139,20 @@ test("the turn limit parks the room, and the office says so seat by seat", async
   // Parked with no note: the rows say it
   const parked = await officeNow(id);
   assert.equal(seatAt(parked.scene, "Alpha").label, "Paused");
+  // Parked at the limit, the job is paused, waiting on Continue
+  assert.equal(signOf(parked.scene), "paused");
+  // and no bot leaps by itself while it waits, however long the office stays open on it
+  const { stageOf, tricksOf, tripsOf } = await import(
+    "../features/bot/office.scene.ts"
+  );
+  const later = sceneOf(
+    parked.office,
+    watch(null, parked.office, parked.office.span + 100),
+  );
+  assert.deepEqual(
+    tricksOf(later, tripsOf(later, stageOf(later, { w: 1200, h: 800 }).plan)),
+    [],
+  );
   assert.equal(seatAt(parked.scene, "Beta").label, "Answered");
   plans.set("Alpha", [() => text("Priced at $40.")]);
   await answerThread(id, "Continue");
@@ -1123,9 +1161,8 @@ test("the turn limit parks the room, and the office says so seat by seat", async
 });
 
 test("the office reads any bot name, whatever a plain object already holds by it", async () => {
-  const { momentOf, motionOf, restAt, stageOf, tripsOf } = await import(
-    "../features/bot/office.scene.ts"
-  );
+  const { momentOf, motionOf, restAt, stageOf, tricksOf, tripsOf } =
+    await import("../features/bot/office.scene.ts");
   const at = new Date(Date.now() - 60_000);
   const line = (
     id: string,
@@ -1217,15 +1254,18 @@ test("the office reads any bot name, whatever a plain object already holds by it
   );
   const stage = stageOf(scene, { w: 1200, h: 800 });
   const trips = tripsOf(scene, stage.plan);
-  const moment = momentOf(scene, stage, trips, 61, null);
+  const tricks = tricksOf(scene, trips);
+  const moment = momentOf(scene, stage, trips, tricks, 61, null);
   // The held one waits on the one at work: a line over the floor from it to the held bot
   assert.deepEqual(
     moment.links.map((link) => link.id),
     ["toString>__proto__"],
   );
-  // The clock rests between movements: nothing walks once the hand-offs have landed
-  const spans = motionOf(scene, stage, trips);
+  // The clock rests between movements: nothing walks once the hand-offs have landed, and the bots'
+  // own leaps come now and then from when the office opened, until an office left open goes still
+  const spans = motionOf(scene, stage, trips, tricks);
   assert.ok(spans.length > 0);
+  assert.ok(tricks.length > 0 && tricks.every((one) => one.at >= 60));
   assert.equal(restAt(spans, 1e6), Number.POSITIVE_INFINITY);
   assert.equal(restAt([[2, 3]], 2.5), 0);
   assert.equal(restAt([[2, 3]], 1), 1);
@@ -2446,6 +2486,8 @@ test("work runs with no browser on the stream, and a stop of the app's waits for
   // Parked, not at work: the office says so until Continue
   const parked = await officeNow(id);
   assert.equal(seatAt(parked.scene, "Alpha").label, "Paused");
+  // Parked by the shutdown, the job is paused, waiting on Continue, as one parked at a limit is
+  assert.equal(signOf(parked.scene), "paused");
   plans.set("Alpha", [
     (prompt) => {
       assert.ok(prompt.includes("UNWATCHED_BOUNDARY"));

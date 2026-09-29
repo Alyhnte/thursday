@@ -18,29 +18,31 @@ import { queryKey } from "@/app/api/query-key";
 import { ShinyText } from "@/components/ui/shiny-text";
 import { BotMark, iconProps } from "@/features/bot/components/bot-mark";
 import {
-  cardOf,
+  briefOf,
   clockOf,
   filesOf,
-  heldFor,
   type OfficeEvent,
   type OfficeScene,
   type Plate,
   type PlateLine,
-  type ProgressSeat,
   plateOf,
-  progressOf,
+  type SeatKey,
+  type Sign,
+  signOf,
 } from "@/features/bot/office";
 import {
   type Moment,
   type Mug,
   momentOf,
   motionOf,
+  NAME_LINE,
   type Paper,
   type Piece,
   restAt,
   type Stage,
   type Stroke,
   stageOf,
+  tricksOf,
   tripsOf,
   type Walker,
 } from "@/features/bot/office.scene";
@@ -51,19 +53,36 @@ import type { FileOnDisk } from "@/features/workspace/workspace.schema";
 import { useServerRoute } from "@/lib/protocol/use-server-route";
 import { cn, plainText } from "@/lib/utils";
 
-/** How far the office zooms out and in: far enough to see the whole ground, near enough to read a desk. */
-const ZOOM = { min: 0.6, max: 3 };
+/**
+ * The zooms the buttons step through, as a browser's do: from far enough out to see the ground
+ * well around the building to near enough to read a desk. The wheel goes between them.
+ */
+const ZOOMS = [
+  0.3, 0.4, 0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4,
+];
+/** The zoom the office opens at, and comes back to: a little under the fit, so the building has room around it. */
+const ZOOM_START = 0.9;
 
 type View = { z: number; x: number; y: number };
 
 const zoomAt = (view: View, fx: number, fy: number, next: number): View => {
-  const z = Math.min(ZOOM.max, Math.max(ZOOM.min, next));
+  const z = Math.min(ZOOMS[ZOOMS.length - 1], Math.max(ZOOMS[0], next));
   return {
     z,
     x: fx - (z / view.z) * (fx - view.x),
     y: fy - (z / view.z) * (fy - view.y),
   };
 };
+
+/** The next of the buttons' zooms from `z`, in or out. */
+const stepFrom = (z: number, zoomIn: boolean) =>
+  zoomIn
+    ? (ZOOMS.find((step) => step > z + 0.001) ?? z)
+    : (ZOOMS.findLast((step) => step < z - 0.001) ?? z);
+
+/** The view the office opens at: `ZOOM_START` about the middle of its box. */
+const startOf = (size: { w: number; h: number }): View =>
+  zoomAt({ z: 1, x: 0, y: 0 }, size.w / 2, size.h / 2, ZOOM_START);
 
 /** The box the office is fitted into, measured, so it redraws when the window changes. */
 function useSize(ref: React.RefObject<HTMLDivElement | null>) {
@@ -118,10 +137,12 @@ const ink = (percent: number) =>
 
 /**
  * The office: a sketch of the thread's rooms, its bots at their desks and on the move, pan and
- * zoom like a canvas. It builds itself as it opens. Over each bot a plate says in one line what
- * it is on, what it asks or what it handed back; a bot that is not at work folds to its name
- * until pointed at, and pressing a plate opens a card with the rest. The job's name, how far it
- * has come and how long it has run stand at its top left.
+ * zoom like a canvas. It builds itself as it opens, and its bots leap now and then (office.scene
+ * tricksOf). Over each bot a plate says in one line what it is on, what it asks or what it handed
+ * back; a bot that is not at work folds to its name until pointed at, and pressing a plate opens
+ * it where it is to what the bot was asked and how far it has come. The job's name heads it at
+ * the top left, how the job stands is stamped on the ground beside the building, and the wall
+ * clock says how long it has run.
  */
 export function OfficeStage({
   scene,
@@ -142,22 +163,34 @@ export function OfficeStage({
   /** The thread it draws, where a note about one of its files goes (file-note). */
   from: string;
   selected: string | null;
-  onSelect: (bot: string) => void;
+  /** A plate pressed; null when a tap on the floor puts the opened one back. */
+  onSelect: (bot: string | null) => void;
   className?: string;
 }) {
   const box = useRef<HTMLDivElement>(null);
   const size = useSize(box);
+  // A machine asked to hold still gets the work walked and no leaps of the bots' own
+  const [calm] = useState(
+    () => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+  );
+  // The job's name as laid out on the ground (Mission), so the building is fitted with it
+  const [named, setNamed] = useState<{ w: number; h: number } | null>(null);
   const stage = useMemo(
-    () => (size && size.w > 0 && size.h > 0 ? stageOf(scene, size) : null),
-    [scene, size],
+    () =>
+      size && size.w > 0 && size.h > 0 ? stageOf(scene, size, named) : null,
+    [scene, size, named],
   );
   const trips = useMemo(
     () => (stage ? tripsOf(scene, stage.plan) : []),
     [scene, stage],
   );
+  const tricks = useMemo(
+    () => (calm ? [] : tricksOf(scene, trips)),
+    [calm, scene, trips],
+  );
   const spans = useMemo(
-    () => (stage ? motionOf(scene, stage, trips) : null),
-    [scene, stage, trips],
+    () => (stage ? motionOf(scene, stage, trips, tricks) : null),
+    [scene, stage, trips, tricks],
   );
   // The build runs once, from the first drawing: then the clock may move
   const [built, setBuilt] = useState(false);
@@ -168,7 +201,10 @@ export function OfficeStage({
     return () => window.clearTimeout(done);
   }, [builds === null, built]);
   const t = useSceneClock(start, built ? spans : null);
-  const moment = stage ? momentOf(scene, stage, trips, t, selected) : null;
+  const moment = stage
+    ? momentOf(scene, stage, trips, tricks, t, selected)
+    : null;
+  const sign = signOf(scene);
   // What the job handed over, only what is on disk: the plates and the report name it
   const files = useMemo(() => filesOf(scene), [scene]);
   const { data: found } = useServerRoute<FileOnDisk[]>(
@@ -180,12 +216,16 @@ export function OfficeStage({
     (path: string) => found?.some((one) => one.path === path) ?? false,
     [found],
   );
-  const [view, setView] = useState<View>({ z: 1, x: 0, y: 0 });
+  // Null until panned or zoomed: the view it opens at, kept about the middle as the box changes
+  const [panned, setView] = useState<View | null>(null);
+  const view = panned ?? (size ? startOf(size) : { z: ZOOM_START, x: 0, y: 0 });
   const drag = useRef<{
     x: number;
     y: number;
     from: View;
     moved: boolean;
+    /** Down on a plate or its bot, where a tap is theirs. */
+    onPlate: boolean;
   } | null>(null);
   const [dragging, setDragging] = useState(false);
 
@@ -198,14 +238,16 @@ export function OfficeStage({
       const rect = node.getBoundingClientRect();
       const fx = event.clientX - rect.left;
       const fy = event.clientY - rect.top;
-      setView((was) =>
-        zoomAt(
-          was,
+      setView((was) => {
+        const from =
+          was ?? startOf({ w: node.clientWidth, h: node.clientHeight });
+        return zoomAt(
+          from,
           fx,
           fy,
-          was.z * Math.exp(-event.deltaY * (event.ctrlKey ? 0.01 : 0.0022)),
-        ),
-      );
+          from.z * Math.exp(-event.deltaY * (event.ctrlKey ? 0.01 : 0.0022)),
+        );
+      });
     };
     node.addEventListener("wheel", onWheel, { passive: false });
     return () => node.removeEventListener("wheel", onWheel);
@@ -222,6 +264,7 @@ export function OfficeStage({
       y: event.clientY,
       from: view,
       moved: false,
+      onPlate: !!(event.target as HTMLElement).closest("[data-plate]"),
     };
     event.currentTarget.setPointerCapture(event.pointerId);
   };
@@ -236,8 +279,11 @@ export function OfficeStage({
     setView({ ...was.from, x: was.from.x + dx, y: was.from.y + dy });
   };
   const up = () => {
+    const was = drag.current;
     drag.current = null;
     setDragging(false);
+    // A tap on the floor, not a drag, puts an opened plate back
+    if (was && !was.moved && !was.onPlate && selected) onSelect(null);
   };
 
   const world = `translate(${view.x}px, ${view.y}px) scale(${view.z})`;
@@ -315,6 +361,7 @@ export function OfficeStage({
                 aria-hidden
               >
                 <Fades />
+                <Alarm stage={stage} on={built && sign === "paused"} />
                 {stage.guides.map((line) => (
                   <line
                     key={line.id}
@@ -386,7 +433,18 @@ export function OfficeStage({
                   <PaperShape key={sprite.paper.id} paper={sprite.paper} />
                 ),
               )}
+              {moment.tossed.map((sheet) => (
+                <Sheet key={sheet.id} sheet={sheet} />
+              ))}
             </svg>
+            <WallClock stage={stage} start={start} ended={scene.ended} />
+            <Mission
+              stage={stage}
+              label={label}
+              sign={sign}
+              land={built ? 0 : stage.popAt + 250}
+              onMeasure={setNamed}
+            />
           </div>
           <div
             className="office-fade pointer-events-none absolute inset-0"
@@ -421,7 +479,6 @@ export function OfficeStage({
                 t={t}
                 start={start}
                 bot={tag.bot}
-                face={faceOf(tag.bot)}
                 head={at(tag.x, tag.head)}
                 foot={at(tag.x, tag.foot).y}
                 lift={tag.carrying ? 32 * view.z : 0}
@@ -433,21 +490,27 @@ export function OfficeStage({
               />
             ))}
           </div>
-          <OfficeHead scene={scene} label={label} start={start} />
+          <OfficeHead
+            label={label}
+            files={
+              scene.office.status === "done"
+                ? files.filter((file) => onDisk(file.path))
+                : []
+            }
+            from={from}
+          />
           {moment.report && (
             <ReportCard
               report={moment.report}
               face={faceOf(moment.report.from)}
-              files={files.filter((file) => onDisk(file.path))}
-              from={from}
             />
           )}
           <div className="absolute bottom-3.5 left-4 flex items-center gap-0.5 rounded-full bg-background p-0.75 shadow-sm ring-1 ring-border">
             <ZoomButton
               label="Zoom out"
               onClick={() =>
-                setView((was) =>
-                  zoomAt(was, size.w / 2, size.h / 2, was.z / 1.25),
+                setView(
+                  zoomAt(view, size.w / 2, size.h / 2, stepFrom(view.z, false)),
                 )
               }
             >
@@ -459,18 +522,15 @@ export function OfficeStage({
             <ZoomButton
               label="Zoom in"
               onClick={() =>
-                setView((was) =>
-                  zoomAt(was, size.w / 2, size.h / 2, was.z * 1.25),
+                setView(
+                  zoomAt(view, size.w / 2, size.h / 2, stepFrom(view.z, true)),
                 )
               }
             >
               <Plus className="size-3.5" />
             </ZoomButton>
             <span className="mx-0.5 h-4 w-px bg-border" />
-            <ZoomButton
-              label="Fit the office"
-              onClick={() => setView({ z: 1, x: 0, y: 0 })}
-            >
+            <ZoomButton label="Fit the office" onClick={() => setView(null)}>
               <Maximize className="size-3.5" />
             </ZoomButton>
           </div>
@@ -504,18 +564,15 @@ function ZoomButton({
 
 /**
  * A time that runs by itself, a second at a time, so what shows it is all that draws again:
- * from `from` (ms) to `until`, or to now while `until` is null.
+ * from `from` (ms) to `until`, or to now while `until` is null, as "4:40".
  */
 function Elapsed({
   from,
   until = null,
-  as = "clock",
   className,
 }: {
   from: number;
   until?: number | null;
-  /** "4:40" on a clock, or "3m 5s" for how long something has stood so (office heldFor). */
-  as?: "clock" | "held";
   className?: string;
 }) {
   const [now, setNow] = useState(() => Date.now());
@@ -527,74 +584,317 @@ function Elapsed({
   const seconds = ((until ?? now) - from) / 1000;
   return (
     <span className={cn("font-mono tabular-nums", className)}>
-      {as === "clock" ? clockOf(seconds) : heldFor(0, seconds)}
+      {clockOf(seconds)}
     </span>
   );
 }
 
 /**
- * The office's head, at its top left: the job's name, a mark for each bot brought in as it
- * stands, the word for the job as a whole, and how long it has run — stopped where it ended.
- * During a call her words stand above it (thursday), and it steps down under them.
+ * The office's head, at its top left: the job's name, and once the job is done the files it
+ * handed over, each under the bot whose words named it; pressing one opens it. How the job stands
+ * is painted on the ground (Mission) and how long it has run is the wall clock's. During a call
+ * her words stand above it (thursday), and it steps down under them.
  */
 function OfficeHead({
-  scene,
   label,
-  start,
+  files,
+  from,
 }: {
-  scene: OfficeScene;
   label: string;
-  start: number;
+  files: { path: string; bot: string }[];
+  from: string;
 }) {
   const captioned = useOfficeCaption();
-  const { seats, word, you } = progressOf(scene);
   return (
     <div
       className={cn(
-        "pointer-events-none absolute left-6 flex max-w-[min(28rem,calc(100%-3rem))] animate-in flex-col gap-2 fade-in transition-[top] duration-300",
+        "pointer-events-none absolute left-6 flex max-w-[min(46rem,calc(100%-3rem))] animate-in flex-col gap-3 fade-in transition-[top] duration-300",
         captioned ? "top-24" : "top-5",
       )}
     >
-      <h2 className="line-clamp-2 text-balance font-semibold text-[22px] leading-tight tracking-tight">
+      <h2 className="line-clamp-2 max-w-[28rem] text-balance font-semibold text-[22px] leading-tight tracking-tight">
         {label}
       </h2>
-      <div className="flex items-center gap-2.5 text-[12.5px]">
-        <span className="flex gap-0.75" aria-hidden>
-          {seats.map((seat) => (
-            <Segment key={seat.bot} seat={seat} />
-          ))}
-        </span>
-        <span className={you ? "text-waiting" : "text-muted-foreground"}>
-          {word}
-        </span>
-        <span aria-hidden className="text-muted-foreground/50">
-          ·
-        </span>
-        <Elapsed
-          from={start}
-          until={scene.ended === null ? null : start + scene.ended * 1000}
-          className="text-[12px] text-muted-foreground"
+      {files.length > 0 && (
+        <div className="pointer-events-auto flex animate-in flex-wrap gap-1.5 fade-in slide-in-from-top-1 duration-300">
+          {files.map((file) => {
+            const Icon = fileIcon(file.path);
+            return (
+              <FileLink
+                key={file.path}
+                path={file.path}
+                from={from}
+                className="flex h-7 max-w-64 items-center gap-1.5 rounded-full bg-background pr-3 pl-2.5 text-[12.5px] shadow-sm outline-none ring-1 ring-border transition-colors hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50"
+              >
+                <Icon className="size-3.5 shrink-0 text-muted-foreground" />
+                <span className="min-w-0 truncate">
+                  {file.path.split("/").pop()}
+                </span>
+                <span className="shrink-0 text-muted-foreground">
+                  {file.bot}
+                </span>
+              </FileLink>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Seven segments, lit or not. */
+const SEGMENTS = {
+  a: "2.3,1.7 4,0 16,0 17.7,1.7 16,3.4 4,3.4",
+  g: "2.3,18 4,16.3 16,16.3 17.7,18 16,19.7 4,19.7",
+  d: "2.3,34.3 4,32.6 16,32.6 17.7,34.3 16,36 4,36",
+  f: "1.7,2.3 3.4,4 3.4,15.7 1.7,17.4 0,15.7 0,4",
+  e: "1.7,18.6 3.4,20.3 3.4,32 1.7,33.7 0,32 0,20.3",
+  b: "18.3,2.3 20,4 20,15.7 18.3,17.4 16.6,15.7 16.6,4",
+  c: "18.3,18.6 20,20.3 20,32 18.3,33.7 16.6,32 16.6,20.3",
+} as const;
+const DIGITS = [
+  "abcdef",
+  "bc",
+  "abdeg",
+  "abcdg",
+  "bcfg",
+  "acdfg",
+  "acdefg",
+  "abc",
+  "abcdefg",
+  "abcdfg",
+];
+
+function Digit({ value }: { value: number }) {
+  return (
+    <svg
+      width={23}
+      height={41}
+      viewBox="-0.5 -0.5 21 37"
+      className="-skew-x-[7deg] overflow-visible"
+      aria-hidden
+    >
+      {(Object.keys(SEGMENTS) as (keyof typeof SEGMENTS)[]).map((segment) => (
+        <polygon
+          key={segment}
+          points={SEGMENTS[segment]}
+          style={{
+            fill: DIGITS[value].includes(segment) ? "var(--ink)" : ink(5.5),
+          }}
         />
+      ))}
+    </svg>
+  );
+}
+
+/** The most the wall clock shows, 99:59:59, and a key for each of its groups. */
+const CLOCK_MAX = 99 * 3600 + 59 * 60 + 59;
+const CLOCK_GROUPS = ["first", "second", "third"];
+
+/**
+ * The clock on the coordinator's wall: how long the job has been going, the colon ticking while
+ * it runs and still where it was seen to end. It moves on by itself a second at a time, so it is
+ * all that draws again for it.
+ */
+function WallClock({
+  stage,
+  start,
+  ended,
+}: {
+  stage: Stage;
+  start: number;
+  /** When the job was seen to end, in scene seconds; null while it runs. */
+  ended: number | null;
+}) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (ended !== null) return;
+    const tick = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(tick);
+  }, [ended]);
+  const seconds = ended ?? (now - start) / 1000;
+  // Minutes and seconds, then hours and minutes and seconds, up to the clock's last digit
+  const whole = Math.min(CLOCK_MAX, Math.max(0, Math.floor(seconds)));
+  const hours = Math.floor(whole / 3600);
+  const groups = [
+    ...(hours ? [hours] : []),
+    Math.floor(whole / 60) % (hours ? 60 : 100),
+    whole % 60,
+  ];
+  return (
+    <div
+      className="office-fade absolute top-0 left-0 flex origin-top-left items-center justify-center"
+      style={{
+        width: stage.clock.w,
+        height: stage.clock.h,
+        transform: stage.clock.matrix,
+        animationDelay: `${stage.popAt}ms`,
+      }}
+    >
+      <div
+        role="img"
+        aria-label={`Running for ${clockOf(seconds)}`}
+        className={cn("flex items-center gap-1.25", hours && "scale-72")}
+      >
+        {groups.map((group, index) => (
+          <Fragment key={CLOCK_GROUPS[index]}>
+            {index > 0 && (
+              <span
+                className={cn(
+                  "flex flex-col gap-2.75 px-px",
+                  ended === null && "animate-office-blink",
+                )}
+              >
+                <span className="size-1 rounded-[1px] bg-foreground" />
+                <span className="size-1 rounded-[1px] bg-foreground" />
+              </span>
+            )}
+            <Digit value={Math.floor(group / 10)} />
+            <Digit value={group % 10} />
+          </Fragment>
+        ))}
       </div>
     </div>
   );
 }
 
-/** One bot's mark in the job's progress: filled once it answered, moving while it works, ember while it waits on you. */
-function Segment({ seat }: { seat: ProgressSeat }) {
+/** The words stamped for each state of the job. */
+const SIGN_WORDS: Record<Sign, string> = {
+  work: "AT WORK",
+  you: "YOUR TURN",
+  paused: "PAUSED",
+  stopped: "STOPPED",
+  done: "DONE",
+};
+
+/**
+ * The job's name, painted on the ground beside the building, with how the job stands stamped
+ * over it. At most three quarters of the building's length a line. Measured as laid out, so the
+ * building is fitted in view with it (office.scene stageOf); what changes with the state never
+ * changes that measure.
+ */
+function Mission({
+  stage,
+  label,
+  sign,
+  land,
+  onMeasure,
+}: {
+  stage: Stage;
+  label: string;
+  sign: Sign;
+  /** How long the stamp waits to land (ms): until the office stands, as it opens; at once after. */
+  land: number;
+  onMeasure: React.Dispatch<
+    React.SetStateAction<{ w: number; h: number } | null>
+  >;
+}) {
+  const block = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const node = block.current;
+    if (!node) return;
+    const read = () => {
+      const w = node.offsetWidth;
+      const h = node.offsetHeight;
+      onMeasure((was) => (was && was.w === w && was.h === h ? was : { w, h }));
+    };
+    read();
+    // The name's own face may land after the first reading
+    void document.fonts?.ready.then(read);
+  }, [label, onMeasure]);
   return (
-    <span
-      className={cn(
-        "h-1.25 w-5.5 rounded-full",
-        seat.key === "done" && "bg-foreground",
-        seat.key === "run" &&
-          "animate-pulse bg-[repeating-linear-gradient(-45deg,var(--ink)_0_2px,transparent_2px_4px)] motion-reduce:animate-none",
-        (seat.key === "asking" || seat.key === "paused") && "bg-waiting",
-        (seat.key === "held" || seat.key === "ended") &&
-          "ring-1 ring-foreground/30 ring-inset",
-        seat.key === "stopped" && "bg-foreground/15",
-      )}
-    />
+    <div
+      className="office-fade pointer-events-none absolute top-0 left-0 origin-top-left"
+      style={{
+        transform: stage.mission.matrix,
+        animationDelay: `${stage.popAt}ms`,
+      }}
+    >
+      <div
+        ref={block}
+        className="relative flex w-max flex-col gap-1"
+        style={{ maxWidth: NAME_LINE }}
+      >
+        <span className="font-semibold text-[21px] text-foreground/30 tracking-[0.14em]">
+          THE JOB
+        </span>
+        <span className="line-clamp-3 text-balance break-words font-bold text-[84px] text-foreground/8 leading-[1.02] tracking-tight">
+          {label}
+        </span>
+        <span className="-mr-22 -ml-4.5 mt-1 h-0.5 bg-foreground/13" />
+        <Stamp key={sign} sign={sign} land={land} />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * How the job stands, stamped over its name on the ground: a band of tape while it is at work,
+ * then a stamp that lands as the state changes — ember when it is the user's turn or paused on
+ * Continue, the ink when it is done, faint when stopped. One that stands as the office opens
+ * lands once the office stands (`land`, read as it mounts), so it is seen landing.
+ */
+function Stamp({ sign, land }: { sign: Sign; land: number }) {
+  const [wait] = useState(land);
+  if (sign === "work")
+    return (
+      <div className="absolute top-full -right-22 -left-4.5 mt-4 flex h-13.5 animate-office-tape items-center bg-[repeating-linear-gradient(-45deg,color-mix(in_oklab,var(--ink)_14%,transparent)_0_18px,transparent_18px_36px)] pl-7 font-bold text-[26px] text-foreground/45 tracking-[0.2em] motion-reduce:animate-none">
+        {SIGN_WORDS.work}
+      </div>
+    );
+  return (
+    <div className="absolute top-9 left-10 -rotate-8">
+      <div
+        className={cn(
+          "animate-office-stamp whitespace-nowrap rounded-[18px] border-[7px] border-double px-6.5 pt-1.5 pb-2.5 font-extrabold text-[92px] leading-none tracking-[0.06em] opacity-80 motion-reduce:animate-none",
+          sign === "done" && "text-foreground",
+          (sign === "you" || sign === "paused") && "text-waiting",
+          sign === "stopped" && "text-foreground/40",
+        )}
+        style={{ animationDelay: `${wait}ms` }}
+      >
+        {SIGN_WORDS[sign]}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A faint red on the ground the building stands on, not its floors, while the app has stopped the
+ * job and waits on Continue (office signOf "paused": a failed model call, a restart, the step
+ * limit). It comes and goes slowly, under the ground's lines.
+ */
+function Alarm({ stage, on }: { stage: Stage; on: boolean }) {
+  const { matrix, w, d } = stage.ground;
+  return (
+    <g
+      transform={matrix}
+      style={{ opacity: on ? 1 : 0, transition: "opacity 1.2s ease" }}
+    >
+      <defs>
+        <radialGradient id="office-alarm">
+          <stop
+            offset="0"
+            style={{ stopColor: "var(--destructive)", stopOpacity: 0.12 }}
+          />
+          <stop
+            offset="0.55"
+            style={{ stopColor: "var(--destructive)", stopOpacity: 0.07 }}
+          />
+          <stop
+            offset="1"
+            style={{ stopColor: "var(--destructive)", stopOpacity: 0 }}
+          />
+        </radialGradient>
+      </defs>
+      <ellipse
+        cx={w / 2}
+        cy={d / 2}
+        rx={w / 2 + 100}
+        ry={d / 2 + 100}
+        fill="url(#office-alarm)"
+      />
+    </g>
   );
 }
 
@@ -882,7 +1182,47 @@ function PaperShape({ paper }: { paper: Paper }) {
   );
 }
 
-/** A bot where it stands or walks, with the paper it carries; it pops in once the office stands. */
+/** A sheet thrown up at the report, turning over as it flutters down. */
+function Sheet({ sheet }: { sheet: Moment["tossed"][number] }) {
+  return (
+    <g
+      transform={`translate(${sheet.x} ${sheet.y}) rotate(${sheet.turn}) scale(${sheet.scale * sheet.face} ${sheet.scale})`}
+      opacity={sheet.opacity}
+    >
+      <rect
+        x={-7}
+        y={-9}
+        width={14}
+        height={18}
+        rx={1.6}
+        style={{
+          fill: sheet.dark ? "var(--ink)" : "var(--gray-0)",
+          stroke: sheet.dark ? "var(--ink)" : ink(45),
+          strokeWidth: 1,
+        }}
+      />
+      {[-5, -2, 1].map((top, index) => (
+        <rect
+          key={top}
+          x={-4.5}
+          y={top}
+          width={index === 2 ? 5 : 9}
+          height={1.4}
+          style={{
+            fill: sheet.dark
+              ? "color-mix(in oklab, var(--gray-0) 55%, transparent)"
+              : ink(32),
+          }}
+        />
+      ))}
+    </g>
+  );
+}
+
+/**
+ * A bot where it stands or walks, with the paper it carries; it pops in once the office stands.
+ * A leap lifts it, squashes it about its feet and, in a flip, turns it over about its middle.
+ */
 function BotSprite({
   walker,
   face,
@@ -892,7 +1232,7 @@ function BotSprite({
   face?: BotRef;
   popAt: number;
 }) {
-  const { x, y, hop, tilt, scale, size, opacity } = walker;
+  const { x, y, hop, tilt, spin, squash, scale, size, opacity } = walker;
   return (
     <g className="office-fade" style={{ animationDelay: `${popAt}ms` }}>
       {walker.selected && (
@@ -911,13 +1251,13 @@ function BotSprite({
       <ellipse
         cx={x}
         cy={y}
-        rx={Math.max(1, size * 0.27 - hop * 0.5)}
-        ry={Math.max(1, size * 0.1 - hop * 0.2)}
+        rx={Math.max(1, size * 0.27 - Math.min(hop * 0.5, size * 0.15))}
+        ry={Math.max(1, size * 0.1 - Math.min(hop * 0.2, size * 0.05))}
         fill="url(#office-hatch-shade)"
         opacity={opacity}
       />
       <g
-        transform={`translate(${x} ${y - hop}) rotate(${tilt}) scale(${scale}) translate(${-size / 2} ${-size})`}
+        transform={`translate(${x} ${y - hop}) rotate(${tilt}) scale(${scale * (1 + squash * 0.6)} ${scale * (1 - squash)}) translate(0 ${-size / 2}) rotate(${spin}) translate(${-size / 2} ${-size / 2})`}
         opacity={opacity}
       >
         <g className="office-pop" style={{ animationDelay: `${popAt}ms` }}>
@@ -1062,22 +1402,11 @@ function Refused({
 }
 
 /**
- * The final report, once it lies at your counter: its words and the files the job handed over,
- * each under the bot whose words named it; pressing one opens it. It stays in one place, at the
- * office's foot above the zoom buttons, whatever the office is panned or zoomed to, and goes
- * when the thread goes on after it.
+ * The final report's words, once it lies at your counter; the files it handed over stand under
+ * the job's name (OfficeHead). It stays in one place, at the office's foot above the zoom
+ * buttons, whatever the office is panned or zoomed to, and goes when the thread goes on after it.
  */
-function ReportCard({
-  report,
-  face,
-  files,
-  from,
-}: {
-  report: OfficeEvent;
-  face?: BotRef;
-  files: { path: string; bot: string }[];
-  from: string;
-}) {
+function ReportCard({ report, face }: { report: OfficeEvent; face?: BotRef }) {
   return (
     <section
       aria-label={`Final report from ${report.from}`}
@@ -1093,38 +1422,15 @@ function ReportCard({
         <span className="font-semibold">Final report</span>
         <span className="text-muted-foreground">· {report.from}</span>
       </div>
-      <p className="line-clamp-4 text-[13px] leading-normal">
+      <p className="line-clamp-6 text-[13px] leading-normal">
         {plainText(report.text)}
       </p>
-      {files.length > 0 && (
-        <div className="flex flex-col gap-1">
-          {files.map((file) => {
-            const Icon = fileIcon(file.path);
-            return (
-              <FileLink
-                key={file.path}
-                path={file.path}
-                from={from}
-                className="flex h-7 items-center gap-2 rounded-lg bg-foreground/6 px-2.5 text-left text-[12px] outline-none transition-colors hover:bg-foreground/12 focus-visible:ring-3 focus-visible:ring-ring/50"
-              >
-                <Icon className="size-3.5 shrink-0 text-muted-foreground" />
-                <span className="min-w-0 flex-1 truncate">
-                  {file.path.split("/").pop()}
-                </span>
-                <span className="shrink-0 text-[11px] text-muted-foreground">
-                  {file.bot}
-                </span>
-              </FileLink>
-            );
-          })}
-        </div>
-      )}
     </section>
   );
 }
 
-/** How wide the card a pressed plate opens is. */
-const PLATE_CARD = 252;
+/** How wide a pressed plate opens. */
+const PLATE_OPEN = 288;
 
 /**
  * A plate's measure: its mark and name with the pill's own padding (`pl-2`, `pr-2.25`), how
@@ -1222,7 +1528,9 @@ function useCrowding(
  * A bot's plate over its head: its mark and name, then one line for where it stands — the step
  * it is on shining while it works, what it asks in ember, what it handed back as files to open.
  * A bot that is not at work and wants nothing of you folds to its name, and unfolds while pointed
- * at or focused; pressing the plate opens its card, and keeps it open.
+ * at or focused. Pressing it opens the plate itself, where it stands, to what the bot was asked
+ * and how far it has come (office briefOf), until it is pressed again; above the bot, or over it
+ * when the window's top is too near.
  */
 function PlateAt({
   scene,
@@ -1232,7 +1540,6 @@ function PlateAt({
   t,
   start,
   bot,
-  face,
   head,
   foot,
   lift,
@@ -1250,7 +1557,6 @@ function PlateAt({
   t: number;
   start: number;
   bot: string;
-  face?: BotRef;
   head: { x: number; y: number };
   foot: number;
   lift: number;
@@ -1266,10 +1572,11 @@ function PlateAt({
   const folded = (plate.folded || crowded) && !picked;
   const you = state.key === "asking" || state.key === "paused";
   // How much room it takes, folded and open, as drawn: for the crowding pass, and so a plate
-  // near the office's edge unfolds away from it rather than past it
+  // near the office's edge unfolds away from it rather than past it; opened, how tall it stands
   const pill = useRef<HTMLDivElement>(null);
   const name = useRef<HTMLSpanElement>(null);
   const [room, setRoom] = useState<Room | null>(null);
+  const [tall, setTall] = useState(0);
   useLayoutEffect(() => {
     if (!pill.current || !name.current) return;
     let rest = 0;
@@ -1282,7 +1589,11 @@ function PlateAt({
     setRoom((was) =>
       was && was.name === next.name && was.rest === next.rest ? was : next,
     );
+    const height = picked ? pill.current.offsetHeight : 0;
+    setTall((was) => (was === height ? was : height));
   });
+  const brief = picked ? briefOf(scene, bot, t) : null;
+  const down = picked && tall > 0 && top - tall < 8;
   const open = room ? room.name + room.rest : 0;
   const anchor = !room
     ? null
@@ -1304,6 +1615,7 @@ function PlateAt({
     ) : null;
   return (
     <div
+      data-plate
       className={cn(
         "group/plate absolute size-0",
         picked
@@ -1325,11 +1637,29 @@ function PlateAt({
       />
       <div
         ref={pill}
-        // Centred over its bot; by an edge, held there by its folded end and unfolding inward
-        style={anchor ?? undefined}
+        // Centred over its bot; by an edge, held there by its folded end and unfolding inward.
+        // Opened, as wide as its words need at most and kept inside the office
+        style={
+          picked
+            ? {
+                left: Math.min(
+                  Math.max(-PLATE_OPEN / 2, PLATE_EDGE - head.x),
+                  width - PLATE_EDGE - PLATE_OPEN - head.x,
+                ),
+                width: PLATE_OPEN,
+                ...(down ? { top: -PLATE_TALL } : { bottom: 0 }),
+              }
+            : (anchor ?? undefined)
+        }
         className={cn(
-          "pointer-events-auto absolute bottom-0 flex h-6.5 items-center whitespace-nowrap rounded-full pr-2.25 text-[12px] shadow-md transition-shadow",
-          !anchor && "left-0 -translate-x-1/2",
+          "pointer-events-auto absolute flex text-[12px] transition-shadow",
+          picked
+            ? cn(
+                "animate-in flex-col rounded-2xl pb-2.5 shadow-lg fade-in zoom-in-95 duration-150",
+                down ? "origin-top" : "origin-bottom",
+              )
+            : "bottom-0 h-6.5 items-center whitespace-nowrap rounded-full pr-2.25 shadow-md",
+          !picked && !anchor && "left-0 -translate-x-1/2",
           you
             ? "bg-background ring-[1.5px] ring-waiting"
             : picked
@@ -1337,70 +1667,92 @@ function PlateAt({
               : state.key === "held"
                 ? "border border-foreground/35 border-dashed bg-background/95"
                 : "bg-background/95 ring-1 ring-border",
-          state.key === "none" && "opacity-55",
+          state.key === "none" && !picked && "opacity-55",
         )}
       >
-        <button
-          type="button"
-          onClick={onPick}
-          aria-label={`${bot} · ${state.label}`}
-          aria-describedby={picked ? described : undefined}
-          aria-expanded={picked}
-          className="flex h-full min-w-0 items-center rounded-full pl-2 outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+        {/* The plate's own line: its row as it stands, and the first row of it opened */}
+        <div
+          className={
+            picked
+              ? "flex h-8 min-w-0 items-center whitespace-nowrap pr-3"
+              : "contents"
+          }
         >
-          <span ref={name} className="flex items-center">
-            <StateGlyph state={state.key} />
-            <span className="ml-1.5 font-semibold">{bot}</span>
-          </span>
-          {line.kind !== "files" && (
-            <Unfold open={!folded}>
-              <LineWords line={line} />
+          <button
+            type="button"
+            onClick={onPick}
+            aria-label={`${bot} · ${state.label}`}
+            aria-describedby={picked ? described : undefined}
+            aria-expanded={picked}
+            className={cn(
+              "flex h-full min-w-0 items-center rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+              picked ? "pl-3" : "pl-2",
+            )}
+          >
+            <span ref={name} className="flex shrink-0 items-center">
+              <StateGlyph state={state.key} />
+              <span className="ml-1.5 font-semibold">{bot}</span>
+            </span>
+            {line.kind !== "files" && (
+              <Unfold open={!folded} fit={picked}>
+                <LineWords line={line} />
+              </Unfold>
+            )}
+          </button>
+          {line.kind === "files" && (
+            <Unfold open={!folded} fit={picked}>
+              <FileChips paths={line.paths} from={from} />
             </Unfold>
           )}
-        </button>
-        {line.kind === "files" && (
-          <Unfold open={!folded}>
-            <FileChips paths={line.paths} from={from} />
-          </Unfold>
+          {time && (
+            <Unfold open={!folded} fit={picked}>
+              {time}
+            </Unfold>
+          )}
+        </div>
+        {brief && (
+          <Brief
+            id={described}
+            brief={brief}
+            own={bot === scene.office.coord}
+            files={line.kind === "files" ? line.paths : []}
+            from={from}
+          />
         )}
-        {time && <Unfold open={!folded}>{time}</Unfold>}
       </div>
-      {picked && (
-        <PlateCard
-          id={described}
-          scene={scene}
-          t={t}
-          start={start}
-          bot={bot}
-          face={face}
-          top={top}
-          foot={foot}
-          head={head}
-          width={width}
-          files={line.kind === "files" ? line.paths : []}
-          from={from}
-        />
-      )}
     </div>
   );
 }
 
 /**
  * What a folded plate keeps back: no room at all while folded, unfolding in place while the plate
- * is pointed at or focused, and always open on a plate that is not folded.
+ * is pointed at or focused, and always open on a plate that is not folded. On a plate opened to
+ * its brief (`fit`) it gives way to the row's width, its words cut short.
  */
-function Unfold({ open, children }: { open: boolean; children: ReactNode }) {
+function Unfold({
+  open,
+  fit = false,
+  children,
+}: {
+  open: boolean;
+  fit?: boolean;
+  children: ReactNode;
+}) {
   return (
     <span
       className={cn(
         "flex overflow-hidden transition-[max-width,opacity] duration-200 ease-out motion-reduce:transition-none",
+        fit && "min-w-0",
         open
           ? "max-w-80 opacity-100"
           : "max-w-0 opacity-0 group-focus-within/plate:max-w-80 group-focus-within/plate:opacity-100 group-hover/plate:max-w-80 group-hover/plate:opacity-100",
       )}
     >
       {/* Its own width even while folded, so the plate knows how wide it opens (PlateAt) */}
-      <span data-unfold className="flex shrink-0 items-center pl-1.5">
+      <span
+        data-unfold
+        className={cn("flex items-center pl-1.5", fit ? "min-w-0" : "shrink-0")}
+      >
         {children}
       </span>
     </span>
@@ -1448,138 +1800,73 @@ function FileChips({ paths, from }: { paths: string[]; from: string }) {
 }
 
 /**
- * A pressed plate's card: who the bot is here, the state it wears and why, the step it is on,
- * what it was given and what it gave, and what it made. Above the plate unless the window's top
- * is too near, then under the bot's feet.
+ * What a pressed plate opens to under its line: what the bot was asked, the question it waits on
+ * you with or the answer it gave, how far it has come, and every file it made when there is more
+ * than the line's first. Its tab in the room, opened as it is pressed, holds the rest.
  */
-function PlateCard({
+function Brief({
   id,
-  scene,
-  t,
-  start,
-  bot,
-  face,
-  top,
-  foot,
-  head,
-  width,
+  brief,
+  own,
   files,
   from,
 }: {
   id: string;
-  scene: OfficeScene;
-  t: number;
-  start: number;
-  bot: string;
-  face?: BotRef;
-  top: number;
-  foot: number;
-  head: { x: number; y: number };
-  width: number;
+  brief: ReturnType<typeof briefOf>;
+  /** The coordinator's: what it was asked is the job. */
+  own: boolean;
   files: string[];
   from: string;
 }) {
-  const card = cardOf(scene, bot, t);
-  const { state } = card;
-  const tall =
-    110 +
-    (state.why ? 22 : 0) +
-    (card.now ? 22 : 0) +
-    (card.given ? 38 : 0) +
-    (card.gave ? 38 : 0) +
-    (files.length ? 26 * files.length : 0);
-  const above = top - 34 - tall > 8;
-  const left = Math.min(
-    Math.max(-PLATE_CARD / 2, 8 - head.x),
-    width - 8 - PLATE_CARD - head.x,
-  );
   return (
     <div
       id={id}
-      role="dialog"
-      aria-label={bot}
-      className={cn(
-        "pointer-events-auto absolute flex animate-in flex-col gap-2.25 rounded-2xl bg-popover px-3 pt-2.75 pb-3 text-left text-popover-foreground shadow-xl ring-1 ring-border fade-in duration-150",
-        above ? "bottom-9 slide-in-from-bottom-1" : "slide-in-from-top-1",
-      )}
-      style={{
-        left,
-        width: PLATE_CARD,
-        top: above ? undefined : foot - top + 10,
-      }}
+      className="flex min-w-0 flex-col gap-1.5 px-3 pt-0.5 text-[12px] leading-snug"
     >
-      <div className="flex items-center gap-2">
-        <BotMark
-          size={20}
-          seed={bot}
-          {...iconProps(face?.icon)}
-          notify={false}
-        />
-        <span className="flex min-w-0 flex-1 flex-col">
-          <span className="font-semibold text-[13px] leading-tight">{bot}</span>
-          <span className="truncate text-[11px] text-muted-foreground leading-snug">
-            {card.role}
+      {brief.asked && (
+        <BriefRow label={own ? "The job" : "Asked"}>
+          <span className="line-clamp-3">
+            {brief.asked}
+            {brief.more ? ` · ${brief.more} more` : ""}
           </span>
-        </span>
-        {state.since !== null && (
-          <Elapsed
-            from={start + state.since * 1000}
-            as="held"
-            className="shrink-0 text-[10.5px] text-muted-foreground"
-          />
-        )}
-      </div>
-      <StateChip state={state} />
-      <div className="flex flex-col gap-1.5 text-[12px] leading-snug">
-        {state.why && <CardRow label="Why">{state.why}</CardRow>}
-        {card.now && (
-          <CardRow label="Now">
-            <ShinyText text={card.now} className="min-w-0 truncate" />
-          </CardRow>
-        )}
-        {card.given && (
-          <CardRow label={bot === scene.office.coord ? "The job" : "Given"}>
-            <span className="line-clamp-2">
-              {plainText(card.given)}
-              {card.more ? ` · ${card.more} more` : ""}
-            </span>
-          </CardRow>
-        )}
-        {card.gave && (
-          <CardRow label={bot === scene.office.coord ? "Report" : "Answer"}>
-            <span className="inverse line-clamp-2 rounded-md bg-background px-2 py-0.5 text-[11.5px] text-foreground">
-              {plainText(card.gave)}
-            </span>
-          </CardRow>
-        )}
-        {files.length > 0 && (
-          <CardRow label="Made">
-            <span className="flex flex-col gap-1">
-              {files.map((path) => {
-                const Icon = fileIcon(path);
-                return (
-                  <FileLink
-                    key={path}
-                    path={path}
-                    from={from}
-                    className="flex h-6 min-w-0 items-center gap-1.5 rounded-md bg-foreground/6 px-2 text-left text-[11.5px] outline-none transition-colors hover:bg-foreground/12 focus-visible:ring-3 focus-visible:ring-ring/50"
-                  >
-                    <Icon className="size-3 shrink-0 text-muted-foreground" />
-                    <span className="min-w-0 truncate">
-                      {path.split("/").pop()}
-                    </span>
-                  </FileLink>
-                );
-              })}
-            </span>
-          </CardRow>
-        )}
-      </div>
+        </BriefRow>
+      )}
+      {brief.question && (
+        <BriefRow label="Question">
+          <span className="line-clamp-4">{brief.question}</span>
+        </BriefRow>
+      )}
+      {brief.answer && (
+        <BriefRow label="Answer">
+          <span className="line-clamp-3">{brief.answer}</span>
+        </BriefRow>
+      )}
+      {brief.sofar && <BriefRow label="So far">{brief.sofar}</BriefRow>}
+      {files.length > 1 && (
+        <div className="flex min-w-0 flex-wrap gap-1 pl-14.5">
+          {files.map((path) => {
+            const Icon = fileIcon(path);
+            return (
+              <FileLink
+                key={path}
+                path={path}
+                from={from}
+                className="flex h-5.5 min-w-0 max-w-full items-center gap-1 rounded-md bg-foreground/7 pr-1.5 pl-1 text-[11.5px] outline-none transition-colors hover:bg-foreground/13 focus-visible:ring-3 focus-visible:ring-ring/50"
+              >
+                <Icon className="size-3 shrink-0 text-muted-foreground" />
+                <span className="min-w-0 truncate">
+                  {path.split("/").pop()}
+                </span>
+              </FileLink>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
 
-function CardRow({ label, children }: { label: string; children: ReactNode }) {
+function BriefRow({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex items-baseline gap-2">
       <span className="w-12.5 shrink-0 text-[11px] text-muted-foreground">
@@ -1590,25 +1877,12 @@ function CardRow({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-type SeatKey = ReturnType<typeof cardOf>["state"]["key"];
-
-/** The mark a state wears on a plate and a chip: a live dot, an ember one, an open ring, an hourglass, a tick. */
-function StateGlyph({
-  state,
-  light = false,
-}: {
-  state: SeatKey;
-  light?: boolean;
-}) {
+/** The mark a state wears on a plate: a live dot, an ember one, an open ring, an hourglass, a tick. */
+function StateGlyph({ state }: { state: SeatKey }) {
   switch (state) {
     case "run":
       return (
-        <span
-          className={cn(
-            "size-1.75 shrink-0 animate-pulse rounded-full motion-reduce:animate-none",
-            light ? "bg-background" : "bg-foreground",
-          )}
-        />
+        <span className="size-1.75 shrink-0 animate-pulse rounded-full bg-foreground motion-reduce:animate-none" />
       );
     case "asking":
       return <span className="size-1.75 shrink-0 rounded-full bg-waiting" />;
@@ -1671,27 +1945,4 @@ function StateGlyph({
     default:
       return null;
   }
-}
-
-/** A state as a chip: ink while it works, ember while it waits on you, dashed while held. */
-function StateChip({ state }: { state: ReturnType<typeof cardOf>["state"] }) {
-  return (
-    <span
-      className={cn(
-        "inline-flex h-5.5 max-w-full items-center gap-1.5 self-start rounded-full px-2.25 font-medium text-[11.5px] whitespace-nowrap",
-        state.key === "run" && "bg-foreground text-background",
-        (state.key === "asking" || state.key === "paused") &&
-          "bg-waiting/10 text-waiting ring-1 ring-waiting/45",
-        state.key === "held" &&
-          "border border-foreground/40 border-dashed text-foreground/80",
-        state.key === "ended" && "bg-muted text-foreground/80",
-        state.key === "done" && "text-foreground ring-1 ring-border",
-        (state.key === "none" || state.key === "stopped") &&
-          "text-muted-foreground ring-1 ring-border",
-      )}
-    >
-      <StateGlyph state={state.key} light={state.key === "run"} />
-      <span className="truncate">{state.label}</span>
-    </span>
-  );
 }

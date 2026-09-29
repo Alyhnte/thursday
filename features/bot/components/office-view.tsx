@@ -16,17 +16,21 @@ import { cn } from "@/lib/utils";
 /**
  * The thread open in the room, drawn as an office beside it where her face stands (bot-room):
  * its bots at their desks, the work walked across the floor as it happens, and once it is done,
- * the report and its files at your counter. The room beside it is the thread's words and box.
+ * the report at your counter and its files under the job's name. The room beside it is the
+ * thread's words and box; pressing a bot here opens its tab there.
  * It fades in as it builds itself, and out while `leaving`, as her face comes back through it.
  */
 export function OfficeBackdrop({
   thread,
   leaving = false,
+  onBot,
   className,
 }: {
   thread: ThreadView;
   /** On its way out: drawn a moment longer, fading, and out of reach (bot-room useLeaving). */
   leaving?: boolean;
+  /** A bot pressed in the office: the room opens its tab (bot-room). */
+  onBot?: (bot: string) => void;
   className?: string;
 }) {
   return (
@@ -40,20 +44,31 @@ export function OfficeBackdrop({
       )}
     >
       {/* Another thread builds its own office from the start */}
-      <Office key={thread.id} thread={thread} />
+      <Office key={thread.id} thread={thread} onBot={onBot} />
     </div>
   );
 }
 
-function Office({ thread }: { thread: ThreadView }) {
+function Office({
+  thread,
+  onBot,
+}: {
+  thread: ThreadView;
+  onBot?: (bot: string) => void;
+}) {
   const [selected, setSelected] = useState<string | null>(null);
   const start = toDate(thread.createdAt).getTime();
   const office = useMemo(() => officeOf(thread), [thread]);
   const memory = useWatched(office, start);
   const scene = useMemo(() => sceneOf(office, memory), [office, memory]);
+  // Pressing a bot opens its plate here and its tab in the room, where its work reads in full; a
+  // tap on the floor puts the plate back and leaves the room as it is
   const pick = useCallback(
-    (bot: string) => setSelected((was) => (was === bot ? null : bot)),
-    [],
+    (bot: string | null) => {
+      setSelected((was) => (bot === null || was === bot ? null : bot));
+      if (bot !== null) onBot?.(bot);
+    },
+    [onBot],
   );
   return (
     // what the counter holds opens as the room's files do; what is dropped here is the thread's,

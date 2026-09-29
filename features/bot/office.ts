@@ -452,6 +452,8 @@ export type OfficeMemory = {
   reports: Map<string, { event: OfficeEvent; gone: number | null }>;
   /** When the thread was seen to end; null while it runs. */
   ended: number | null;
+  /** When the office first read the thread: what comes after it is seen as it happens. */
+  opened: number;
 };
 
 /**
@@ -501,6 +503,7 @@ export function watch(
     asked,
     reports,
     ended: over ? (memory?.ended ?? (first ? office.span : now)) : null,
+    opened: memory?.opened ?? now,
   };
 }
 
@@ -512,6 +515,8 @@ export type OfficeScene = {
   seats: Map<string, Seat>;
   /** When the thread was seen to end; null while it runs. */
   ended: number | null;
+  /** When the office first read the thread (OfficeMemory). */
+  opened: number;
 };
 
 export function sceneOf(
@@ -567,7 +572,14 @@ export function sceneOf(
       { ...seat, since: memory.seats.get(bot)?.since ?? seat.since },
     ]),
   );
-  return { office, events, steps: office.steps, seats, ended: memory.ended };
+  return {
+    office,
+    events,
+    steps: office.steps,
+    seats,
+    ended: memory.ended,
+    opened: memory.opened,
+  };
 }
 
 // ---- what a seat wears
@@ -790,52 +802,26 @@ export function plateOf(
   }
 }
 
-/** A helper's seat in the job's progress, in the order it joined. */
-export type ProgressSeat = { bot: string; key: SeatKey };
+/**
+ * How the job stands as a whole, painted on the ground by its name (office-stage Mission): at
+ * work, the user's turn (a bot asks them something), paused (the app stopped a run and waits on
+ * Continue), stopped, or done.
+ */
+export type Sign = "work" | "you" | "paused" | "stopped" | "done";
 
 /**
- * The job at a glance, for the office's head: every bot brought in, where each stands, and the
- * word for the job as a whole. A job its own bot does alone is that one seat.
+ * The job as a whole: done or stopped as the thread is; before that a bot asking the user makes
+ * it their turn, one the app paused waits on Continue, and the rest is at work. A pause says why
+ * only in its words, a failed call as well as a limit reached, so it is a pause and no more.
  */
-export function progressOf(scene: OfficeScene) {
-  const { coord, bots, status } = scene.office;
-  const helpers = bots.filter(
-    (bot) => bot !== coord && seatAt(scene, bot).key !== "none",
-  );
-  const seats: ProgressSeat[] = (helpers.length ? helpers : [coord]).map(
-    (bot) => ({ bot, key: seatAt(scene, bot).key }),
-  );
-  const back = seats.filter((seat) => seat.key === "done").length;
-  const you = bots.some((bot) => {
-    const key = seatAt(scene, bot).key;
-    return key === "asking" || key === "paused";
-  });
-  const word =
-    status === "done"
-      ? "Done"
-      : status === "cancelled"
-        ? "Stopped"
-        : you
-          ? "Waiting on you"
-          : helpers.length
-            ? `${back} of ${seats.length} back`
-            : "Working";
-  return { seats, word, you };
-}
-
-/** "now", "12s", "3m 5s", "2h 14m": how long a seat has stood so. */
-export function heldFor(since: number | null, t: number) {
-  if (since === null) return "";
-  const seconds = Math.max(0, t - since);
-  if (seconds < 1) return "now";
-  if (seconds < 60) return `${Math.floor(seconds)}s`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) {
-    const rest = Math.floor(seconds % 60);
-    return `${minutes}m${rest ? ` ${rest}s` : ""}`;
-  }
-  const rest = minutes % 60;
-  return `${Math.floor(minutes / 60)}h${rest ? ` ${rest}m` : ""}`;
+export function signOf(scene: OfficeScene): Sign {
+  const { bots, status } = scene.office;
+  if (status === "done") return "done";
+  if (status === "cancelled") return "stopped";
+  const keys = bots.map((bot) => seatAt(scene, bot).key);
+  if (keys.includes("asking")) return "you";
+  if (keys.includes("paused")) return "paused";
+  return "work";
 }
 
 /** "4:40", or "2:04:40" past the hour, from seconds. */
@@ -848,8 +834,12 @@ export const clockOf = (seconds: number) => {
     : `${Math.floor(whole / 60)}:${two(whole % 60)}`;
 };
 
-/** What a bot's card says: who it is here, the state it wears and why, what it is on, given and gave. */
-export function cardOf(scene: OfficeScene, bot: string, t: number) {
+/**
+ * What a pressed plate opens to under its line (office-stage PlateAt): what the bot was asked, the
+ * question it waits on you with, the answer it gave, and how far it has come. Its tab in the room
+ * holds the rest.
+ */
+export function briefOf(scene: OfficeScene, bot: string, t: number) {
   const state = seatAt(scene, bot);
   const own = bot === scene.office.coord;
   // The work it is on: the last exchange handed to it by now, and the words that joined it since
@@ -872,21 +862,36 @@ export function cardOf(scene: OfficeScene, bot: string, t: number) {
           event.at >= (given?.at ?? 0) &&
           event.at <= t,
       ).length;
-  const gave =
-    state.key === "done"
-      ? (scene.events.findLast(
+  // Lines keep whole seconds: a step written in the second the work was handed over is on it
+  const from = (given?.at ?? Number.NEGATIVE_INFINITY) - 1;
+  const steps = scene.steps.filter(
+    (step) => step.bot === bot && step.at >= from && step.at <= t,
+  ).length;
+  const asked =
+    state.key === "asking"
+      ? scene.events.findLast(
           (event) =>
-            event.kind === (own ? "report" : "return") &&
-            event.from === bot &&
-            event.at <= t,
-        ) ?? null)
-      : null;
+            event.kind === "question" && event.from === bot && event.at <= t,
+        )
+      : undefined;
+  const gave =
+    state.key === "done" && !own
+      ? scene.events.findLast(
+          (event) =>
+            event.kind === "return" && event.from === bot && event.at <= t,
+        )
+      : undefined;
   return {
-    state,
-    role: own ? "Has the job" : `Brought in by ${scene.office.coord}`,
-    now: state.key === "run" ? nowOf(scene, bot, t) : "",
-    given: given?.text ?? "",
+    asked: given ? plainText(given.text) : "",
     more,
-    gave: gave?.text ?? "",
+    question: asked ? plainText(asked.text) : "",
+    answer: gave ? plainText(gave.text) : "",
+    /** "6 steps · Picks up when you press Continue": what it has done, and why it stands so. */
+    sofar: [
+      steps ? `${steps} ${steps === 1 ? "step" : "steps"}` : "",
+      gave ? "" : state.why,
+    ]
+      .filter(Boolean)
+      .join(" · "),
   };
 }

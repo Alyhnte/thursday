@@ -387,6 +387,13 @@ export const BotRoom = memo(function BotRoom() {
         <OfficeBackdrop
           thread={drawn.value}
           leaving={drawn.leaving}
+          // A bot pressed in the office opens its tab here, as pressing the tab would
+          onBot={(bot) =>
+            setSides((was) => ({
+              ...was,
+              [drawn.value.id]: bot === drawn.value.bot.name ? null : bot,
+            }))
+          }
           className="pointer-events-auto mr-4 min-h-0 min-w-0 flex-1 self-stretch"
         />
       )}
