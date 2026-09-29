@@ -271,6 +271,86 @@ test("a picture the connection will not carry is said to the backend and the use
   assert.match(warnings[0], /picture of what you show did not go through/);
 });
 
+test("a picture put down while the backend is quiet goes in at once, named by its path, and starts no turn", async () => {
+  const image = "data:image/jpeg;base64,BBBB";
+  const { session } = await connect();
+  session.picture(image, "inbox/photo.png");
+  assert.deepEqual(backendOrder(), ["message:user"]);
+  assert.deepEqual(sent.at(-1)?.item, {
+    type: "message",
+    role: "user",
+    content: [
+      { type: "input_text", text: "inbox/photo.png, as an image:" },
+      { type: "input_image", image_url: image },
+    ],
+  });
+});
+
+test("a picture put down while the backend waits on its tools goes in after their outputs, before it goes on", async () => {
+  const pending = new Map<string, (value: string | LiveToolResult) => void>();
+  const { session } = await connect({
+    runTool: (call) => new Promise((resolve) => pending.set(call.id, resolve)),
+  });
+  nested({ type: "response.created", response: { id: "r1" } });
+  functionCall("a");
+  nested({ type: "response.completed", response: { id: "r1", output: [] } });
+  await tick();
+  session.picture("data:image/jpeg;base64,BBBB", "inbox/photo.png");
+  assert.deepEqual(backendOrder(), []);
+  pending.get("a")?.("done");
+  await tick();
+  assert.deepEqual(backendOrder(), [
+    "function_call_output:a",
+    "message:user",
+    "continue",
+  ]);
+});
+
+test("a picture put down while the backend answers goes in once that answer ends, however it ends", async () => {
+  const { session } = await connect();
+  // Answered without a tool: nothing to go on with, so the picture waits for the next hand-over
+  nested({ type: "response.created", response: { id: "r1" } });
+  session.picture("data:image/jpeg;base64,BBBB", "inbox/one.png");
+  assert.deepEqual(backendOrder(), []);
+  nested({ type: "response.completed", response: { id: "r1", output: [] } });
+  await tick();
+  assert.deepEqual(backendOrder(), ["message:user"]);
+  // Failed: what waited on it still goes in
+  nested({ type: "response.created", response: { id: "r2" } });
+  session.picture("data:image/jpeg;base64,CCCC", "inbox/two.png");
+  assert.deepEqual(backendOrder(), ["message:user"]);
+  nested({
+    type: "response.failed",
+    response: { id: "r2", error: { message: "Backend failed." } },
+  });
+  await tick();
+  assert.deepEqual(backendOrder(), ["message:user", "message:user"]);
+  // Ended by a top-level error that named no end for it
+  nested({ type: "response.created", response: { id: "r3" } });
+  session.picture("data:image/jpeg;base64,DDDD", "inbox/three.png");
+  wire.on.event({ type: "error", error: { message: "Handoff ended." } });
+  await tick();
+  assert.deepEqual(backendOrder(), [
+    "message:user",
+    "message:user",
+    "message:user",
+  ]);
+});
+
+test("a picture put down that the connection will not carry is said by its path, to the backend and the user", async () => {
+  refuses = (event) => JSON.stringify(event).includes('"type":"input_image"');
+  const { session, warnings } = await connect();
+  session.picture("data:image/jpeg;base64,BBBB", "inbox/photo.png");
+  assert.deepEqual(backendOrder(), ["message:developer"]);
+  const note = (sent.at(-1)?.item as { content: { text: string }[] }).content[0]
+    .text;
+  assert.match(
+    note,
+    /picture of inbox\/photo\.png did not go through.*Message too large/,
+  );
+  assert.match(warnings.at(-1) ?? "", /inbox\/photo\.png did not go through/);
+});
+
 test("an incomplete response that asked for tools is continued once, and a second in a row only warns", async () => {
   const { warnings } = await connect();
   nested({ type: "response.created", response: { id: "r1" } });

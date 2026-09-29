@@ -32,7 +32,7 @@ import {
   type TurnNote,
 } from "@/features/thursday/thursday.text";
 import { toolLine } from "@/features/thursday/tool-line";
-import { pathsIn, viewKindOf } from "@/features/workspace/file-kind";
+import { isPicture, pathsIn, viewKindOf } from "@/features/workspace/file-kind";
 import { filesOnDisk, insideWorkspace } from "@/features/workspace/workspace";
 import { keepGivenFiles } from "@/features/workspace/workspace.query";
 import { toDate } from "@/lib/date-like";
@@ -413,9 +413,15 @@ async function ask(live: Live, incoming: Written) {
 
 /** What someone let in wrote, for her. */
 async function written(live: Live, person: ReachPerson, incoming: Written) {
-  const words = await wordsOf(live, incoming);
-  if (words) hear(live, person, words);
+  const said = await wordsOf(live, incoming);
+  if (said) hear(live, person, said);
 }
+
+/**
+ * What a message brings her: its words with the paths of what it carried, and the pictures
+ * among those, which go into her conversation as pictures (thursday.text answerInWriting).
+ */
+type Said = { words: string; pictures: string[] };
 
 /**
  * The words a message brings her: what it says, and the paths of what it carried, kept in the
@@ -423,7 +429,7 @@ async function written(live: Live, person: ReachPerson, incoming: Written) {
  * and what was written with it still goes to her, with the fact, so she answers it without
  * reading a file that is not there. Null when nothing in it is for her.
  */
-async function wordsOf(live: Live, incoming: Written): Promise<string | null> {
+async function wordsOf(live: Live, incoming: Written): Promise<Said | null> {
   const { channel } = live;
   state.last = live.name;
   const { kept, lost } = await takeFiles(live, incoming.files);
@@ -451,7 +457,7 @@ async function wordsOf(live: Live, incoming: Written): Promise<string | null> {
       text: `[Sent from their phone with what follows, and lost on the way: ${lost.map(({ name, why }) => `${name} (${why})`).join("; ")}. They have been told.]`,
       said: false,
     });
-  return words;
+  return { words, pictures: kept.filter(isPicture) };
 }
 
 type Lost = { name: string; why: string };
@@ -522,15 +528,19 @@ export async function allowReach(
     .catch((cause) => logger.warn(`reach ${name}: could not say so`, cause));
   // What they wrote while they waited was all written before she could answer, so it is
   // answered as one turn, in the order it was written
-  const words: string[] = [];
+  const saids: Said[] = [];
   for (const one of held) {
     const said = await wordsOf(live, one).catch((cause) => {
       logger.warn(`reach ${name}: what they wrote while waiting`, cause);
       return null;
     });
-    if (said) words.push(said);
+    if (said) saids.push(said);
   }
-  if (words.length) hear(live, person, words.join("\n"));
+  if (saids.length)
+    hear(live, person, {
+      words: saids.map((said) => said.words).join("\n"),
+      pictures: saids.flatMap((said) => said.pictures),
+    });
 }
 
 /** Turns away whoever is asking, if they are still the one asked about; they may ask again. */
@@ -600,16 +610,26 @@ async function hangUp(live: Live) {
  * a second turn for it would answer the first thing again. Otherwise it starts a turn, and
  * what came too late for that turn's last step gets the next.
  */
-function hear(live: Live, person: ReachPerson, words: string) {
-  if (live.busy) return void live.notes.push({ text: words, said: true });
+function hear(live: Live, person: ReachPerson, said: Said) {
+  if (live.busy)
+    return void live.notes.push({
+      text: said.words,
+      said: true,
+      pictures: said.pictures,
+    });
   live.busy = true;
   void (async () => {
     try {
-      for (let next: string | null = words; next !== null; ) {
+      for (let next: Said | null = said; next !== null; ) {
         await answer(live, person, next);
         const late = live.notes.filter((note) => note.said);
         live.notes = live.notes.filter((note) => !note.said);
-        next = late.length ? late.map((note) => note.text).join("\n") : null;
+        next = late.length
+          ? {
+              words: late.map((note) => note.text).join("\n"),
+              pictures: late.flatMap((note) => note.pictures ?? []),
+            }
+          : null;
       }
     } finally {
       live.busy = false;
@@ -617,7 +637,11 @@ function hear(live: Live, person: ReachPerson, words: string) {
   })();
 }
 
-async function answer(live: Live, person: ReachPerson, words: string) {
+async function answer(
+  live: Live,
+  person: ReachPerson,
+  { words, pictures }: Said,
+) {
   const { channel } = live;
   // "typing…" lasts a few seconds on the service's side, so it is said again while she works
   void channel.typing(person.chat).catch(() => {});
@@ -651,6 +675,7 @@ async function answer(live: Live, person: ReachPerson, words: string) {
         { role: "user", content: words },
       ],
       said: words,
+      pictures,
       notes: () => live.notes.splice(0),
     });
     line.messages = carried(result.messages);

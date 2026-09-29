@@ -81,6 +81,8 @@ export function useGivenFiles(options?: {
     clear: () => setFiles([]),
     /** Some file is still on its way: a message sent now would leave it behind. */
     arriving: files.some((file) => file.path === null),
+    /** The workspace paths of the files kept, in the order they were put down. */
+    paths: files.flatMap((file) => file.path ?? []),
     /** The words with every kept file's path under them. */
     withPaths: (words: string) =>
       [words.trim(), ...files.flatMap((file) => file.path ?? [])]

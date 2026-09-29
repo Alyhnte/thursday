@@ -84,10 +84,18 @@ type PlanLine = {
   working: boolean;
   /**
    * What the page sent back for her calls, by call: kept as it comes, since a tool can finish
-   * before the step that called it has, and pictures of their screen for the next step.
+   * before the step that called it has.
    */
   outputs: Map<string, string>;
-  pictures: string[];
+  /**
+   * Pictures the page sent as the user's, each with the words it came with: of their screen
+   * after the outputs of the step that asked, or of a file they put down. In after those
+   * outputs, or before her next step when no tool's result came with them.
+   */
+  pictures: (
+    | { type: "text"; text: string }
+    | { type: "image"; image: string }
+  )[];
   /** The page asked for the next response; `next` is waiting on it, when it is. */
   asked: boolean;
   next: (() => void) | null;
@@ -331,10 +339,12 @@ function take(line: PlanLine, event: PageEvent) {
       }
       const parts = item?.type === "message" ? (item.content ?? []) : [];
       if (item?.role === "user") {
-        // A picture of their screen, after the outputs of the turn that asked for it
+        // A picture of their screen, or of a file they put down, with the words it came with
         for (const part of parts)
           if (part.type === "input_image" && typeof part.image_url === "string")
-            line.pictures.push(part.image_url);
+            line.pictures.push({ type: "image", image: part.image_url });
+          else if (part.type === "input_text" && typeof part.text === "string")
+            line.pictures.push({ type: "text", text: part.text });
         return;
       }
       if (item?.role === "developer")
@@ -418,6 +428,8 @@ async function respond(line: PlanLine, handed: { id: string; text: string }) {
   for (let step = 0; step < TEXT_CALL.maxSteps && !line.over; step += 1) {
     for (const fact of line.facts.splice(0))
       line.messages.push({ role: "system", content: fact });
+    // A file put down since she last worked: no tool's result brought it
+    showPictures(line);
     const id = `resp_${randomUUID()}`;
     const emit = (event: WireEvent) =>
       toPage(line, {
@@ -464,13 +476,14 @@ async function respond(line: PlanLine, handed: { id: string; text: string }) {
       })),
     });
     for (const call of done.calls) line.outputs.delete(call.toolCallId);
-    const pictures = line.pictures.splice(0);
-    if (pictures.length)
-      line.messages.push({
-        role: "user",
-        content: pictures.map((image) => ({ type: "image" as const, image })),
-      });
+    showPictures(line);
   }
+}
+
+/** The pictures the page sent as the user's, into her conversation as one message of theirs. */
+function showPictures(line: PlanLine) {
+  const shown = line.pictures.splice(0);
+  if (shown.length) line.messages.push({ role: "user", content: shown });
 }
 
 /** One step of her backend on the plan, told to the page as it goes. */

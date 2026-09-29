@@ -264,7 +264,7 @@ export function WriteLine({
     if (!written) return;
     setReaching(true);
     written
-      .say(words)
+      .say(words, given.paths)
       .then(() => {
         setDraft("");
         given.clear();

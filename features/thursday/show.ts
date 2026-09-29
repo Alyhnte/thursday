@@ -1,6 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
+import { queryKey } from "@/app/api/query-key";
 import { SHOWING } from "@/config";
 
 /**
@@ -8,7 +9,8 @@ import { SHOWING } from "@/config";
  * the page until they stop or the call ends. One at a time. Nothing streams while it is shown:
  * a picture of it is taken only when the backend asks for one (`look_at_shared`, use-thursday),
  * and goes to the backend alone. The browser asks which screen, or for the camera, and only from a press: `show` is
- * called from a click.
+ * called from a click. A picture they put down on the call — a file, or a drawing — is made to
+ * fit the same way and goes to the backend as it lands (`pictureOfFile`, use-thursday putDown).
  */
 
 export type ShownKind = "screen" | "camera";
@@ -154,9 +156,39 @@ function framed(video: HTMLVideoElement): Promise<boolean> {
 }
 
 /**
- * What is shown as it is now, as a JPEG data URL of at most `bytes`: a data channel carries
- * one message up to its limit and no more, so the picture is made plainer, then smaller, until
- * it fits (config SHOWING). What went wrong otherwise, said as the backend will read it.
+ * `source` as a JPEG data URL of at most `bytes`: a data channel carries one message up to its
+ * limit and no more, so the picture is made plainer, then smaller, until it fits (config
+ * SHOWING). `draw` when the browser gives no canvas to draw on, `fit` when even the smallest
+ * is too big.
+ */
+function fitPicture(
+  source: CanvasImageSource,
+  width: number,
+  height: number,
+  bytes: number,
+): { url: string } | { failed: "draw" | "fit" } {
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d");
+  if (!context) return { failed: "draw" };
+  for (const scale of SHOWING.scales) {
+    const ratio = Math.min(
+      1,
+      (SHOWING.longestSide * scale) / Math.max(width, height),
+    );
+    canvas.width = Math.round(width * ratio);
+    canvas.height = Math.round(height * ratio);
+    context.drawImage(source, 0, 0, canvas.width, canvas.height);
+    for (const quality of SHOWING.qualities) {
+      const url = canvas.toDataURL("image/jpeg", quality);
+      if (url.length <= bytes) return { url };
+    }
+  }
+  return { failed: "fit" };
+}
+
+/**
+ * What is shown as it is now, as a JPEG data URL of at most `bytes` (fitPicture). What went
+ * wrong otherwise, said as the backend will read it.
  */
 export async function takePicture(
   bytes: number,
@@ -168,24 +200,59 @@ export async function takePicture(
   // Stopped while it waited
   if (shown !== taking) return { failed: "Nothing is being shown." };
   if (!ready) return { failed: `Their ${kind} has not shown anything yet.` };
-  const canvas = document.createElement("canvas");
-  const context = canvas.getContext("2d");
-  if (!context) return { failed: "This browser could not take the picture." };
-  for (const scale of SHOWING.scales) {
-    const ratio = Math.min(
-      1,
-      (SHOWING.longestSide * scale) /
-        Math.max(video.videoWidth, video.videoHeight),
-    );
-    canvas.width = Math.round(video.videoWidth * ratio);
-    canvas.height = Math.round(video.videoHeight * ratio);
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
-    for (const quality of SHOWING.qualities) {
-      const url = canvas.toDataURL("image/jpeg", quality);
-      if (url.length <= bytes) return { url, kind };
-    }
-  }
+  const taken = fitPicture(video, video.videoWidth, video.videoHeight, bytes);
+  if ("url" in taken) return { url: taken.url, kind };
   return {
-    failed: `The picture of their ${kind} would not fit the ${Math.round(bytes / 1024)} KB this connection carries.`,
+    failed:
+      taken.failed === "draw"
+        ? "This browser could not take the picture."
+        : `The picture of their ${kind} would not fit the ${Math.round(bytes / 1024)} KB this connection carries.`,
   };
+}
+
+/**
+ * A picture kept in the workspace, read through the file route and made to fit `bytes` as a
+ * shown one is (fitPicture). What went wrong otherwise, said as the backend will read it: the
+ * path it gave, the file that is not a picture, the route's own refusal.
+ */
+export async function pictureOfFile(
+  path: string,
+  bytes: number,
+): Promise<{ url: string } | { failed: string }> {
+  let response: Response;
+  try {
+    response = await fetch(queryKey.file(path));
+  } catch (cause) {
+    return { failed: `${path} could not be read: ${String(cause)}` };
+  }
+  if (response.status === 404)
+    return {
+      failed: `There is no file at ${path}. Give the path from the workspace root, as \`ls\` shows it.`,
+    };
+  if (response.status === 403)
+    return { failed: `${path} is outside the workspace.` };
+  if (!response.ok)
+    return {
+      failed: `${path} could not be read: the file route answered ${response.status}.`,
+    };
+  const blob = await response.blob();
+  if (!blob.type.startsWith("image/"))
+    return { failed: `${path} is not an image. Read it in the shell instead.` };
+  const image = await createImageBitmap(blob).catch(() => null);
+  if (!image)
+    return {
+      failed: `${path} could not be drawn as a picture: a png, jpg, webp or gif can.`,
+    };
+  try {
+    const taken = fitPicture(image, image.width, image.height, bytes);
+    if ("url" in taken) return taken;
+    return {
+      failed:
+        taken.failed === "draw"
+          ? "This browser could not draw the picture."
+          : `${path} would not fit the ${Math.round(bytes / 1024)} KB this connection carries, even made smaller.`,
+    };
+  } finally {
+    image.close();
+  }
 }

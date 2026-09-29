@@ -16,6 +16,7 @@ import { TOOL_NAMES } from "@/features/ai/tools/tool-name";
 import { acceptThreadRelaysAction } from "@/features/bot/bot.action";
 import type { Thread } from "@/features/bot/bot.schema";
 import { screenActs } from "@/features/bot/thread.store";
+import { isPicture, mimeOf } from "@/features/workspace/file-kind";
 import { unwrapResult } from "@/lib/protocol/result";
 import { useServerAction } from "@/lib/protocol/use-server-action";
 import { revalidate, useServerRoute } from "@/lib/protocol/use-server-route";
@@ -85,8 +86,12 @@ export type TextCall = {
   since: number | null;
   /** Why the last answer did not come, in the provider's own words. */
   error: string | null;
-  /** Sends words to her, opening the call with the first. Resolves once they are on their way. */
-  say: (words: string) => Promise<void>;
+  /**
+   * Sends words to her, opening the call with the first. Resolves once they are on their way.
+   * `files` are the workspace paths sent with them: the pictures among them reach her as
+   * pictures, in the message itself; the words name every one by its path.
+   */
+  say: (words: string, files?: string[]) => Promise<void>;
   /** Asks again for the answer that broke, on whatever is picked now: what it finished stays. */
   again: () => void;
   end: () => void;
@@ -100,6 +105,18 @@ const notePart = (note: TextCallNote) => ({
   type: `data-${TEXT_CALL_NOTE}` as const,
   id: note.id,
   data: note,
+});
+
+/**
+ * A picture sent with the words, as a file part that names it in the workspace: the server
+ * reads it into what the model is sent (thursday.text readPictures), and the conversation the
+ * page sends again every turn carries the name, not the picture.
+ */
+const picturePart = (path: string) => ({
+  type: "file" as const,
+  mediaType: mimeOf(path),
+  url: queryKey.file(path),
+  filename: path.split("/").pop() ?? path,
 });
 
 export function useTextCall(): TextCall {
@@ -170,11 +187,12 @@ export function useTextCall(): TextCall {
   const sentOn = useRef("");
 
   /**
-   * One turn, under a new name the answer is told by: what waited, then the words, as a
-   * message of theirs — or, with nothing to send, carrying on from where the conversation is.
+   * One turn, under a new name the answer is told by: what waited, then the words and the
+   * pictures sent with them, as a message of theirs — or, with nothing to send, carrying on
+   * from where the conversation is.
    */
   const send = useCallback(
-    (words: string | null) => {
+    (words: string | null, pictures: string[] = []) => {
       const to = held.current;
       if (!to) return;
       const carried = pending.current;
@@ -186,6 +204,7 @@ export function useTextCall(): TextCall {
       const parts = [
         ...carried.map(notePart),
         ...(words ? [{ type: "text" as const, text: words }] : []),
+        ...pictures.map(picturePart),
       ];
       void sendMessage(parts.length ? { parts } : undefined, {
         body: {
@@ -259,7 +278,8 @@ export function useTextCall(): TextCall {
   );
 
   const say = useCallback(
-    async (words: string) => {
+    async (words: string, files: string[] = []) => {
+      const pictures = files.filter(isPicture);
       let to = held.current;
       if (!to) {
         // the hook has already said why when this throws
@@ -274,9 +294,14 @@ export function useTextCall(): TextCall {
       auto.current = 0;
       // She is answering: the words join it, drawn as they are sent
       if (turn.current)
-        return tell({ id: crypto.randomUUID(), text: words, said: true });
+        return tell({
+          id: crypto.randomUUID(),
+          text: words,
+          said: true,
+          ...(pictures.length ? { pictures } : {}),
+        });
       clearError();
-      send(words);
+      send(words, pictures);
     },
     [open, tell, clearError, send],
   );

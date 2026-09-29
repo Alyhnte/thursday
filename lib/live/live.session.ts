@@ -232,14 +232,22 @@ type Transcript = {
   end: number;
   fragments: { start: number; end: number; text: string }[];
 };
+/** A picture for the backend: its data URL, and the workspace path it was read from, if any. */
+type Picture = { image: string; path?: string };
 type BackendResponse = {
   calls: Map<string, Promise<void>>;
   /**
-   * Pictures its tools handed back, sent once every output is in and just before it goes on:
-   * the guide returns every pending result first, and a picture between two outputs of one
-   * turn is an order it never shows.
+   * Pictures its tools handed back, and pictures put down while it ran, sent once every
+   * output is in and just before it goes on — or as it ends, when it has nothing to go on
+   * with: the guide returns every pending result first, and a picture between two outputs of
+   * one turn is an order it never shows.
    */
-  images: string[];
+  pictures: Picture[];
+  /**
+   * Its pictures have gone in: nothing waits on it, and one put down now goes in at once.
+   * Not `continued`, which is set before its tools' outputs are in.
+   */
+  settled?: boolean;
   terminal: boolean;
   continued: boolean;
   /** Taken for ended by a top-level error that named no end for it; lifted if it goes on. */
@@ -434,13 +442,19 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
       LIVE_CALL.transcriptSaveMs,
     );
   };
+  /** What waited on a turn of the backend's, into its conversation now. */
+  const sendPictures = (response: BackendResponse) => {
+    response.settled = true;
+    for (const picture of response.pictures.splice(0)) sendImage(picture);
+  };
   const continueResponse = async (response: BackendResponse) => {
-    if (!response.terminal || response.continued || !response.calls.size)
-      return;
+    if (!response.terminal || response.continued) return;
+    // Nothing to go on with: what waited on it goes in, for the turn handed over next
+    if (!response.calls.size) return sendPictures(response);
     response.continued = true;
     await Promise.all(response.calls.values());
     if (!closing && !closed) {
-      for (const image of response.images.splice(0)) sendImage(image);
+      sendPictures(response);
       continuedAt = performance.now();
       transport.send({
         type: "response.create",
@@ -450,11 +464,12 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
     activity();
   };
   /**
-   * A picture for the backend, as the user's image. One the connection will not carry is
-   * said to the backend instead, which was told a picture follows and without a word
-   * described what it never saw — and to the user, whose screen or camera went unseen.
+   * A picture for the backend, as the user's image, named by its path when it is a file. One
+   * the connection will not carry is said to the backend instead, which was told a picture
+   * follows and without a word described what it never saw — and to the user, whose screen,
+   * camera or picture went unseen.
    */
-  const sendImage = (image: string) => {
+  const sendImage = ({ image, path }: Picture) => {
     try {
       transport.send({
         type: "response.item.create",
@@ -462,7 +477,12 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
         item: {
           type: "message",
           role: "user",
-          content: [{ type: "input_image", image_url: image }],
+          content: [
+            ...(path
+              ? [{ type: "input_text", text: `${path}, as an image:` }]
+              : []),
+            { type: "input_image", image_url: image },
+          ],
         },
       });
     } catch (cause) {
@@ -477,12 +497,16 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
           content: [
             {
               type: "input_text",
-              text: `The picture of what they show did not go through, so nothing on it was seen: ${reason}`,
+              text: `The picture of ${path ?? "what they show"} did not go through, so nothing on it was seen: ${reason}`,
             },
           ],
         },
       });
-      on.warn(`The picture of what you show did not go through: ${reason}`);
+      on.warn(
+        path
+          ? `${path} did not go through to her: ${reason}`
+          : `The picture of what you show did not go through: ${reason}`,
+      );
     }
   };
   const handle = (event: LiveEvent) => {
@@ -558,6 +582,7 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
           if (!response.terminal && !response.calls.size) {
             response.terminal = true;
             response.stale = true;
+            sendPictures(response);
           }
         activity();
         break;
@@ -584,7 +609,7 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
         if (!response) {
           response = {
             calls: new Map(),
-            images: [],
+            pictures: [],
             terminal: false,
             continued: false,
           };
@@ -653,7 +678,10 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
             if (response.calls.size && !salvaging) {
               salvaging = true;
               void continueResponse(response);
-            } else response.continued = true;
+            } else {
+              response.continued = true;
+              sendPictures(response);
+            }
             break;
           }
           on.turn({
@@ -691,7 +719,7 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
                   },
                 });
                 // After every output of this turn (continueResponse)
-                if (image) response.images.push(image);
+                if (image) response.pictures.push({ image });
               }
               activity();
             });
@@ -723,6 +751,7 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
           } else {
             salvaging = false;
             response.continued = true;
+            sendPictures(response);
             on.warn(
               nested.response?.error?.message ??
                 `The Live backend ${nested.type.slice(9)}.`,
@@ -842,6 +871,21 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
           content: [{ type: "input_text", text: content }],
         },
       });
+    },
+    /**
+     * A picture kept at `path` (a data URL of it, made to fit `messageLimit`) into the
+     * backend's conversation, as the guide has an image reach it ("Add images and visual
+     * context"): at once, or — while a turn of the backend's runs or waits on its tools —
+     * after that turn's outputs, as a tool's picture goes. Like a brief it starts no turn.
+     */
+    picture(image: string, path: string): void {
+      if (closed || closing) return;
+      const running = [...responses.values()].findLast(
+        (response) =>
+          !response.settled && (!response.terminal || response.calls.size > 0),
+      );
+      if (running) running.pictures.push({ image, path });
+      else sendImage({ image, path });
     },
   };
 };

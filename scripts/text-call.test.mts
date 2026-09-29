@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, mock, test } from "node:test";
@@ -797,5 +797,142 @@ test("a page's turn the spent plan refuses streams on the OpenAI key, tells the 
     ["user", "go"],
     ["user", "the other account"],
     ["assistant", "Done on the key."],
+  ]);
+});
+
+/** The smallest PNG there is: its signature, as a picture's bytes. */
+const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+/** Puts pictures in the workspace's inbox, as the write line and a phone keep them. */
+async function inboxWith(files: Record<string, Buffer>) {
+  const { PATHS } = await import("../config.ts");
+  const inbox = join(home, PATHS.workspace, "inbox");
+  await mkdir(inbox, { recursive: true });
+  for (const [name, bytes] of Object.entries(files))
+    await writeFile(join(inbox, name), bytes);
+}
+
+/** The parts of the last message of theirs the model was sent: a picture as `file:<type>`, words as they are. */
+const lastUserParts = () => {
+  const sent = JSON.parse(prompts.at(-1) ?? "[]") as {
+    role: string;
+    content: { type: string; text?: string; mediaType?: string }[];
+  }[];
+  const user = sent.findLast((message) => message.role === "user");
+  assert.ok(user);
+  return user.content.map((part) =>
+    part.type === "file" ? `file:${part.mediaType}` : String(part.text),
+  );
+};
+
+test("a page's pictures go into the message they were sent with, as pictures, and say why where one cannot", async () => {
+  const { LOOK } = await import("../config.ts");
+  await inboxWith({
+    "photo.png": PNG,
+    "huge.png": Buffer.alloc(LOOK.maxBytes + 1),
+  });
+  const picture = (name: string, url = `/api/file/inbox/${name}`) => ({
+    type: "file" as const,
+    mediaType: "image/png",
+    url,
+    filename: name,
+  });
+  const { callId } = await openTextCall();
+  const asked = {
+    id: "u-pictures",
+    role: "user" as const,
+    parts: [
+      { type: "text" as const, text: "What is this?" },
+      picture("photo.png"),
+      picture("huge.png"),
+      picture("gone.png"),
+      picture("elsewhere.png", "https://example.com/elsewhere.png"),
+      picture("up.png", "/api/file/../up.png"),
+    ],
+  };
+  steps.push(() => [{ type: "text", text: "A lighthouse." }]);
+  const answer = await answerOf(
+    await pageTurn({ callId, turn: "turn-pictures", messages: [asked] }),
+  );
+  const parts = lastUserParts();
+  assert.deepEqual(parts.slice(0, 2), ["What is this?", "file:image/png"]);
+  assert.match(parts[2], /huge\.png is 5 MB, over the 4 MB/);
+  assert.match(parts[3], /no file at inbox\/gone\.png/);
+  assert.match(parts[4], /elsewhere\.png is not in the workspace/);
+  assert.match(parts[5], /up\.png is not in the workspace/);
+
+  // The next turn carries the picture in the same place: the conversation the page sends
+  // again names it, and she still sees it
+  steps.push(() => [{ type: "text", text: "Still a lighthouse." }]);
+  await pageTurn({
+    callId,
+    turn: "turn-pictures-2",
+    messages: [asked, answer, words("u-pictures-2", "and now?")],
+  });
+  const again = JSON.parse(prompts.at(-1) ?? "[]") as {
+    role: string;
+    content: unknown;
+  }[];
+  const first = again.find((message) => message.role === "user");
+  assert.match(JSON.stringify(first?.content), /"type":"file"/);
+
+  // On a model that cannot see pictures, she is told so rather than sent one
+  steps.push(() => [{ type: "text", text: "I cannot see it." }]);
+  await pageTurn({
+    callId,
+    turn: "turn-blind",
+    runsOn: { provider: "deepseek", model: "deepseek-chat" },
+    messages: [
+      {
+        id: "u-blind",
+        role: "user",
+        parts: [{ type: "text", text: "And this?" }, picture("photo.png")],
+      },
+    ],
+  });
+  assert.deepEqual(lastUserParts().length, 2);
+  assert.match(lastUserParts()[1], /deepseek-chat cannot see pictures/);
+});
+
+test("a phone's pictures go into its message as pictures, stay there for the next turn, and join a running turn with their words", async () => {
+  await inboxWith({ "sent.png": PNG, "later.png": PNG });
+  const { callId } = await openTextCall();
+  const late = [
+    { text: "and this one", said: true, pictures: ["inbox/later.png"] },
+  ];
+  steps.push(
+    () => [
+      {
+        type: "tool-call",
+        toolCallId: "pic-1",
+        toolName: TOOL_NAMES.thread_status,
+        input: JSON.stringify({ thread: "all" }),
+      },
+    ],
+    () => [{ type: "text", text: "Two pictures." }],
+  );
+  const result = await answerInWriting({
+    callId,
+    standing: null,
+    messages: [{ role: "user", content: "what is this?\ninbox/sent.png" }],
+    said: "what is this?\ninbox/sent.png",
+    pictures: ["inbox/sent.png"],
+    notes: () => late.splice(0),
+  });
+  assert.equal(result.text, "Two pictures.");
+  // The words and the picture in one message of theirs, carried on as sent
+  const first = result.messages[0];
+  assert.equal(first.role, "user");
+  assert.ok(Array.isArray(first.content));
+  assert.deepEqual(
+    (first.content as { type: string }[]).map((part) => part.type),
+    ["text", "file"],
+  );
+  // What joined between her steps brought its picture too
+  assert.deepEqual(lastUserParts(), ["and this one", "file:image/png"]);
+  // Kept as their words, as a turn of theirs is
+  assert.deepEqual((await rowsOf(callId))[0], [
+    "user",
+    "what is this?\ninbox/",
   ]);
 });

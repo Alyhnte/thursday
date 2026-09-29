@@ -27,6 +27,7 @@ import { botThreads, screenActs } from "@/features/bot/thread.store";
 import { useVoiceLine } from "@/features/config/components/voice-key";
 import { runRemoteTool } from "@/features/thursday/tool-call";
 import { askToNotify } from "@/features/workspace/components/artifact-view";
+import { isPicture } from "@/features/workspace/file-kind";
 import { isCombo, useHotkey } from "@/hooks/use-hotkey";
 import { useWakeWord } from "@/hooks/use-wake-word";
 import type { LiveClose } from "@/lib/live/live.schema";
@@ -68,6 +69,7 @@ import { screenActLine } from "./screen-act";
 import {
   canShow,
   onShownChange,
+  pictureOfFile,
   shownKind,
   stopShowing,
   takePicture,
@@ -136,15 +138,42 @@ const SCTP_DEFAULT_BYTES = 65_536;
 /** Room left in that message for the event around a picture: its type, ids and fields. */
 const PICTURE_ENVELOPE_BYTES = 1_024;
 
-/** What is shown as it is now, made to fit one message of a connection whose limit is `limit`. */
-function pictureFor(limit: number | null | undefined) {
+/** The most a picture may take to fit one message of a connection whose limit is `limit`. */
+function pictureBytes(limit: number | null | undefined) {
   // A limit no picture can be held to — none yet, 0, or none at all (Infinity) — is taken as
   // the smallest one every end takes
   const bytes =
     limit && Number.isFinite(limit) && limit > PICTURE_ENVELOPE_BYTES * 2
       ? limit
       : SCTP_DEFAULT_BYTES;
-  return takePicture(bytes - PICTURE_ENVELOPE_BYTES);
+  return bytes - PICTURE_ENVELOPE_BYTES;
+}
+
+/** Files put down on a spoken call: the fact that names them, and which of them are pictures. */
+type PutDown = { fact: string; pictures: string[] };
+
+/** Room in a picture's message for the words naming it, past its path: `, as an image:` in its part. */
+const PICTURE_WORDS_BYTES = 64;
+
+/**
+ * Files put down, into the backend's conversation: the fact with their paths, then each
+ * picture among them as a picture, read through the file route and made to fit the line as a
+ * shown one is. One that cannot be made so is said to it instead, never left out unsaid.
+ */
+async function putDown(live: LiveSession, { fact, pictures }: PutDown) {
+  live.brief(fact);
+  for (const path of pictures) {
+    const room =
+      pictureBytes(live.messageLimit()) -
+      new TextEncoder().encode(path).length -
+      PICTURE_WORDS_BYTES;
+    const taken = await pictureOfFile(path, room);
+    if ("url" in taken) live.picture(taken.url, path);
+    else
+      live.brief(
+        `${path} could not be put before you as a picture: ${taken.failed}`,
+      );
+  }
 }
 
 /** What she reads when she looks and nothing is shown: how they can show her, as far as this browser can. */
@@ -336,6 +365,13 @@ export function useThursday(
    */
   const outboxRef = useRef<Outbox<string> | null>(null);
   const outbox = (outboxRef.current ??= createOutbox<string>());
+  /**
+   * What the backend alone is given, held the same way: files put down, each a fact with its
+   * path (`brief`) and the pictures among them as pictures, into its conversation before it is
+   * asked about them (putDown).
+   */
+  const briefsRef = useRef<Outbox<PutDown> | null>(null);
+  const briefs = (briefsRef.current ??= createOutbox<PutDown>());
   /** Wants a call, including while connecting. */
   const calling = useRef(false);
   /**
@@ -660,13 +696,21 @@ export function useThursday(
   const ring = useCallRing({ threads, resting: status === "idle", writing });
   const { answered, unanswered, settle } = ring;
 
-  // The user acted on screen: context she need not say (screen-act)
+  // The user acted on screen: context she need not say (screen-act). A file put down is the
+  // backend's too, which the voice cannot give it: on the plan's line the voice's context
+  // never reaches it, a picture the voice cannot take at all, and a bot needs the path
   useEffect(
     () =>
       screenActs.subscribe((act) => {
-        if (calling.current) outbox.send(screenActLine(act));
+        if (!calling.current) return;
+        outbox.send(screenActLine(act));
+        if (act.kind === "gave")
+          briefs.send({
+            fact: screenActLine(act),
+            pictures: act.paths.filter(isPicture),
+          });
       }),
-    [outbox],
+    [outbox, briefs],
   );
 
   // Showing a screen or the camera, or stopping, is told too; while she reads the opening or
@@ -722,6 +766,8 @@ export function useThursday(
       unvoiced.current.clear();
       outbox.close();
       outbox.clear();
+      briefs.close();
+      briefs.clear();
       working.current?.abort();
       working.current = null;
       // An update still being read when the line goes down was not heard to its end: it is not
@@ -762,7 +808,7 @@ export function useThursday(
         void farewell.current.play().catch(() => {});
       }
     },
-    [outbox, restFace, doneReading, setThinking],
+    [outbox, briefs, restFace, doneReading, setThinking],
   );
 
   // A tab closing on a call ends its row by beacon (api/thursday/call/end): a server action
@@ -873,6 +919,7 @@ export function useThursday(
     calling.current = true;
     finalized.current = null;
     outbox.clear();
+    briefs.clear();
     attempt.current += 1;
     const mine = attempt.current;
     const current = () => calling.current && attempt.current === mine;
@@ -1064,7 +1111,9 @@ export function useThursday(
             // results, made to fit one message of the connection
             if (call.name === TOOL_NAMES.look_at_shared) {
               if (!shownKind()) return nothingShown();
-              const taken = await pictureFor(session.current?.messageLimit());
+              const taken = await takePicture(
+                pictureBytes(session.current?.messageLimit()),
+              );
               if ("failed" in taken) return taken.failed;
               return {
                 output: `Their ${taken.kind} as it is now follows, as a picture.`,
@@ -1286,6 +1335,7 @@ export function useThursday(
         : stoodBefore(latest.current ?? []);
       // Context is not gated: held lines first, then each as it comes
       outbox.open((text) => void live.append("thinking", text));
+      briefs.open((given) => void putDown(live, given));
       // The quiet clock starts with the line, so nothing is put to her the moment it opens
       heard.current = Date.now();
 
@@ -1338,6 +1388,7 @@ export function useThursday(
       calling.current = false;
       working.current = null;
       outbox.clear();
+      briefs.clear();
       setStatus("idle");
     }
   }, [
@@ -1349,6 +1400,7 @@ export function useThursday(
     showFace,
     wearFace,
     outbox,
+    briefs,
     readAloud,
     doneReading,
     holdThinking,

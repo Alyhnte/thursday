@@ -80,6 +80,13 @@ export const viewKindOf = (path: string): FileViewKind =>
   TYPE_BY_EXTENSION[extensionOf(path)]?.kind ?? "none";
 
 /**
+ * A file a model is sent as a picture: the raster kinds providers take (png, jpeg, gif,
+ * webp). An svg is drawn on screen as an image, and is text to a model.
+ */
+export const isPicture = (path: string): boolean =>
+  viewKindOf(path) === "image" && extensionOf(path) !== "svg";
+
+/**
  * Folders that are machinery rather than work: what a package manager
  * installs, and what tools leave beside it. Hidden names cover the app's own
  * (`.output`, `.playwright-cli`) and the skills folder, which has its own

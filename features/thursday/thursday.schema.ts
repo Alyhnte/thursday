@@ -108,12 +108,14 @@ export type TextCallHandshake = {
  * What reaches a call in writing besides the words of the turn it rides on: words the user
  * wrote while she was answering (`said`), or a fact the page leaves her for a bot's update.
  * It goes as a `data-note` part: in the user's message it went out with, or in her answer
- * where a step read it (thursday.text).
+ * where a step read it (thursday.text). `pictures` are the workspace paths of pictures sent
+ * with the words, which reach her as pictures (thursday.text readPictures).
  */
 export const TextCallNoteSchema = z.object({
   id: z.string().min(1),
   text: z.string(),
   said: z.boolean(),
+  pictures: z.array(z.string()).optional(),
 });
 export type TextCallNote = z.infer<typeof TextCallNoteSchema>;
 /** The data part a note rides in: `data-note`. */

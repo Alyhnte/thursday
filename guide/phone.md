@@ -94,8 +94,9 @@ back.
 
 - **Writing again while she works** joins what she is doing, so "no, the other one" changes course
   at once.
-- **Pictures and files** sent to her are kept in the workspace's `inbox` folder. She can look at a
-  picture herself or hand any file to a bot. Voice messages and videos are not read. Telegram hands
+- **Pictures and files** sent to her are kept in the workspace's `inbox` folder. A picture reaches
+  her as a picture with what was written with it, as in a call in writing; any other file she can
+  hand to a bot. Voice messages and videos are not read. Telegram hands
   over files up to 20 MB, and the app takes up to 45 MB from any chat app; a file that does not come
   through is named in the chat.
 - **Files she names in an answer** are sent with it, the newest three. What does not go — a fourth,

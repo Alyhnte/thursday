@@ -24,6 +24,9 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = String(input);
   if (!url.startsWith("https://api.telegram.org/"))
     return realFetch(input, init);
+  // A file they sent, fetched from where getFile said it is: a few bytes stand in for it
+  if (url.startsWith("https://api.telegram.org/file/"))
+    return new Response(new Uint8Array([0x89, 0x50, 0x4e, 0x47]));
   const method = url.split("/").pop() ?? "";
   // A form is kept as its fields, a file by its name
   const body =
@@ -60,6 +63,11 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     return answer(inbox.splice(0));
   }
   sent.push({ method, body });
+  // Where a file they sent is kept on Telegram's side, its extension the file's own
+  if (method === "getFile")
+    return answer({
+      file_path: `files/${body.file_id}.${body.file_id === "notes" ? "txt" : "jpg"}`,
+    });
   return answer({ message_id: sent.length, chat: { id: 1, type: "private" } });
 }) as typeof fetch;
 
@@ -67,10 +75,13 @@ type Message = { role: string; content: unknown };
 type Turn = {
   words: string;
   said: string | null;
+  /** The pictures sent with the words, which reach her as pictures. */
+  pictures: string[];
   carried: number;
   messages: Message[];
-  /** What joined the turn at its step boundary. */
+  /** What joined the turn at its step boundary, and the pictures that came with it. */
   joined: string[];
+  joinedPictures: string[];
 };
 const turns: Turn[] = [];
 /** A turn waits here before its step boundary, and here again after it. */
@@ -95,14 +106,17 @@ mock.module("../features/thursday/thursday.text.ts", {
     answerInWriting: async (input: {
       messages: Message[];
       said: string | null;
-      notes?: () => { text: string; said: boolean }[];
+      pictures?: string[];
+      notes?: () => { text: string; said: boolean; pictures?: string[] }[];
     }) => {
       const turn: Turn = {
         words: String(input.messages.at(-1)?.content),
         said: input.said,
+        pictures: input.pictures ?? [],
         carried: input.messages.length,
         messages: input.messages,
         joined: [],
+        joinedPictures: [],
       };
       turns.push(turn);
       if (refuse) {
@@ -111,7 +125,9 @@ mock.module("../features/thursday/thursday.text.ts", {
       }
       await gate.before;
       // A step boundary: what arrived meanwhile joins the turn
-      turn.joined = (input.notes?.() ?? []).map((note) => note.text);
+      const notes = input.notes?.() ?? [];
+      turn.joined = notes.map((note) => note.text);
+      turn.joinedPictures = notes.flatMap((note) => note.pictures ?? []);
       await gate.after;
       const mine = made ?? [{ role: "assistant", content: "ok" }];
       made = null;
@@ -799,6 +815,75 @@ test("a file that does not come through is said at once, and what was written wi
       ),
     "and she knows it is not there",
   );
+});
+
+/** A photo from Telegram, its sizes smallest first, with what was written under it. */
+const photo = (caption: string, fileId: string) => ({
+  update_id: updateId++,
+  message: {
+    message_id: updateId,
+    from: { id: 7, first_name: "Sam" },
+    chat: { id: 7, type: "private" },
+    caption,
+    photo: [
+      { file_id: `${fileId}-small`, file_size: 4, width: 90 },
+      { file_id: fileId, file_size: 4, width: 1280 },
+    ],
+  },
+});
+
+test("a photo reaches her as a picture with what was written under it, and any other file as its path alone", async () => {
+  inbox.push(photo("what is this?", "sunset"));
+  await until(
+    () => turns.at(-1)?.said?.startsWith("what is this?") ?? false,
+    "her turn comes",
+  );
+  const turn = turns.at(-1);
+  assert.equal(turn?.pictures.length, 1);
+  assert.match(turn?.pictures[0] ?? "", /^inbox\/photo-\d+\.jpg$/);
+  // The largest size is the one fetched, and the words still name it by its path
+  assert.ok(
+    sent.some(
+      (one) => one.method === "getFile" && one.body.file_id === "sunset",
+    ),
+  );
+  assert.ok(turn?.words.endsWith(turn.pictures[0]));
+
+  inbox.push({
+    update_id: updateId++,
+    message: {
+      message_id: updateId,
+      from: { id: 7, first_name: "Sam" },
+      chat: { id: 7, type: "private" },
+      caption: "and read this",
+      document: { file_id: "notes", file_name: "notes.txt", file_size: 4 },
+    },
+  });
+  await until(
+    () => turns.at(-1)?.said?.startsWith("and read this") ?? false,
+    "her turn comes",
+  );
+  assert.deepEqual(turns.at(-1)?.pictures, []);
+  assert.match(turns.at(-1)?.words ?? "", /inbox\/notes\.txt$/);
+});
+
+test("a photo sent while she works joins that turn with its picture", async () => {
+  let open = () => {};
+  gate.before = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  const before = turns.length;
+  inbox.push(message(7, "look at these"));
+  await until(() => turns.length === before + 1, "her turn starts");
+  inbox.push(photo("the second one", "harbour"));
+  // Long enough for the poll to hand it over while the turn is held
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  gate.before = null;
+  open();
+  await until(() => turns[before].joined.length === 1, "it joined the turn");
+  assert.match(turns[before].joined[0], /^the second one\ninbox\/photo-/);
+  assert.equal(turns[before].joinedPictures.length, 1);
+  assert.match(turns[before].joinedPictures[0], /^inbox\/photo-\d+\.jpg$/);
 });
 
 const jarvis = async () => {

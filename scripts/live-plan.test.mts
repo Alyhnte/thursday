@@ -317,6 +317,68 @@ test("a hand-over runs her backend on the plan a step at a time, the page runs h
   line.leave.abort();
 });
 
+test("a picture put down before a hand-over is in her next step as the user's, with its path, after the fact that names it", async () => {
+  const line = await openLine("call-picture");
+  steps.push(() => [{ type: "text", text: "A lighthouse at sunset." }]);
+  // What the page sends as the file lands: the fact for the backend, then the picture itself
+  tellPlanLine("call-picture", [
+    {
+      type: "response.item.create",
+      item: {
+        type: "message",
+        role: "developer",
+        content: [
+          {
+            type: "input_text",
+            text: "The user put a file down on screen, kept on this computer at inbox/photo.png.",
+          },
+        ],
+      },
+    },
+    {
+      type: "response.item.create",
+      item: {
+        type: "message",
+        role: "user",
+        content: [
+          { type: "input_text", text: "inbox/photo.png, as an image:" },
+          {
+            type: "input_image",
+            image_url: "data:image/png;base64,iVBORw0KGgo=",
+          },
+        ],
+      },
+    },
+  ]);
+  wire.hear({
+    type: "delegation.created",
+    item: {
+      type: "delegation",
+      target: "client",
+      id: "del_picture",
+      content: [{ type: "input_text", text: "What is in the picture?" }],
+    },
+  });
+  await line.next("response.completed");
+  const prompt = prompts.at(-1) ?? "";
+  const handed = prompt.indexOf("What is in the picture?");
+  const fact = prompt.indexOf("put a file down on screen");
+  const named = prompt.indexOf("inbox/photo.png, as an image:");
+  const picture = prompt.indexOf('"type":"file"', named);
+  assert.ok(handed >= 0 && handed < fact, "the hand-over, then the fact");
+  assert.ok(fact < named, "the fact, then the picture it names");
+  assert.ok(picture > named, "the picture itself, after its path");
+  assert.match(prompt.slice(picture), /image\/png/);
+  for (let waited = 0; waited < 2_000 && !wire.said.length; waited += 5)
+    await new Promise((settle) => setTimeout(settle, 5));
+  assert.deepEqual(wire.said.at(-1), {
+    text: "A lighthouse at sunset.",
+    channel: "speakable",
+    delegation: "del_picture",
+  });
+  line.leave.abort();
+});
+
 test("what the page puts in goes into the voice's context on the channel its kind asks for, and is acknowledged", async () => {
   const line = await openLine("call-say");
   tellPlanLine("call-say", [

@@ -1,3 +1,4 @@
+import { readFile, stat } from "node:fs/promises";
 import {
   convertToModelMessages,
   createUIMessageStreamResponse,
@@ -11,16 +12,19 @@ import {
   toUIMessageStream,
   type UIMessage,
   type UIMessageChunk,
+  type UserContent,
   validateUIMessages,
 } from "ai";
 import { z } from "zod";
-import { TEXT_CALL } from "@/config";
+import { queryKey } from "@/app/api/query-key";
+import { LOOK, TEXT_CALL } from "@/config";
 import { LIVE_PROVIDER, type LiveSettings } from "@/features/ai/live.schema";
 import { loadTools } from "@/features/ai/load-tools";
 import {
   getTextModel,
   isPlanSpent,
   modelErrorToString,
+  seesToolImages,
 } from "@/features/ai/model";
 import {
   TEXT_MODEL_PROVIDERS,
@@ -32,6 +36,12 @@ import { loadThursdayPrompt } from "@/features/ai/prompts/thursday.prompt";
 import { TOOL_NAMES } from "@/features/ai/tools/tool-name";
 import { EXA_API_KEY } from "@/features/config/config.const";
 import { readConfig } from "@/features/config/config.query";
+import {
+  isPicture,
+  mimeOf,
+  workspaceRelative,
+} from "@/features/workspace/file-kind";
+import { insideWorkspace } from "@/features/workspace/workspace";
 import { acceptedReasoning, wantedReasoning } from "@/lib/live/live.server";
 import { logger } from "@/lib/logger";
 import { startError } from "@/lib/protocol/to-result";
@@ -253,10 +263,12 @@ export async function streamTextCall(
         return {
           messages: [
             ...soFar,
-            ...notes.map((note) => ({
-              role: "user" as const,
-              content: note.text,
-            })),
+            ...(await Promise.all(
+              notes.map(async (note) => ({
+                role: "user" as const,
+                content: await withPictures(note.text, note.pictures, on.ref),
+              })),
+            )),
           ],
         };
       },
@@ -351,24 +363,143 @@ function streamParts(
   });
 }
 
-/** What reaches a turn already running: the user's own words, or a fact put in for them. */
-export type TurnNote = { text: string; said: boolean };
+/** A picture sent with the user's words, read for the model, or why it is not there. */
+type Seen =
+  | { path: string; mediaType: string; data: string }
+  | { path: string; missed: string };
+
+/**
+ * The pictures sent with the user's words, each read from the workspace for the model this
+ * turn runs on — or the line that says why it is not there, where the model cannot see
+ * pictures (ai/model seesToolImages) or the file cannot be sent, so she never answers about a
+ * picture she was not given. A path from a page or a chat is read only inside the workspace.
+ */
+async function readPictures(
+  paths: string[],
+  ref: TextModelRef,
+): Promise<Seen[]> {
+  const sees = seesToolImages(ref);
+  return Promise.all(
+    paths.map(async (path): Promise<Seen> => {
+      if (!isPicture(path))
+        return { path, missed: `${path} is not a picture you can be sent.` };
+      if (!sees)
+        return {
+          path,
+          missed: `${path} is a picture, and ${ref.model} cannot see pictures, so it was not sent to you.`,
+        };
+      const full = await insideWorkspace(path);
+      const info = full ? await stat(full).catch(() => null) : null;
+      if (!full || !info?.isFile())
+        return {
+          path,
+          missed: `There is no file at ${path} in the workspace, so no picture was sent to you.`,
+        };
+      if (info.size > LOOK.maxBytes)
+        return {
+          path,
+          missed: `${path} is ${Math.ceil(info.size / 1024 / 1024)} MB, over the ${LOOK.maxBytes / 1024 / 1024} MB a picture sent to you takes, so it was not sent. Make a smaller copy in the shell (on a Mac: sips -Z 1600 in.png --out out.png) and look at that.`,
+        };
+      const data = await readFile(full).catch(() => null);
+      if (!data)
+        return {
+          path,
+          missed: `${path} could not be read, so no picture was sent to you.`,
+        };
+      return { path, mediaType: mimeOf(path), data: data.toString("base64") };
+    }),
+  );
+}
+
+/** Words and the pictures sent with them, as the content of the user's message to the model. */
+async function withPictures(
+  text: string,
+  pictures: string[] | undefined,
+  ref: TextModelRef,
+): Promise<UserContent> {
+  if (!pictures?.length) return text;
+  return [
+    { type: "text", text },
+    ...(await readPictures(pictures, ref)).map((seen) =>
+      "data" in seen
+        ? { type: "file" as const, mediaType: seen.mediaType, data: seen.data }
+        : { type: "text" as const, text: seen.missed },
+    ),
+  ];
+}
+
+/** The file route every picture part a page sends names its file under (use-text-call). */
+const FILE_ROUTE = queryKey.file("");
+
+/** A picture the user sent, as a page's message part: named in the workspace, not carried. */
+const picturePart = (path: string): UIMessage["parts"][number] => ({
+  type: "file",
+  mediaType: mimeOf(path),
+  url: queryKey.file(path),
+});
+
+/**
+ * The pictures a page's conversation names (use-text-call picturePart), read into it for the
+ * model: each such part the picture itself, as a data URL, or the line that says why not. A
+ * file part that names no workspace file sends nothing of it.
+ */
+async function readPictureParts(
+  ui: UIMessage[],
+  ref: TextModelRef,
+): Promise<UIMessage[]> {
+  return Promise.all(
+    ui.map(async (message) => {
+      if (!message.parts.some((part) => part.type === "file")) return message;
+      const parts = await Promise.all(
+        message.parts.map(async (part) => {
+          if (part.type !== "file") return part;
+          const path = part.url.startsWith(FILE_ROUTE)
+            ? workspaceRelative(part.url)
+            : null;
+          if (!path)
+            return {
+              type: "text" as const,
+              text: `${part.filename ?? "A file"} is not in the workspace, so nothing of it was sent to you.`,
+            };
+          const [seen] = await readPictures([path], ref);
+          return "data" in seen
+            ? {
+                ...part,
+                mediaType: seen.mediaType,
+                url: `data:${seen.mediaType};base64,${seen.data}`,
+              }
+            : { type: "text" as const, text: seen.missed };
+        }),
+      );
+      return { ...message, parts };
+    }),
+  );
+}
+
+/**
+ * What reaches a turn already running: the user's own words, or a fact put in for them; the
+ * workspace paths of pictures sent with the words, which reach her as pictures (readPictures).
+ */
+export type TurnNote = { text: string; said: boolean; pictures?: string[] };
 
 /**
  * A turn whose conversation the server holds (reach): the same run as a page's, answered
  * whole. `messages` is the conversation so far, ending on what was just written; `said` is
  * those words when they are the user's, saved as their turn, and null for an update put in
- * for a bot, which is no turn of its own. `notes` is asked before every step after the
- * first: what arrived while she worked joins this turn instead of waiting for the next, as
- * it does for a bot (bot.run). What comes back is her words, what she did, and the
- * messages to carry into the next turn, in the order they were said — and, when a spent
- * plan moved the turn onto the OpenAI key (spareOf), the line that tells them so.
+ * for a bot, which is no turn of its own. `pictures` are the workspace paths of pictures
+ * sent with those words, which go into their message as pictures (readPictures). `notes` is
+ * asked before every step after the first: what arrived while she worked joins this turn
+ * instead of waiting for the next, as it does for a bot (bot.run). What comes back is her
+ * words, what she did, and the messages to carry into the next turn, in the order they were
+ * said — and, when a spent plan moved the turn onto the OpenAI key (spareOf), the line that
+ * tells them so.
  */
 export async function answerInWriting(input: {
   callId: string;
   standing: string | null;
   messages: ModelMessage[];
   said: string | null;
+  pictures?: string[];
   notes?: () => TurnNote[];
   signal?: AbortSignal;
 }): Promise<{
@@ -388,9 +519,24 @@ export async function answerInWriting(input: {
     ]);
   const rows = turnRows(callId, said === null ? seq : seq + 1);
   const head = standingHead(standing);
+  // The pictures sent with the last words go in their message, where every later turn
+  // carries them in the same place
+  const last = messages.at(-1);
+  const asked =
+    input.pictures?.length &&
+    last?.role === "user" &&
+    typeof last.content === "string"
+      ? [
+          ...messages.slice(0, -1),
+          {
+            role: "user" as const,
+            content: await withPictures(last.content, input.pictures, run.ref),
+          },
+        ]
+      : messages;
   // What the latest step was sent. The sdk returns only what she made, so this is where
   // a note that joined keeps its place between her steps
-  let sent: ModelMessage[] = [...head, ...messages];
+  let sent: ModelMessage[] = [...head, ...asked];
   /** Steps finished: a turn is moved to the key only while none has. */
   let finished = 0;
   const ask = (on: Run) =>
@@ -407,10 +553,12 @@ export async function answerInWriting(input: {
         const notes = stepNumber > 0 ? (input.notes?.() ?? []) : [];
         sent = [
           ...soFar,
-          ...notes.map((note) => ({
-            role: "user" as const,
-            content: note.text,
-          })),
+          ...(await Promise.all(
+            notes.map(async (note) => ({
+              role: "user" as const,
+              content: await withPictures(note.text, note.pictures, on.ref),
+            })),
+          )),
         ];
         for (const note of notes) if (note.said) await rows.said(note.text);
         // Carried forward by the sdk: from here the steps stack on these
@@ -642,17 +790,18 @@ async function prepare({
       ...standingHead(standing),
       // A tool an earlier answer broke off in has no result to send: the model would
       // be refused the whole conversation for it
-      ...(await convertToModelMessages(spreadNotes(ui), {
-        ignoreIncompleteToolCalls: true,
-      })),
+      ...(await convertToModelMessages(
+        await readPictureParts(spreadNotes(ui), run.ref),
+        { ignoreIncompleteToolCalls: true },
+      )),
     ],
   };
 }
 
 /**
  * Every note as a user message of its own, where it sits: ahead of the words it went out
- * with, or between the steps of her answer that read it. A data part left in place is
- * dropped from what the model is sent.
+ * with, or between the steps of her answer that read it, with the pictures sent with it. A
+ * data part left in place is dropped from what the model is sent.
  */
 function spreadNotes(ui: UIMessage[]): UIMessage[] {
   return ui.flatMap((message) => {
@@ -673,7 +822,10 @@ function spreadNotes(ui: UIMessage[]): UIMessage[] {
       out.push({
         id: note.id,
         role: "user",
-        parts: [{ type: "text", text: note.text }],
+        parts: [
+          { type: "text", text: note.text },
+          ...(note.pictures ?? []).map(picturePart),
+        ],
       });
     }
     cut();
