@@ -10,16 +10,16 @@ import { cn } from "@/lib/utils";
 const TONES = {
   muted: {
     under: "text-muted-foreground/60 dark:text-muted-foreground",
-    band: "via-foreground",
+    band: "text-foreground",
   },
   waiting: {
     under: "text-waiting/70",
-    band: "via-waiting/30",
+    band: "text-waiting/30",
   },
   /** Words the user is meant to read rather than watch: full ink, and the warm only passes over. */
   reading: {
     under: "text-foreground",
-    band: "via-waiting/80",
+    band: "text-waiting/80",
   },
 } as const;
 
@@ -28,8 +28,11 @@ export type ShinyTone = keyof typeof TONES;
 /**
  * Words for something still moving. They are drawn once as plain text, so they
  * cut short, wrap and select like any other; the sweep is a copy laid over them
- * that carries only the band. A gradient clipped to the glyphs cannot draw the
- * "…" a box truncates to, so the ellipsis belongs to the plain layer.
+ * in the band's ink, seen through a soft-edged window that crosses them while
+ * the copy inside it moves back as far, so the words hold still and only the
+ * window moves. Both move by transform, which the compositor runs however busy
+ * the page is, where a sweep of the background's position is repainted each
+ * frame and halts with the page.
  *
  * Truncate on this component, not on a parent: it is an inline-block, and a
  * parent cannot put an ellipsis inside one.
@@ -55,13 +58,22 @@ export function ShinyText({
       {text}
       <span
         aria-hidden
-        style={{ animationDuration: `${speed}s` } as CSSProperties}
-        className={cn(
-          "pointer-events-none absolute inset-0 animate-shine overflow-hidden bg-linear-120 from-transparent from-35% via-50% to-transparent to-65% bg-size-[200%_auto] bg-clip-text text-transparent p-[inherit] select-none [text-overflow:inherit] motion-reduce:hidden",
-          band,
-        )}
+        className="pointer-events-none absolute inset-0 overflow-hidden p-[inherit] select-none [text-overflow:inherit] motion-reduce:hidden"
       >
-        {text}
+        <span
+          style={{ animationDuration: `${speed}s` } as CSSProperties}
+          className="absolute inset-0 animate-shine overflow-hidden p-[inherit] [mask-image:linear-gradient(120deg,transparent_20%,#000_50%,transparent_80%)] [mask-repeat:no-repeat] [text-overflow:inherit]"
+        >
+          <span
+            style={{ animationDuration: `${speed}s` } as CSSProperties}
+            className={cn(
+              "absolute inset-0 animate-shine-back overflow-hidden p-[inherit] [text-overflow:inherit]",
+              band,
+            )}
+          >
+            {text}
+          </span>
+        </span>
       </span>
     </span>
   );

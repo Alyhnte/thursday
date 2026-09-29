@@ -231,17 +231,29 @@
   }
 }
 
-/* ShinyText's sweep: the band crosses the words from left to right and starts
-   over. The component sets the duration from its `speed`. */
+/* ShinyText's sweep: the band's window crosses the words from left to right and
+   starts over, the words inside it moving back as far so they hold still. Moved,
+   not repainted, so it runs on however busy the page is. The component sets the
+   duration from its `speed`. */
 @theme {
   --animate-shine: shine 2.4s linear infinite;
+  --animate-shine-back: shine-back 2.4s linear infinite;
 
   @keyframes shine {
     from {
-      background-position: 150% center;
+      transform: translateX(-100%);
     }
     to {
-      background-position: -50% center;
+      transform: translateX(100%);
+    }
+  }
+
+  @keyframes shine-back {
+    from {
+      transform: translateX(100%);
+    }
+    to {
+      transform: translateX(-100%);
     }
   }
 }
