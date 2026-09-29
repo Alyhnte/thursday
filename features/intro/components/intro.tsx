@@ -89,9 +89,9 @@ const SAYS = {
   key: "I am Thursday, and the first thing I need is a voice. Sign in with ChatGPT and I talk on your plan, or paste an OpenAI key. Neither yet? Go on without it, and I will ask again when you call.",
   awake:
     "There, I am awake, and that is everything a call needs. From here on it is quick: your microphone, who works for you, and what they think with.",
-  mic: "Now let me hear you. Your browser asks before it opens the microphone: say yes, then say anything at all and watch the line under me move. It is only open on a call, unless you ask for more.",
+  mic: "Now let me hear you. Your browser asks before it opens the microphone: say yes, then say anything at all and watch the line under me move. From then on, saying hey Thursday calls me.",
   heard:
-    "I hear you: that line is your voice. If you would rather wake me by saying my name than by tapping me, switch it on here and try it once.",
+    "I hear you: that line is your voice. Now try calling me: say hey Thursday.",
   bots: "Long work goes to bots, so we can keep talking while they are at it. They work on this computer, with a shell, a browser and your files, and signing in or paying always stays with you.",
   models:
     "Bots think with a model you choose. Start small: a small model is quick and costs little, and any bot can move up later. Your ChatGPT plan or OpenAI key already covers it; one Vercel key opens far more.",
@@ -148,6 +148,8 @@ export function Intro({
     Object.fromEntries(BOT_SEEDS.map((seed) => [seed.name, true])),
   );
   const [opening, setOpening] = useState<Opening>("echoes");
+  const wake = useThursdayStore((state) => state.wake);
+  const patchCall = useThursdayStore((state) => state.patch);
   // her face comes in on the opening's last beat, and the first screen after it
   const herIn = opening !== "echoes";
   const helloIn = opening === "hello" || opening === "over";
@@ -406,7 +408,12 @@ export function Intro({
                   // Inside this click, so the browser lets her be heard from here on
                   voice.say("hello", callable ? "awake" : "key");
                   setStep("key");
-                } else if (step === "mic" && !mic.on) void mic.turnOn();
+                } else if (step === "mic" && !mic.on)
+                  // The microphone turned on here is the wake phrase turned on: one yes, not two
+                  // (09-29). Refused, it stays off, and Settings › Thursday has it
+                  void mic.turnOn().then((on) => {
+                    if (on) patchCall({ wake: { ...wake, enabled: true } });
+                  });
                 else if (last) leave(callable);
                 else setStep(STEPS[at + 1]);
               }}
@@ -665,7 +672,8 @@ function useMic(active: boolean) {
   }, [active, release]);
   useEffect(() => release, [release]);
 
-  const turnOn = useCallback(async () => {
+  /** Whether it opened here. */
+  const turnOn = useCallback(async (): Promise<boolean> => {
     setState("asking");
     try {
       const heard = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -673,7 +681,7 @@ function useMic(active: boolean) {
       if (!live.current) {
         for (const track of heard.getTracks()) track.stop();
         setAllowed(true);
-        return;
+        return true;
       }
       stream.current = heard;
       tap.current ??= createAudioTap();
@@ -682,8 +690,10 @@ function useMic(active: boolean) {
       setLabel(heard.getAudioTracks()[0]?.label ?? "");
       setState("on");
       setAllowed(true);
+      return true;
     } catch (error) {
       setState(micFailure(error));
+      return false;
     }
   }, []);
 
@@ -701,7 +711,6 @@ function useMic(active: boolean) {
 
 function MicTurn({ mic }: { mic: MicState }) {
   const wake = useThursdayStore((state) => state.wake);
-  const patch = useThursdayStore((state) => state.patch);
   const [heard, setHeard] = useState(false);
   const [unheard, setUnheard] = useState<string | null>(null);
   // Tried out right here: the call screen's own listener is held off while the intro is up
@@ -712,7 +721,8 @@ function MicTurn({ mic }: { mic: MicState }) {
     onError: setUnheard,
   });
 
-  // The step's main button turns it on (Intro), so its turn here only says what it is for
+  // The step's main button turns it on (Intro), and the wake phrase with it, so what the
+  // phrase costs is said before the press
   if (!mic.on)
     return (
       <>
@@ -726,8 +736,9 @@ function MicTurn({ mic }: { mic: MicState }) {
           </>
         ) : (
           <Fine>
-            Used on a call, and nowhere else unless you switch on waking her by
-            voice.
+            On a call, and to hear "{wake.phrase}" while this tab is open.
+            Chrome does that listening and sends what it hears to Google;
+            Settings › Thursday switches it off.
           </Fine>
         )}
       </>
@@ -735,41 +746,23 @@ function MicTurn({ mic }: { mic: MicState }) {
   return (
     <>
       <Done>Microphone is on</Done>
-      <label className="mt-1.5 flex cursor-pointer items-start gap-3">
-        <span className="flex flex-1 flex-col gap-0.75">
-          <span className="text-sm">Wake her by voice</span>
-          <Fine>
-            Say <span className="text-foreground">"{wake.phrase}"</span> and she
-            picks up. The microphone stays open for as long as this tab is, and
-            the browser does the listening: Chrome sends what it hears to
-            Google.
-          </Fine>
-          {/* The one thing this step asks them to try, so it is the one thing that moves */}
-          {wake.enabled &&
-            !unheard &&
-            (heard ? (
-              <span className="mt-1.5 flex items-center gap-2 text-[13px]">
-                <span className="grid size-5 shrink-0 animate-in place-items-center rounded-full bg-foreground text-background duration-300 zoom-in-50">
-                  <Check className="size-3" />
-                </span>
-                Heard you. That is how you call her.
-              </span>
-            ) : (
-              <span className="mt-1.5 flex items-center gap-2 text-[13px]">
-                <Mic className="size-4 shrink-0" />
-                <ShinyText
-                  text={`Try it now: say "${wake.phrase}"`}
-                  speed={2.2}
-                />
-              </span>
-            ))}
-          {unheard && <Fine>{unheard}</Fine>}
-        </span>
-        <Switch
-          checked={wake.enabled}
-          onCheckedChange={(enabled) => patch({ wake: { ...wake, enabled } })}
-        />
-      </label>
+      {/* The one thing this step asks them to try, so it is the one thing that moves */}
+      {wake.enabled &&
+        !unheard &&
+        (heard ? (
+          <span className="flex items-center gap-2 text-[13px]">
+            <span className="grid size-5 shrink-0 animate-in place-items-center rounded-full bg-foreground text-background duration-300 zoom-in-50">
+              <Check className="size-3" />
+            </span>
+            Heard you. That is how you call her.
+          </span>
+        ) : (
+          <span className="flex items-center gap-2 text-[13px]">
+            <Mic className="size-4 shrink-0" />
+            <ShinyText text={`Try it now: say "${wake.phrase}"`} speed={2.2} />
+          </span>
+        ))}
+      {unheard && <Fine>{unheard}</Fine>}
     </>
   );
 }

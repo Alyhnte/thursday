@@ -29,7 +29,8 @@ const wanted = new Set(lines.map(introClipName));
 const have = new Set(await readdir(dir));
 
 for (const stale of have) {
-  if (wanted.has(stale)) continue;
+  // Only clips are this script's: anything else in the folder (a tool's own dot folder) is left
+  if (wanted.has(stale) || !stale.endsWith(".ogg")) continue;
   await rm(join(dir, stale));
   console.log(`removed  ${stale}`);
 }

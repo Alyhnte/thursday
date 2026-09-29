@@ -5,7 +5,8 @@
 Three ways in, and any of them also answers a call she placed:
 
 - Tap her face.
-- Say the wake phrase, "hey thursday" unless they changed it. It is off to begin with. It keeps
+- Say the wake phrase, "hey thursday" unless they changed it. It comes on with the microphone on
+  the first run's microphone step, and is otherwise off until switched on. It keeps
   the microphone open while the tab is, uses the browser's own speech recognition (Chrome sends
   what it hears to Google), and listens in English only.
 - Press the shortcut, Alt + Shift + T (⌥⇧T on a Mac) unless they changed it. It is off to begin

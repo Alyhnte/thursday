@@ -23,8 +23,9 @@ Say what happened and the one thing that fixes it; most problems are a setting o
 
 ## "Hey thursday" does nothing
 
-The wake phrase is off until it is switched on in **Settings › Thursday › Starting a call**, where
-the phrase can also be changed. It needs a browser with speech recognition, the microphone, and the
+The wake phrase comes on when the microphone is turned on in the first run; skipped there, it is
+off until it is switched on in **Settings › Thursday › Starting a call**, where the phrase can also
+be changed. It needs a browser with speech recognition, the microphone, and the
 app's tab open. When it cannot start, the screen says "Wake word off" with the reason. Tapping her
 face always works.
 

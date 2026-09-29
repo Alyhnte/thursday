@@ -98,7 +98,7 @@ Thursday is free and MIT-licensed. You bring the account: a signed-in ChatGPT pl
 <details>
 <summary><b>Where does my data go?</b></summary>
 
-What you say on a call and what bots work on go to the model providers you set up and the services you connect. The “hey thursday” wake phrase is off until you switch it on: it uses your browser's speech recognition, which in Chrome sends microphone audio to Google while the tab is open. A tap on her face starts a call without it. When you let the browser share your location, the page sends it to BigDataCloud and Open-Meteo for your town's name and its weather, and her prompt gets those two; say no and nothing is sent. The app listens on `127.0.0.1`, and your calls, memory and files live in `~/.thursday` (or the checkout, when you run from source).
+What you say on a call and what bots work on go to the model providers you set up and the services you connect. The “hey thursday” wake phrase comes on when you turn the microphone on in the first run, and is otherwise off until you switch it on: it uses your browser's speech recognition, which in Chrome sends microphone audio to Google while the tab is open. A tap on her face starts a call without it. When you let the browser share your location, the page sends it to BigDataCloud and Open-Meteo for your town's name and its weather, and her prompt gets those two; say no and nothing is sent. The app listens on `127.0.0.1`, and your calls, memory and files live in `~/.thursday` (or the checkout, when you run from source).
 
 </details>
 
