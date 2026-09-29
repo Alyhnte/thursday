@@ -799,6 +799,10 @@ h3.sub {
   .props > div {
     break-inside: avoid;
   }
+  /* A day's heading goes onto the sheet its picture does */
+  .day > header {
+    break-after: avoid;
+  }
   .notes,
   .panel-foot,
   .tag,

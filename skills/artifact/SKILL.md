@@ -16,7 +16,7 @@ the type, light and dark, a head that names it with Edit and Export, and the pic
 
 | They will | Kind | Start | Read first |
 |---|---|---|---|
-| read it — a report, a memo, options compared, a plan, notes of a meeting, research with its photos; or a Word file of it | document | write Markdown, then `node $S/document.mjs put <name> <file.md>`; a .docx: `document.mjs docx <name>` | `references/document.md` |
+| read it — a report, a memo, options compared, a plan, notes of a meeting, research with its photos; or a Word file of it | document | write Markdown, then `node $S/document.mjs put <name> <file.md>`; a .docx: `document.mjs docx <name>`; a PDF: `document.mjs pdf <name>` | `references/document.md` |
 | choose between ways something could look, or see it at its real size — an app or phone screen, a landing page, a poster, a post | canvas | `node $S/canvas.mjs new <name>` | `references/canvas.md`, then `references/craft.md` |
 | watch it presented, or understand one thing simply — a picture and a line or two a slide; as a PDF, or a video that reads itself | deck | the `make_deck` tool; then `node $S/deck.mjs pdf <deck>` or `deck.mjs video <deck> <audio>…` | `references/deck.md` |
 | watch a short hand-drawn film — a birthday or anniversary gift, a thank-you, a farewell, a small story, with music | motion video | write the film as code with the kit, from `templates/motion/birthday.js`, then `node $S/motion.mjs put <name> <film.js>` | `references/motion.md` |
@@ -62,6 +62,9 @@ keep, share, use or come back to.
   the app from what you wrote, so it goes back without a second look. A page, an app or a diagram is looked at only when asked, with
   `node $S/document.mjs shots <its path>`: an app's build and a diagram's check already name
   what is broken.
+- **A PDF of a page made to be read** — a document, a brief, a trip, a digest — is
+  `node $S/document.mjs pdf <its path>`, beside it; a deck's is `deck.mjs pdf`. A page sent to
+  their phone already goes with its PDF.
 - **Hand back** the file's path — a canvas with its pictures' paths, a deck or a motion video
   with its mp4 when there is one — and say in a line or two what it holds and what you would do
   next with it.

@@ -103,8 +103,10 @@ back.
   or one too big (Telegram 50 MB, Discord 20 MB, any app 45 MB) — is listed under *Not sent — still
   on this computer*. Asking her to show what a bot made works the same way.
 - **A page** — a report, a deck, a design — arrives as up to nine pictures of it, since no chat app
-  opens one; the page itself stays on the computer. If the pictures cannot be drawn, the page file
-  is sent instead.
+  opens one. A page made to be read — a document, a deck, a brief, a trip, a digest — comes with a
+  PDF of the whole of it too, to keep or pass on; a design comes as its pictures alone. A page made
+  before this update comes without its PDF until its bot makes it again. If the pictures cannot be
+  drawn, the page file is sent instead.
 - **A bot's question, or finished work**, arrives as the bot wrote it, under a line naming the bot
   and the thread, with its files. Work started from the phone always comes back to the phone.
   Anything else — a routine, work started on the computer — comes only while no browser has the app

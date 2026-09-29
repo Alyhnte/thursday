@@ -354,6 +354,7 @@ ${pic ? `<a class="pic" href="${esc(source.url ?? "#")}"><img src="${pic}" alt="
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 {{shell.meta}}
+<meta name="print" content="pdf">
 <title>${esc(d.title)}</title>
 <script>
 // shell.theme

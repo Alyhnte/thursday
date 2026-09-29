@@ -284,6 +284,7 @@ ${picture(s, false)}
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 {{shell.meta}}
+<meta name="print" content="pdf">
 <title>${esc(heading)} · ${esc(dayLine)}</title>
 <script>
 // shell.theme

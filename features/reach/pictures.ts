@@ -1,4 +1,11 @@
-import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  open,
+  readdir,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, extname, join } from "node:path";
 import { APP_DIR, PATHS, REACH } from "@/config";
@@ -9,11 +16,12 @@ import { PromiseChain } from "@/lib/utils";
 import type { OutgoingFile } from "./channel";
 
 /**
- * What a page looks like, for a chat that opens no HTML: pictures of it, sent with it. A
- * deck's slides and a canvas's boards are one picture each, at their own size; any other
- * page is read from the top, a phone's screen at a time. They are drawn by the renderer the
- * bots shoot with (skills/artifact/runtime/render.mjs), in a headless browser of their own that
- * keeps nothing and is closed once they are drawn.
+ * What a page looks like, for a chat that opens no HTML: pictures of it, sent in its place,
+ * and for a page made to be read, a PDF of it beside them (pdfOf). A deck's slides and a
+ * canvas's boards are one picture each, at their own size; any other page is read from the
+ * top, a phone's screen at a time. They are drawn by the renderer the bots shoot with
+ * (skills/artifact/runtime/render.mjs), in a headless browser of their own that keeps
+ * nothing and is closed once they are drawn.
  */
 
 const RENDER = join(
@@ -36,14 +44,81 @@ const inTurn = PromiseChain();
 
 /** Pictures of the file at `full` when it is a page; none for anything else, or when none can be drawn. */
 export function picturesOf(full: string): Promise<OutgoingFile[]> {
-  if (!["html", "htm"].includes(extensionOf(full))) return Promise.resolve([]);
-  return inTurn(() => draw(full)).catch((cause) => {
+  if (!isPage(full)) return Promise.resolve([]);
+  return inTurn(() =>
+    rendered(full, `--out "$OUT" --name "$NAME" --most ${REACH.pictures}`, {
+      failed: "no pictures",
+      take: async (out) => {
+        const names = (await readdir(out))
+          .filter((name) => name.endsWith(".png"))
+          .sort();
+        return Promise.all(
+          names.map(async (name) => ({
+            bytes: await readFile(join(out, name)),
+            name,
+            picture: true,
+          })),
+        );
+      },
+    }),
+  ).catch((cause) => {
     logger.warn(`reach: no pictures of ${basename(full)}`, cause);
     return [];
   });
 }
 
-async function draw(full: string): Promise<OutgoingFile[]> {
+/**
+ * The page at `full` as a PDF, by its own print rules, when it is made to be read: a
+ * document, a brief, a trip, a digest or a deck says so in its head (`<meta name="print"
+ * content="pdf">`, artifact runtime/shell/head.html). Null for anything else — a canvas, a
+ * sheet, an app — or when it cannot be printed.
+ */
+export function pdfOf(full: string): Promise<OutgoingFile | null> {
+  if (!isPage(full)) return Promise.resolve(null);
+  return inTurn(async () => {
+    if (!(await prints(full))) return null;
+    return rendered(full, `--pdf "$OUT/$NAME.pdf"`, {
+      failed: "not printed",
+      take: async (out) => ({
+        bytes: await readFile(
+          join(out, `${basename(full, extname(full))}.pdf`),
+        ),
+        name: `${basename(full, extname(full))}.pdf`,
+        picture: false,
+      }),
+    });
+  }).catch((cause) => {
+    logger.warn(`reach: no PDF of ${basename(full)}`, cause);
+    return null;
+  });
+}
+
+const isPage = (full: string) => ["html", "htm"].includes(extensionOf(full));
+
+/** Whether a page says it prints: the mark stands in its head, before its styles. */
+async function prints(full: string) {
+  const file = await open(full);
+  try {
+    const head = Buffer.alloc(4096);
+    const { bytesRead } = await file.read(head, 0, head.length, 0);
+    return /<meta name="print" content="pdf">/.test(
+      head.subarray(0, bytesRead).toString("utf8"),
+    );
+  } finally {
+    await file.close();
+  }
+}
+
+/**
+ * The page drawn by the renderer in its shot mode, with `args` after it, in a headless
+ * browser of its own that keeps nothing and is closed after; `take` reads what it wrote
+ * into the folder `$OUT` before that folder is removed.
+ */
+async function rendered<T>(
+  full: string,
+  args: string,
+  { failed, take }: { failed: string; take: (out: string) => Promise<T> },
+): Promise<T> {
   const out = await mkdtemp(join(tmpdir(), "thursday-pictures-"));
   const config = join(out, "browser.json");
   await writeFile(
@@ -63,22 +138,13 @@ async function draw(full: string): Promise<OutgoingFile[]> {
   };
   const sandbox = await openWorkspace();
   try {
-    const drawn = await sandbox.exec(
-      `node "$RENDER" "$PAGE" --out "$OUT" --name "$NAME" --shot --most ${REACH.pictures}`,
-      { env, timeoutMs: REACH.drawMs },
-    );
+    const drawn = await sandbox.exec(`node "$RENDER" "$PAGE" --shot ${args}`, {
+      env,
+      timeoutMs: REACH.drawMs,
+    });
     if (drawn.exitCode !== 0)
-      throw new Error(drawn.stderr.trim().split("\n").at(-1) || "no pictures");
-    const names = (await readdir(out))
-      .filter((name) => name.endsWith(".png"))
-      .sort();
-    return await Promise.all(
-      names.map(async (name) => ({
-        bytes: await readFile(join(out, name)),
-        name,
-        picture: true,
-      })),
-    );
+      throw new Error(drawn.stderr.trim().split("\n").at(-1) || failed);
+    return await take(out);
   } finally {
     await sandbox
       .exec("playwright-cli close", { env, timeoutMs: 15_000 })

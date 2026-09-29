@@ -16,6 +16,7 @@ node $S/text.mjs <article url | pdf url | file.pdf> --out <scratch>/<name>.txt
 node $S/part.mjs <file> <n>                                         # part n of a long file, one read
 node $S/audio.mjs cut <url|file> --out <scratch>/audio [--minutes 10]   # no captions: pieces to transcribe
 node $S/digest.mjs <digest.json> --name <page>                      # the page, in your artifacts folder
+node $THURSDAY_SKILLS/artifact/scripts/document.mjs pdf <page path>   # a PDF beside it, when asked for one
 ```
 
 Two facts decide the work:

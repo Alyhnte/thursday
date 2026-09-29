@@ -48,10 +48,10 @@ it shows goes to the page as `changed`. A seed's own skills are read in place fr
   the browser to look at what it made opens it in front of the user, where a skill's `shots` over
   `render.mjs --apart` shows it to the bot alone.
 - The suites mock `pictures.ts`, stub `shots` and frame no page, so a contract between `skills/`
-  and the app changed on one side only breaks unseen: `render.mjs`'s options and
-  `features/reach/pictures.ts`; the last line of `deck.mjs shots` and `deck.tool.ts`; the shell's
-  generator meta, `?face` and frame messages and `app/artifact`, `file-thumb.tsx`, `FileFrame`;
-  `spreadsheet.mjs sync` (its exit 3) and `savePage`.
+  and the app changed on one side breaks unseen: `render.mjs`'s options, the print mark
+  and `features/reach/pictures.ts`; the last line of `deck.mjs shots` and
+  `deck.tool.ts`; the shell's generator meta, `?face` and frame messages and `app/artifact`,
+  `file-thumb.tsx`, `FileFrame`; `spreadsheet.mjs sync` (its exit 3) and `savePage`.
 - A seed's text is copied into its bot when the bot is made, so a role change never reaches a bot
   already installed; what every bot must get lives in a skill or the base prompt.
 - Two skills for one ask split the bots' choice; a new capability that extends an existing skill,

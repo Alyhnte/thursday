@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { after, mock, test } from "node:test";
 
 // Reach against a Telegram that is only a `fetch` stub, with her answers and the inbox
@@ -148,17 +148,22 @@ mock.module("../features/thursday/thursday.text.ts", {
     },
   },
 });
-// Drawing a page takes a browser; two pictures stand in for what it draws
+// Drawing a page takes a browser; two pictures stand in for what it draws, and a PDF for
+// what a page made to be read prints as (a report does; a board is seen, not read)
 mock.module("../features/reach/pictures.ts", {
   namedExports: {
     picturesOf: async (full: string) =>
       full.endsWith(".html")
         ? [1, 2].map((n) => ({
             bytes: new Uint8Array([n]),
-            name: `report-0${n}.png`,
+            name: `${basename(full, ".html")}-0${n}.png`,
             picture: true,
           }))
         : [],
+    pdfOf: async (full: string) =>
+      full.endsWith("report.html")
+        ? { bytes: new Uint8Array([9]), name: "report.pdf", picture: false }
+        : null,
   },
 });
 const ended: string[] = [];
@@ -734,18 +739,25 @@ test("a question the screen was left holding goes to the phone once the last bro
   );
 });
 
-test("a page she names goes with pictures of it, and any other file as itself", async () => {
+test("a page she names goes as pictures of it, with its PDF when it prints, and any other file as itself", async () => {
   const { WORKSPACE } = await import("../features/workspace/workspace.ts");
   const folder = join(WORKSPACE, "artifacts", "Jarvis");
   await mkdir(folder, { recursive: true });
   // Her answer's files go oldest first
-  for (const [at, name] of ["report.html", "notes.txt"].entries()) {
+  for (const [at, name] of [
+    "report.html",
+    "board.html",
+    "notes.txt",
+  ].entries()) {
     await writeFile(join(folder, name), name);
     await utimes(join(folder, name), 1_000 + at, 1_000 + at);
   }
   const from = sent.length;
   inbox.push(
-    message(7, "artifacts/Jarvis/report.html and artifacts/Jarvis/notes.txt"),
+    message(
+      7,
+      "artifacts/Jarvis/report.html, artifacts/Jarvis/board.html and artifacts/Jarvis/notes.txt",
+    ),
   );
   await until(
     () => sent.slice(from).some((one) => one.body.document === "notes.txt"),
@@ -760,16 +772,20 @@ test("a page she names goes with pictures of it, and any other file as itself", 
         .filter(([key]) => /^(p\d+|photo|document)$/.test(key))
         .map(([, name]) => name),
     }));
-  // A page goes as its pictures alone (D12), and says where the page itself is
+  // A page goes as its pictures, never itself (D12); one made to be read with its PDF, and
+  // one that does not print says where the page itself is
   assert.deepEqual(files, [
     { method: "sendMediaGroup", files: ["report-01.png", "report-02.png"] },
+    { method: "sendDocument", files: ["report.pdf"] },
+    { method: "sendMediaGroup", files: ["board-01.png", "board-02.png"] },
     { method: "sendDocument", files: ["notes.txt"] },
   ]);
   await until(
-    () => saidTo(7).at(-1)?.includes("report.html") ?? false,
-    "where the page is",
+    () => saidTo(7).at(-1)?.includes("board.html") ?? false,
+    "where the board is",
   );
   assert.match(saidTo(7).at(-1) ?? "", /page itself opens on the computer/);
+  assert.doesNotMatch(saidTo(7).at(-1) ?? "", /report\.html/);
 });
 
 test("a file that does not come through is said at once, and what was written with it still reaches her", async () => {

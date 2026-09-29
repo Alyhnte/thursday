@@ -47,7 +47,7 @@ import {
 } from "./channel";
 import { literal } from "./chat-text";
 import { createDiscord } from "./discord";
-import { picturesOf } from "./pictures";
+import { pdfOf, picturesOf } from "./pictures";
 import {
   REACH_CHANNELS,
   REACH_KEYS,
@@ -746,8 +746,9 @@ function carried(messages: ModelMessage[]): ModelMessage[] {
 
 /**
  * The files her answer names go with it: a phone cannot open a path on this computer. A
- * page goes with pictures of it, since no chat opens one (pictures), in one message where
- * the service takes them together. The newest REACH.files go; what does not — past that
+ * page goes as pictures of it, since no chat opens one, and a page made to be read also as
+ * a PDF of it, the whole page to keep or pass on (pictures), in one message where the
+ * service takes them together. The newest REACH.files go; what does not — past that
  * count, past what the service or REACH.fileBytes takes, or refused on the way — is named in
  * the chat as still on this computer, and she is left the fact.
  */
@@ -765,36 +766,42 @@ async function sendFiles(live: Live, person: ReachPerson, text: string) {
     const full = await insideWorkspace(path);
     const info = full ? await stat(full).catch(() => null) : null;
     if (!full || !info) continue;
-    if (info.size > most) {
-      left.push({
-        name: path,
-        why: `it is ${megabytes(info.size)}, and the most that goes to ${REACH_LABEL[live.name]} is ${megabytes(most)}`,
-      });
-      continue;
-    }
     try {
-      // A page drawn for the phone goes as its pictures alone (D12): sent too, the file showed
-      // as code in the chat, and the pictures inside it never opened on a phone
+      // A page drawn for the phone goes as its pictures, never itself (D12): sent, the file
+      // showed as code in the chat, and the pictures inside it never opened on a phone. Its
+      // own size is then beside the point; its PDF's is what goes
       const pictures = await picturesOf(full);
-      await live.channel.sendFiles(
-        person.chat,
-        pictures.length
-          ? pictures
-          : [
-              {
-                bytes: await readFile(full),
-                name: path.split("/").pop() ?? "file",
-                // One past what the service draws still goes, as a file
-                picture:
-                  viewKindOf(path) === "image" && info.size <= limits.picture,
-              },
-            ],
-      );
-      if (pictures.length)
+      if (pictures.length) {
+        const pdf = await pdfOf(full);
+        const fits = pdf && pdf.bytes.length <= most;
+        await live.channel.sendFiles(
+          person.chat,
+          fits ? [...pictures, pdf] : pictures,
+        );
+        if (!fits)
+          left.push({
+            name: path,
+            why: pdf
+              ? `sent as pictures above; as a PDF it is ${megabytes(pdf.bytes.length)}, and the most that goes to ${REACH_LABEL[live.name]} is ${megabytes(most)}`
+              : "sent as pictures above; the page itself opens on the computer",
+          });
+        continue;
+      }
+      if (info.size > most) {
         left.push({
           name: path,
-          why: "sent as pictures above; the page itself opens on the computer",
+          why: `it is ${megabytes(info.size)}, and the most that goes to ${REACH_LABEL[live.name]} is ${megabytes(most)}`,
         });
+        continue;
+      }
+      await live.channel.sendFiles(person.chat, [
+        {
+          bytes: await readFile(full),
+          name: path.split("/").pop() ?? "file",
+          // One past what the service draws still goes, as a file
+          picture: viewKindOf(path) === "image" && info.size <= limits.picture,
+        },
+      ]);
     } catch (cause) {
       logger.warn(`reach ${live.name}: could not send ${path}`, cause);
       left.push({ name: path, why: reasonOf(cause) });

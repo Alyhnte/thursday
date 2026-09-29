@@ -14,6 +14,10 @@
 //                                   the body as it is now, as HTML, into <file> to change
 //   node document.mjs shots <name|path>
 //                                   the page as it opens, down to three pictures in scratch/
+//   node document.mjs pdf <name|path>
+//                                   the page as a PDF beside it (<name>.pdf), by its own
+//                                   print rules: a document, or any page made to be read
+//                                   (a brief, a trip, a digest)
 //   node document.mjs docx <name|path>
 //                                   the page as a Word file beside it (<name>.docx), edits
 //                                   and all, as Export › Word file makes it
@@ -24,6 +28,7 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
@@ -221,6 +226,43 @@ function shotPage(name) {
   console.log(`Look at them with look_at, from ${shown(out)}.`);
 }
 
+/**
+ * The page as a PDF beside it, printed by its own print rules in a headless browser of its
+ * own. Only a page made to be read carries the mark that it prints (shell head.html); a
+ * canvas or an app is seen, and prints as nothing worth keeping.
+ */
+function pdfFile(name) {
+  const file = pageAt(name);
+  if (!readFileSync(file, "utf8").includes('<meta name="print" content="pdf">'))
+    throw new Stop(
+      `${shown(file)} is not a page made to be read, so it does not print. A canvas goes as its pictures (canvas.mjs shots); a deck made before this has no mark: put it again with make_deck, or use deck.mjs pdf.`,
+    );
+  const out = join(dirname(file), `${basename(file, ".html")}.pdf`);
+  const skills = process.env.THURSDAY_SKILLS || resolve(SKILL, "..");
+  const done = spawnSync(
+    process.execPath,
+    [
+      join(skills, "artifact", "runtime", "render.mjs"),
+      file,
+      "--shot",
+      "--pdf",
+      out,
+      // Never in the job's own browser, which may be a window on their screen
+      "--apart",
+    ],
+    { encoding: "utf8" },
+  );
+  if (done.status !== 0)
+    throw new Stop(
+      `${done.stdout}${done.stderr}`.trim().split("\n").at(-1) ||
+        "The page could not be printed.",
+    );
+  const mb = (statSync(out).size / 1024 / 1024).toFixed(1);
+  console.log(
+    `Made ${shown(out)}, ${mb} MB. Hand back its path beside the page's.`,
+  );
+}
+
 /** The page as a Word file beside it, made by the page's own converter in a headless browser. */
 function wordFile(name) {
   const file = pageAt(name);
@@ -250,10 +292,11 @@ try {
   else if (command === "put") putBody(...rest);
   else if (command === "get") getBody(...rest);
   else if (command === "shots") shotPage(rest[0]);
+  else if (command === "pdf") pdfFile(rest[0]);
   else if (command === "docx") wordFile(rest[0]);
   else
     throw new Stop(
-      "Usage: document.mjs new <name> [--from <kind>] | put <name|path> <file.md|file.html> | get <name|path> <file> | shots <name|path> | docx <name|path>",
+      "Usage: document.mjs new <name> [--from <kind>] | put <name|path> <file.md|file.html> | get <name|path> <file> | shots <name|path> | pdf <name|path> | docx <name|path>",
     );
 } catch (error) {
   if (!(error instanceof Stop)) throw error;

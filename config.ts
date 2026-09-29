@@ -163,8 +163,8 @@ export const CALL_IDLE = {
  *   dropped; those kept are answered once they are let in. More keeps a longer first request;
  *   fewer bounds what a stranger can pile up in memory before being turned away.
  * - `pictures`  how many pictures of a page go with it (reach/pictures): its first slides or
- *   boards, or its first screens from the top. With the page itself that is ten files, what
- *   one Discord message carries and one Telegram album holds; the page has the rest.
+ *   boards, or its first screens from the top. With the page's PDF that is ten files, what
+ *   one Discord message carries and one Telegram album holds; the PDF has the rest.
  * - `drawMs`  how long drawing them may take before the page goes without them. Nine slides
  *   draw in a few seconds; a page that never finishes loading would otherwise hold up
  *   everything sent after it.

@@ -494,4 +494,21 @@ body {
   .sh-menu {
     display: none !important;
   }
+  /* A heading stays with what it heads, a picture is not cut across two sheets, and the
+     maker's name is not left alone on the last one */
+  :is(h1, h2, h3, h4) {
+    break-after: avoid;
+  }
+  img,
+  figure {
+    break-inside: avoid;
+  }
+  .sh-sign {
+    break-before: avoid;
+  }
+}
+/* A sheet's own margin, so a page printed or sent as a PDF (features/reach/pictures) does
+   not run to its edges; a deck's slide fills its sheet and sets none (deck.css, later) */
+@page {
+  margin: 14mm 12mm;
 }

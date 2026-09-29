@@ -23,6 +23,8 @@ node $S/story.mjs <scratch>/cand.json a1 a4 b2 c1 c3 --out <scratch>/stories
 cat <scratch>/stories/text-1.md
 # Lay out, one call: after you have written <scratch>/brief.json yourself
 node $S/page.mjs <scratch>/brief.json --look <scratch>/look
+# A PDF beside it, only when they ask for one: a brief sent to their phone goes with its PDF
+node $THURSDAY_SKILLS/artifact/scripts/document.mjs pdf <the page's path>
 ```
 
 - **The ids are all you pass between steps.** `news.mjs` prints an id per story (`a1`, `b3`);
