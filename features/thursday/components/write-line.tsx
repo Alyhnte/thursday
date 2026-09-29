@@ -420,7 +420,9 @@ export function WriteLine({
       <div className="col-start-2 row-start-1 flex min-w-0 items-end justify-center">
         <div
           className={cn(
-            "flex w-160 max-w-full flex-col gap-2",
+            // A container: under 28rem (a phone, a narrow window) the words take a row of their
+            // own and who they are for moves under them, beside the paperclip and Send
+            "@container flex w-160 max-w-full flex-col gap-2",
             up
               ? "pointer-events-auto animate-in duration-200 fade-in slide-in-from-bottom-2"
               : "pointer-events-none animate-out duration-200 fade-out fill-mode-forwards slide-out-to-bottom-2",
@@ -468,7 +470,7 @@ export function WriteLine({
                 event.preventDefault();
                 send();
               }}
-              className="flex items-end gap-2"
+              className="flex items-end gap-2 @max-md:flex-wrap @max-md:items-center"
             >
               <Popover
                 open={picking || Boolean(mention)}
@@ -597,7 +599,7 @@ export function WriteLine({
                         : `Say the whole job — ${to.name} cannot hear the call`
                 }
                 aria-label={`Message for ${to.name}`}
-                className="max-h-36 min-h-9 flex-1 resize-none border-0 bg-transparent px-0 py-1.5 text-[15px] leading-6 shadow-none focus-visible:ring-0 dark:bg-transparent"
+                className="max-h-36 min-h-9 flex-1 resize-none border-0 bg-transparent px-0 py-1.5 text-[15px] leading-6 shadow-none focus-visible:ring-0 @max-md:order-first @max-md:basis-full @max-md:px-2 dark:bg-transparent"
               />
 
               <input
@@ -617,7 +619,7 @@ export function WriteLine({
                     <button
                       type="button"
                       aria-label="Add a file or a drawing"
-                      className="grid size-9 shrink-0 place-items-center rounded-full text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 data-popup-open:bg-muted data-popup-open:text-foreground"
+                      className="grid size-9 shrink-0 @max-md:ml-auto place-items-center rounded-full text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 data-popup-open:bg-muted data-popup-open:text-foreground"
                     />
                   }
                 >
@@ -716,8 +718,11 @@ export function WriteLine({
                 ) : (
                   <>
                     <Hint keys={["Enter"]}>send</Hint>
-                    <Dot />
-                    <Hint keys={["@"]}>{toHer ? "a bot" : "pick a bot"}</Hint>
+                    {/* the chip beside the words says it where there is no room for this */}
+                    <span className="contents @max-md:hidden">
+                      <Dot />
+                      <Hint keys={["@"]}>{toHer ? "a bot" : "pick a bot"}</Hint>
+                    </span>
                     {toHer && (
                       <>
                         <Dot />
