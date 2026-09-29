@@ -19,18 +19,21 @@ import {
 import { ThreadReply } from "@/features/bot/components/thread-reply";
 import { ThursdayMark } from "@/features/thursday/components/thursday-mark";
 import { useEscape, windowKey } from "@/hooks/use-hotkey";
+import { useWide } from "@/hooks/use-wide";
 import { toDate } from "@/lib/date-like";
 import { useServerPages } from "@/lib/protocol/use-server-pages";
 import { useServerRoute } from "@/lib/protocol/use-server-route";
 import { cn } from "@/lib/utils";
 import {
   botThreads,
+  roomOffice,
   roomOpen,
   roomOpens,
   type ThreadViewStatus,
   threadFromRow,
   useBotThreads,
   useCallWaits,
+  useRingingThreads,
   useSeenOnDetail,
   writeLine,
 } from "../thread.store";
@@ -58,11 +61,18 @@ import {
   waitingStepIn,
 } from "./room-pill";
 
-/** The office opens over a thread at work (office-view): its code loads when it does. */
-const OfficeView = dynamic(
-  () => import("./office-view").then((module) => module.OfficeView),
+/** The office of the thread being read (office-view): its code loads when one is. */
+const OfficeBackdrop = dynamic(
+  () => import("./office-view").then((module) => module.OfficeBackdrop),
   { ssr: false },
 );
+
+/**
+ * The narrowest window the office is drawn in, beside the 40rem room where her face stands:
+ * narrower, what is left of the call would draw the building too small to read, and the room
+ * lies over her face as before.
+ */
+const OFFICE_MIN_WIDTH = 1280;
 
 /**
  * The thread room and inbox in the corner of the call screen: what is running, what is
@@ -84,9 +94,6 @@ export const BotRoom = memo(function BotRoom() {
   const [open, setOpen] = useState(false);
   /** Open thread; null shows the list. */
   const [picked, setPicked] = useState<string | null>(null);
-  /** The thread watched as an office, over everything (office-view); another thread picked closes it. */
-  const [office, setOffice] = useState<string | null>(null);
-  if (office !== null && office !== picked) setOffice(null);
   // A thread is read at nearly the window's height and lies over the call; only the write
   // line steps aside for it. The list is a short card in the corner
   const reading = open && picked !== null;
@@ -155,6 +162,14 @@ export const BotRoom = memo(function BotRoom() {
   // A listed thread that carries its lines opens at once and the whole one
   // takes over; one that does not waits, rather than flashing an empty room.
   const current = alone ?? (listed?.lines.length ? listed : null);
+  // The thread being read is drawn as its office where her face stands, unless she is
+  // ringing, which takes the middle of the screen (use-call-ring); the call screen puts her
+  // face away meanwhile (thursday)
+  const roomy = useWide(OFFICE_MIN_WIDTH);
+  const ringing = useRingingThreads().length > 0;
+  const office = current !== null && reading && roomy && !ringing;
+  useEffect(() => roomOffice.set(office), [office]);
+  useEffect(() => () => roomOffice.set(false), []);
 
   const [moment, handoff] = useHandoff();
   // A moment passes; words that wait on a bot stay up under it until they are read
@@ -257,7 +272,6 @@ export const BotRoom = memo(function BotRoom() {
   // on the pill, and a History one would not be found once its pages stop being read.
   const fold = () => {
     setOpen(false);
-    setOffice(null);
     setPicked(null);
     setTab("now");
     scroll.current = 0;
@@ -302,7 +316,8 @@ export const BotRoom = memo(function BotRoom() {
     // nothing the rows above do can cap its width and it says the same thing with the write
     // line up as without. Open, the room is not a fixture: it takes the row above the rail,
     // all the height the rail leaves and none of its width, and is read there files and all,
-    // over the right of the call (which does not move for it).
+    // over the right of the call (which does not move for it). A thread read there has its
+    // office in what the room leaves of that row, where her face stands.
     <div
       className={cn(
         "pointer-events-none flex min-h-0 items-end justify-end",
@@ -311,12 +326,18 @@ export const BotRoom = memo(function BotRoom() {
         open ? "col-span-3 row-start-1 self-stretch" : "col-span-3 row-start-2",
       )}
     >
+      {open && office && current && (
+        <OfficeBackdrop
+          thread={current}
+          className="pointer-events-auto mr-4 min-h-0 min-w-0 flex-1 self-stretch"
+        />
+      )}
       {open ? (
         <div
           ref={panel}
           // what is dropped on the room is the open thread's (given-files roomDrop)
           data-room
-          className="pointer-events-auto flex max-h-full w-160 max-w-full animate-in flex-col overflow-hidden rounded-3xl bg-background/75 shadow-2xl shadow-black/6 ring-1 ring-border/50 backdrop-blur-xl fade-in slide-in-from-bottom-1 duration-200"
+          className="pointer-events-auto flex max-h-full w-160 max-w-full shrink-0 animate-in flex-col overflow-hidden rounded-3xl bg-background/75 shadow-2xl shadow-black/6 ring-1 ring-border/50 backdrop-blur-xl fade-in slide-in-from-bottom-1 duration-200"
         >
           {callWaits && <CallWaits onBack={fold} />}
           {!current && picked && fetching ? (
@@ -327,24 +348,7 @@ export const BotRoom = memo(function BotRoom() {
                 thread={current}
                 onBack={() => setPicked(null)}
                 onClose={fold}
-                // Watched while it works; one that ends on screen stays open until closed
-                onOffice={
-                  current.status === "working" || current.status === "waiting"
-                    ? () => setOffice(current.id)
-                    : undefined
-                }
               />
-              {office === current.id && (
-                <OfficeView
-                  thread={current}
-                  faces={current.roster}
-                  tab={sides[current.id] ?? null}
-                  onTab={(bot) =>
-                    setSides((was) => ({ ...was, [current.id]: bot }))
-                  }
-                  onClose={() => setOffice(null)}
-                />
-              )}
               <Conversation
                 thread={current}
                 tab={sides[current.id] ?? null}
@@ -353,25 +357,21 @@ export const BotRoom = memo(function BotRoom() {
                 }
                 className="min-h-0 flex-1"
               />
-              {/* One box a thread: the office has its own while open, and this one reads the
-                  drafts again when it comes back (thread-reply drafts, roomDrop) */}
-              {office !== current.id && (
-                <ThreadReply
-                  thread={{
-                    id: current.id,
-                    label: current.label,
-                    bot: current.bot.name,
-                    ask: current.ask,
-                    room: current.room,
-                  }}
-                  status={
-                    current.status === "working" ? "running" : current.status
-                  }
-                  faces={current.roster}
-                  to={sides[current.id] ?? current.bot.name}
-                  className="mx-3 mb-2 shrink-0"
-                />
-              )}
+              <ThreadReply
+                thread={{
+                  id: current.id,
+                  label: current.label,
+                  bot: current.bot.name,
+                  ask: current.ask,
+                  room: current.room,
+                }}
+                status={
+                  current.status === "working" ? "running" : current.status
+                }
+                faces={current.roster}
+                to={sides[current.id] ?? current.bot.name}
+                className="mx-3 mb-2 shrink-0"
+              />
             </>
           ) : (
             <>

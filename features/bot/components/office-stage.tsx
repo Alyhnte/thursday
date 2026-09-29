@@ -12,11 +12,13 @@ import {
   useRef,
   useState,
 } from "react";
+import { queryKey } from "@/app/api/query-key";
 import { ShinyText } from "@/components/ui/shiny-text";
 import { BotMark, iconProps } from "@/features/bot/components/bot-mark";
 import {
   cardOf,
   clockOf,
+  filesOf,
   namesOf,
   type OfficeScene,
 } from "@/features/bot/office";
@@ -32,6 +34,10 @@ import {
   type Walker,
 } from "@/features/bot/office.scene";
 import type { BotRef } from "@/features/bot/thread.store";
+import { fileIcon } from "@/features/workspace/components/file-thumb";
+import { FileLink } from "@/features/workspace/components/file-view";
+import type { FileOnDisk } from "@/features/workspace/workspace.schema";
+import { useServerRoute } from "@/lib/protocol/use-server-route";
 import { cn, plainText } from "@/lib/utils";
 
 /** How far the office zooms out and in: far enough to see the whole ground, near enough to read a desk. */
@@ -81,6 +87,7 @@ export function OfficeStage({
   building,
   label,
   faces,
+  from,
   selected,
   onSelect,
   seconds,
@@ -96,6 +103,8 @@ export function OfficeStage({
   label: string;
   /** Each bot's face, by name. */
   faces: BotRef[];
+  /** The thread it draws, where a note about one of its files goes (file-note). */
+  from: string;
   selected: string | null;
   onSelect: (bot: string) => void;
   /** Real seconds since the handover, for the wall clock. */
@@ -116,6 +125,11 @@ export function OfficeStage({
     [scene, stage],
   );
   const moment = stage ? momentOf(scene, stage, trips, t, selected) : null;
+  // What the job handed over, for the report at your counter
+  const files = useMemo(
+    () => filesOf(scene, Number.POSITIVE_INFINITY),
+    [scene],
+  );
   // The build runs once, from the first drawing: then the clock may move
   const builds = stage?.built ?? null;
   useEffect(() => {
@@ -190,6 +204,8 @@ export function OfficeStage({
   return (
     <div
       ref={box}
+      // what is dropped on the office is the thread's, as on the room (given-files roomDrop)
+      data-room
       data-building={building ? "" : undefined}
       onPointerDown={down}
       onPointerMove={move}
@@ -320,6 +336,8 @@ export function OfficeStage({
               <CounterCard
                 counter={moment.counter}
                 spot={at(moment.counter.x, moment.counter.y)}
+                files={files}
+                from={from}
               />
             )}
             {moment.tags.map((tag) => (
@@ -865,11 +883,15 @@ function Mission({ stage, label }: { stage: Stage; label: string }) {
         animationDelay: `${stage.popAt}ms`,
       }}
     >
-      <div className="inline-flex flex-col gap-1">
+      <div
+        className="flex flex-col gap-1"
+        style={{ width: stage.mission.line }}
+      >
         <span className="font-semibold text-[21px] text-foreground/30 tracking-[0.14em]">
           THE JOB
         </span>
-        <span className="whitespace-nowrap font-bold text-[84px] text-foreground/8 leading-none tracking-tight">
+        {/* As long as the building at most: a longer name wraps, and past three lines ends in … */}
+        <span className="line-clamp-3 text-balance break-words font-bold text-[84px] text-foreground/8 leading-[1.02] tracking-tight">
           {label}
         </span>
         <span className="-mr-22 -ml-4.5 mt-1 h-0.5 bg-foreground/13" />
@@ -958,9 +980,13 @@ function Refused({
 function CounterCard({
   counter,
   spot,
+  files,
+  from,
 }: {
   counter: NonNullable<ReturnType<typeof momentOf>["counter"]>;
   spot: { x: number; y: number };
+  files: ReturnType<typeof filesOf>;
+  from: string;
 }) {
   const { kind, event } = counter;
   return (
@@ -1005,7 +1031,50 @@ function CounterCard({
             {event.from} picks up when you answer
           </p>
         )}
+        {kind === "report" && <Handed files={files} from={from} />}
       </div>
+    </div>
+  );
+}
+
+/** The files a finished job handed over, each under the bot whose words named it; only those on disk. */
+function Handed({
+  files,
+  from,
+}: {
+  files: ReturnType<typeof filesOf>;
+  from: string;
+}) {
+  const paths = files.map((file) => file.path);
+  const { data: found } = useServerRoute<FileOnDisk[]>(
+    paths.length ? queryKey.workspaceFiles(paths) : null,
+  );
+  const kept = files.filter((file) =>
+    found?.some((one) => one.path === file.path),
+  );
+  if (!kept.length) return null;
+  return (
+    <div className="pointer-events-auto mt-1.5 flex flex-col gap-1">
+      <span className="text-[11px] text-muted-foreground">Files</span>
+      {kept.map((file) => {
+        const Icon = fileIcon(file.path);
+        return (
+          <FileLink
+            key={file.path}
+            path={file.path}
+            from={from}
+            className="flex h-7 items-center gap-2 rounded-lg bg-foreground/8 px-2.5 text-left text-[12px] outline-none transition-colors hover:bg-foreground/14 focus-visible:ring-3 focus-visible:ring-ring/50"
+          >
+            <Icon className="size-3.5 shrink-0 text-muted-foreground" />
+            <span className="min-w-0 flex-1 truncate">
+              {file.path.split("/").pop()}
+            </span>
+            <span className="shrink-0 text-[11px] text-muted-foreground">
+              {file.bot}
+            </span>
+          </FileLink>
+        );
+      })}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { Loader2, X } from "lucide-react";
-import { useCallback, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useRef, useState } from "react";
 import { toast } from "@/components/ui/toast";
 import { GIVEN_FILES } from "@/config";
 import { FileThumb } from "@/features/workspace/components/file-thumb";
@@ -26,44 +26,13 @@ export type GivenFile = {
   note?: string;
 };
 
-/**
- * Files waiting beside a draft that outlives its box, by the draft's key: a thread's box is drawn
- * again when the office opens or closes (thread-reply), and what was on its way still lands here.
- */
-const kept = new Map<string, GivenFile[]>();
-const keptListeners = new Set<() => void>();
-const NONE: GivenFile[] = [];
-const subscribe = (listener: () => void) => {
-  keptListeners.add(listener);
-  return () => keptListeners.delete(listener);
-};
-
 export function useGivenFiles(options?: {
   /** The files just kept, by path. What it answers is drawn beside each one's size. */
   onKept?: (paths: string[]) => string | undefined;
-  /** The draft they wait beside, when it outlives this box; left out, they go with the box. */
-  keep?: string;
 }) {
   const onKept = useRef(options?.onKept);
   onKept.current = options?.onKept;
-  const draft = options?.keep;
-  const [own, setOwn] = useState<GivenFile[]>([]);
-  const shared = useSyncExternalStore(
-    subscribe,
-    () => (draft === undefined ? NONE : (kept.get(draft) ?? NONE)),
-    () => NONE,
-  );
-  const files = draft === undefined ? own : shared;
-  const setFiles = useCallback(
-    (update: (all: GivenFile[]) => GivenFile[]) => {
-      if (draft === undefined) return setOwn(update);
-      const next = update(kept.get(draft) ?? NONE);
-      if (next.length) kept.set(draft, next);
-      else kept.delete(draft);
-      for (const listener of keptListeners) listener();
-    },
-    [draft],
-  );
+  const [files, setFiles] = useState<GivenFile[]>([]);
   const [give] = useServerAction(giveFilesAction);
 
   const take = useCallback(
@@ -101,7 +70,7 @@ export function useGivenFiles(options?: {
         );
       }
     },
-    [files.length, give, setFiles],
+    [files.length, give],
   );
 
   return {
@@ -109,7 +78,7 @@ export function useGivenFiles(options?: {
     take,
     remove: (key: string) =>
       setFiles((all) => all.filter((one) => one.key !== key)),
-    clear: () => setFiles(() => []),
+    clear: () => setFiles([]),
     /** Some file is still on its way: a message sent now would leave it behind. */
     arriving: files.some((file) => file.path === null),
     /** The words with every kept file's path under them. */

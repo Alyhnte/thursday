@@ -57,16 +57,17 @@ or waiting on an answer never is, and what a job made stays in **Settings › Fi
 Pressing the pill opens the corner as a list; pressing a row opens the thread. **Esc** or the back
 arrow steps back one level, and the ✕ folds the room away.
 
-While a thread is at work, the cube button at the top of it shows it as an office, nearly the whole
-window: each bot at its desk, the work walked from desk to desk as it happens, a hand-off that
-waits for another bot's answer held in a tray under an hourglass, and questions and the final
-report brought to your counter. A bot's tag opens a card with what it is doing and why; pressing
-the tag keeps it open. The clock on the wall is how long the job has run, and the job's name lies
-on the floor. **Chat** beside it is the thread's own conversation, and **At a glance** puts the
-request, what is asked of you, each bot's state and what came back on one list; under either is
-the thread's box, and a file dropped on the office goes into it. The office shows where the thread
-stands now and walks what happens while it is open, so a thread that has ended has none. It pans
-by dragging and zooms with the wheel or the buttons at its bottom left, and **Esc** closes it.
+An open thread is also drawn as an office where her face stands, beside the room, when the window
+is wide enough: each bot at its desk, the work walked from desk to desk as it happens, a hand-off
+that waits for another bot's answer held in a tray under an hourglass, and questions and the
+final report brought to your counter. Once the job is done, the report at your counter lists the
+files it handed over, each under the bot that made it; pressing one opens it. A bot's tag opens a
+card with what it is doing and why; pressing the tag keeps it open. The clock on the wall is how
+long the job has run, and the job's name lies on the floor. A file dropped on the office goes to
+the thread, as one dropped on the room does. The office pans by dragging and zooms with the wheel
+or the buttons at its bottom left. While it is up her face is put away, and a call that is on
+shows her last words at the top; closing the thread brings her face back, and the corner of
+finished jobs stays quiet while a thread is open.
 
 A long thread summarizes itself when it fills up. The small bar at the top right of an open thread
 shows how full it is; pressing it has the bot summarize at its next step, which makes every later

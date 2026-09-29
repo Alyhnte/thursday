@@ -73,7 +73,7 @@ export type Chatter = {
   meant?: BotRef | null;
   /** The exchange the line was written under (`thread_work`); null for the job's own first turn. */
   parent?: string | null;
-  /** When it was written: a `stop`'s repeats fold into one line, a folded run says how long it took, and the office replays the thread by it. */
+  /** When it was written: a `stop`'s repeats fold into one line, a folded run says how long it took, and the office places what crossed the room by it. */
   at?: DateLike;
 };
 
@@ -164,7 +164,7 @@ export function threadFromRow(row: Thread, bots?: Bot[]): ThreadView {
       : line.parent
         ? (askers.get(line.parent) ?? null)
         : null;
-    // When and under which exchange: the office replays the thread by them
+    // When and under which exchange: the office places what crossed the room by them
     const when = { at: line.at, parent: line.parent };
     switch (line.kind) {
       case "user":
@@ -375,32 +375,14 @@ export type ScreenAct =
   /** Handed files over through the write line; they are kept at these workspace paths. */
   | { kind: "gave"; paths: string[] };
 
-/**
- * Drafts and selected recipients survive switching threads, independently for each participant;
- * so do an open Step in and the question on show. A thread's box is drawn again when the office
- * opens or closes over it (bot-room), and takes up where the last one left off.
- */
+/** Drafts and selected recipients survive switching threads, independently for each participant. */
 const drafts = new Map<string, Map<string, string>>();
 const recipients = new Map<string, string>();
-/** The tab a thread's box last followed, so a pick made on it since outlives the box. */
-const tabs = new Map<string, string>();
-const boxes = new Map<string, { stepping: boolean; question?: string }>();
 
 export const threadDrafts = {
   recipient: (id: string) => recipients.get(id),
   select: (id: string, bot: string) => {
     recipients.set(id, bot);
-  },
-  tab: (id: string) => tabs.get(id),
-  /** A tab opened: the box addresses its bot. */
-  follow: (id: string, bot: string) => {
-    tabs.set(id, bot);
-    recipients.set(id, bot);
-  },
-  /** Whether Step in is open, and which question is on show. */
-  box: (id: string) => boxes.get(id) ?? { stepping: false },
-  keepBox: (id: string, box: { stepping?: boolean; question?: string }) => {
-    boxes.set(id, { ...threadDrafts.box(id), ...box });
   },
   get: (id: string, bot: string, question?: string) =>
     drafts.get(id)?.get(JSON.stringify([bot, question ?? null])) ?? "",
@@ -468,6 +450,32 @@ export function useRoomOpen(): RoomStands {
     },
     () => roomStands,
     () => null,
+  );
+}
+
+/**
+ * Whether the thread open in the room is drawn as its office where her face stands (bot-room):
+ * the call screen puts her face away meanwhile, and says a call is on in her words instead.
+ */
+let officeUp = false;
+const officeListeners = new Set<() => void>();
+
+export const roomOffice = {
+  set(up: boolean) {
+    if (up === officeUp) return;
+    officeUp = up;
+    for (const listener of officeListeners) listener();
+  },
+};
+
+export function useRoomOffice(): boolean {
+  return useSyncExternalStore(
+    (listener) => {
+      officeListeners.add(listener);
+      return () => officeListeners.delete(listener);
+    },
+    () => officeUp,
+    () => false,
   );
 }
 

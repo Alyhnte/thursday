@@ -3569,25 +3569,6 @@ test("answer drafts remain separate for two questions from the same bot", async 
   assert.equal(threadDrafts.get("draft-room", "Alpha"), "A general message");
 });
 
-test("a thread's box drawn again keeps the bot picked on its tab, its open Step in and the question on show", async () => {
-  const { threadDrafts } = await import("../features/bot/thread.store.ts");
-  // Alpha's tab opened, Beta picked on it: the box the office draws on the same tab keeps Beta
-  threadDrafts.follow("box-room", "Alpha");
-  threadDrafts.select("box-room", "Beta");
-  assert.equal(threadDrafts.tab("box-room"), "Alpha");
-  assert.equal(threadDrafts.recipient("box-room"), "Beta");
-  threadDrafts.keepBox("box-room", { stepping: true });
-  threadDrafts.keepBox("box-room", { question: "second" });
-  assert.deepEqual(threadDrafts.box("box-room"), {
-    stepping: true,
-    question: "second",
-  });
-  // Another tab opened addresses its bot
-  threadDrafts.follow("box-room", "Gamma");
-  assert.equal(threadDrafts.recipient("box-room"), "Gamma");
-  assert.deepEqual(threadDrafts.box("another-room"), { stepping: false });
-});
-
 test("a question's line names the room question it opened, the same words asked twice apart", async () => {
   plans.set("Alpha", [
     () => ask("Thursday", "Continue?"),

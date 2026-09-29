@@ -2,7 +2,6 @@
 
 import { format } from "date-fns";
 import {
-  Box,
   Check,
   ChevronDown,
   ChevronLeft,
@@ -74,13 +73,10 @@ export function ThreadHeader({
   thread,
   onBack,
   onClose,
-  onOffice,
 }: {
   thread: ThreadView;
   onBack: () => void;
   onClose: () => void;
-  /** Opens the thread as an office (office-view), nearly the whole window. */
-  onOffice?: () => void;
 }) {
   return (
     <div className="flex items-center gap-2 px-3 pt-3 pb-1">
@@ -105,17 +101,6 @@ export function ThreadHeader({
         {thread.label}
       </span>
       <ThreadFacts thread={thread} />
-      {onOffice && (
-        <button
-          type="button"
-          onClick={onOffice}
-          aria-label="Watch it in the office"
-          title="Watch it in the office"
-          className="grid size-7 shrink-0 place-items-center rounded-full bg-muted text-foreground outline-none transition-colors hover:bg-muted-foreground/20 focus-visible:ring-3 focus-visible:ring-ring/50"
-        >
-          <Box className="size-3.5" />
-        </button>
-      )}
       <FoldButton onClick={onClose} />
     </div>
   );

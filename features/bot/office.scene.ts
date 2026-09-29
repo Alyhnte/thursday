@@ -144,22 +144,33 @@ type Fit = {
 /** Room the fitted building leaves on screen: the caption above it, the zoom buttons below. */
 const MARGIN = { top: 48, side: 20, bottom: 16 };
 
-/** The building fitted into a box on screen. */
-function fitOf(width: number, box: { w: number; h: number }): Fit {
+/** How deep the name's first row (THE JOB) and each of its lines lie on the ground, in ground units. */
+const NAME_DEEP = 2.6;
+const NAME_LINE = 8.6;
+
+/** The building, and the ground its job's name lies on, fitted into a box on screen. */
+function fitOf(
+  width: number,
+  box: { w: number; h: number },
+  name: { x0: number; x1: number; y0: number; y1: number },
+): Fit {
   let a0 = Number.POSITIVE_INFINITY;
   let a1 = Number.NEGATIVE_INFINITY;
   let b0 = Number.POSITIVE_INFINITY;
   let b1 = Number.NEGATIVE_INFINITY;
+  const reach = (x: number, y: number, z: number) => {
+    const a = (x - y) * UX;
+    const b = (x + y) * UY - z * UZ;
+    a0 = Math.min(a0, a);
+    a1 = Math.max(a1, a);
+    b0 = Math.min(b0, b);
+    b1 = Math.max(b1, b);
+  };
   for (const x of [-4, width + 3])
     for (const y of [-4, DEPTH + 3])
-      for (const z of [-6, WALL + 2]) {
-        const a = (x - y) * UX;
-        const b = (x + y) * UY - z * UZ;
-        a0 = Math.min(a0, a);
-        a1 = Math.max(a1, a);
-        b0 = Math.min(b0, b);
-        b1 = Math.max(b1, b);
-      }
+      for (const z of [-6, WALL + 2]) reach(x, y, z);
+  for (const x of [name.x0, name.x1])
+    for (const y of [name.y0, name.y1]) reach(x, y, -5);
   const w = Math.max(1, box.w - 2 * MARGIN.side);
   const h = Math.max(1, box.h - MARGIN.top - MARGIN.bottom);
   const s = Math.min(w / (a1 - a0), h / (b1 - b0), 7.4);
@@ -336,7 +347,7 @@ export type Stage = {
   pieces: Piece[];
   /** The clock on the coordinator's wall, and the job's name on the ground at four o'clock. */
   clock: { matrix: string; w: number; h: number };
-  mission: { matrix: string; w: number; h: number };
+  mission: { matrix: string; w: number; h: number; line: number };
   /** Size a bot is drawn at. */
   botSize: number;
   /** When the bots pop in, and when the whole opening build is over, in ms. */
@@ -371,10 +382,40 @@ export function stageOf(
 ): Stage {
   const { helpers, at: joinAt } = joinsOf(scene);
   const plan = planOf(scene.office.coord, helpers);
-  const fit = fitOf(plan.width, size);
   const W = plan.width;
   const D = DEPTH;
   const Z0 = -5;
+  // The job's name runs along the building's right side, centred a little behind its middle,
+  // where the view has room; its length is read off the letters, as the text is not laid out yet
+  const LETTERS = 84;
+  const ems = [...label].reduce(
+    (sum, ch) =>
+      sum +
+      // wide scripts (CJK and after) take about an em, Latin about half
+      ((ch.codePointAt(0) ?? 0) >= 0x2e80
+        ? 0.92
+        : /[A-Z]/.test(ch)
+          ? 0.66
+          : /[a-z0-9]/.test(ch)
+            ? 0.56
+            : ch === " "
+              ? 0.28
+              : 0.5),
+    0,
+  );
+  // A line runs three quarters of the building's length at most (a ground unit is ten of the
+  // name's pixels); a longer name wraps under it, up to three lines, and is fitted in view with
+  // the building rather than run off past it
+  const nameLine = Math.min(ems * LETTERS, D * 7.5);
+  const nameLines = Math.min(3, Math.ceil((ems * LETTERS) / (D * 7.5)));
+  const span = nameLine / 10;
+  const nameAt = clamp(D * 0.45 + span / 2, span, D + 12);
+  const fit = fitOf(plan.width, size, {
+    x0: W + 9,
+    x1: W + 9 + NAME_DEEP + nameLines * NAME_LINE,
+    y0: nameAt,
+    y1: nameAt - span,
+  });
   const faces: Face[] = [];
   const lines: Stroke[] = [];
   const shades: Stage["shades"] = [];
@@ -790,25 +831,6 @@ export function stageOf(
     const k = fit.s / px;
     return `matrix(${[UX * k, -UY * k, UX * k, UY * k, tx, ty].map(r2).join(",")})`;
   };
-  // The job's name runs along the building's right side, centred a little behind its middle,
-  // where the view has room; its length is read off the letters, as the text is not laid out yet
-  const LETTERS = 84;
-  const ems = [...label].reduce(
-    (sum, ch) =>
-      sum +
-      // wide scripts (CJK and after) take about an em, Latin about half
-      ((ch.codePointAt(0) ?? 0) >= 0x2e80
-        ? 0.92
-        : /[A-Z]/.test(ch)
-          ? 0.66
-          : /[a-z0-9]/.test(ch)
-            ? 0.56
-            : ch === " "
-              ? 0.28
-              : 0.5),
-    0,
-  );
-  const span = (ems * LETTERS) / 10;
   const popAt = built + 90;
   return {
     plan,
@@ -820,9 +842,10 @@ export function stageOf(
     pieces,
     clock: { matrix: onWall(23.8, 0.2, 14.6, 6.4), w: 150, h: 64 },
     mission: {
-      matrix: onGround(W + 9, clamp(D * 0.45 + span / 2, span, D + 12), Z0, 10),
-      w: Math.round(ems * LETTERS + 160),
-      h: 150,
+      matrix: onGround(W + 9, nameAt, Z0, 10),
+      w: Math.round(nameLine + 160),
+      h: 66 + nameLines * 88,
+      line: Math.round(nameLine),
     },
     botSize: Math.round(clamp(fit.s * 10.8, 36, 64)),
     popAt,

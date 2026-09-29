@@ -10,6 +10,7 @@
  */
 
 import { TOOL_NAMES } from "@/features/ai/tools/tool-name";
+import { pathsIn } from "@/features/workspace/file-kind";
 import { toDate } from "@/lib/date-like";
 import { plainText } from "@/lib/utils";
 import { ROOM_THURSDAY, type RoomView, type WorkState } from "./room.schema";
@@ -620,38 +621,6 @@ export function nowOf(scene: OfficeScene, bot: string, t: number): string {
   return bot === scene.office.coord ? "Reading the job" : "Reading the work";
 }
 
-/** What the caption says of a message. */
-export function kindWord(event: OfficeEvent): string {
-  switch (event.kind) {
-    case "job":
-      return "the job";
-    case "give":
-      return event.extra
-        ? "more work"
-        : event.after.length
-          ? `work, after ${namesOf(event.after)}`
-          : "work";
-    case "release":
-      return "held work goes out";
-    case "return":
-      return "answer";
-    case "question":
-      return "question";
-    case "answer":
-      return "your answer";
-    case "tell":
-      return "your words";
-    case "report":
-      return "final report";
-    case "refused":
-      return "turned down";
-  }
-}
-
-/** The last message that crossed the room by `t`. */
-export const beatAt = (scene: OfficeScene, t: number) =>
-  scene.events.findLast((event) => event.at <= t) ?? null;
-
 /** The question to you open at `t`, and the last one answered. */
 export function questionAt(scene: OfficeScene, t: number) {
   let open: OfficeEvent | null = null;
@@ -673,6 +642,19 @@ export function questionAt(scene: OfficeScene, t: number) {
 export const reportAt = (scene: OfficeScene, t: number) =>
   scene.events.find((event) => event.kind === "report" && event.at <= t) ??
   null;
+
+/**
+ * What the job handed over by `t`: each file its answers and its report name, with the bot whose
+ * words named it first, read as the room reads a file in a message (attachments, pathsIn).
+ */
+export function filesOf(scene: OfficeScene, t: number) {
+  const files = new Map<string, string>();
+  for (const event of scene.events)
+    if ((event.kind === "return" || event.kind === "report") && event.at <= t)
+      for (const path of pathsIn(event.text))
+        if (!files.has(path)) files.set(path, event.from);
+  return [...files].map(([path, bot]) => ({ path, bot }));
+}
 
 /** "now", "12s", "3m 5s", "2h 14m": how long a seat has stood so. */
 export function heldFor(since: number | null, t: number) {

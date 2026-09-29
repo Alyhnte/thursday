@@ -21,7 +21,6 @@ import {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
 } from "react";
 import { queryKey } from "@/app/api/query-key";
 import { Button } from "@/components/ui/button";
@@ -48,6 +47,7 @@ import { BotMark } from "@/features/bot/components/bot-mark";
 import { BotRoom } from "@/features/bot/components/bot-room";
 import { toolIcon } from "@/features/bot/components/bot-tool";
 import { useAnswerThread } from "@/features/bot/components/thread-reply";
+import { useRoomOffice, useRoomOpen } from "@/features/bot/thread.store";
 import {
   CallLines,
   useVoiceLine,
@@ -93,6 +93,7 @@ import {
 } from "@/features/thursday/use-thursday";
 import { ArtifactView } from "@/features/workspace/components/artifact-view";
 import { useHotkeyLabel } from "@/hooks/use-hotkey";
+import { useWide } from "@/hooks/use-wide";
 import { useServerRoute } from "@/lib/protocol/use-server-route";
 import { cn, errorToString, plainText } from "@/lib/utils";
 import { CaptionWords } from "./caption-words";
@@ -228,6 +229,10 @@ function CallScreen({
   const ringWord = useRingWord(calling);
   // the first-run intro lies over the call screen and draws a face of its own
   const covered = useCallHeld();
+  // A thread open in the room is drawn as its office where her face stands (bot-room): her face
+  // is put away meanwhile, and a call on says so in her words at the top
+  const office = useRoomOffice();
+  const reading = useRoomOpen() === "thread";
   return (
     // Out of reach while the intro lies over it: a Tab or a click past the intro reached her
     // face here and placed a real call (call-signal holds only the wake word and the hotkey)
@@ -241,8 +246,28 @@ function CallScreen({
         <ShownPreview />
       </div>
 
+      {office && status !== "idle" && !writing && (
+        <p className="absolute top-5 left-6 z-20 line-clamp-2 max-w-[calc(100%-45rem)] text-[17px] leading-relaxed">
+          <span
+            aria-hidden
+            className={cn(
+              "mr-4 inline-block size-2.5 rounded-full bg-brand align-middle",
+              status === "speaking"
+                ? "animate-pulse motion-reduce:animate-none"
+                : "opacity-55",
+            )}
+          />
+          {hers || (busy ? "Calling" : "On a call")}
+        </p>
+      )}
+
       {/* Top padding in vh, like the face itself, so the face+text column sits below center */}
-      <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-5 pt-[7vh]">
+      <div
+        className={cn(
+          "flex min-h-0 flex-1 flex-col items-center justify-center gap-5 pt-[7vh]",
+          office && "invisible",
+        )}
+      >
         {/* The face is the control. It reacts to the agent's own voice. */}
         {/* The layout box is the part of her face she fills while talking; the canvas draws
             `--face-bleed` past it on every side for the room her words, the tail she works
@@ -413,8 +438,11 @@ function CallScreen({
       </div>
 
       <CallFoot>
-        {/* Documents a finished thread produced; opens itself on the artifact event */}
-        <ArtifactView />
+        {/* Documents a finished thread produced; opens itself on the artifact event. Kept
+            quiet while a thread is read, which has the screen */}
+        <div className={cn("contents", reading && "*:invisible")}>
+          <ArtifactView />
+        </div>
         {/* Whatever is typed or handed over instead of said */}
         <WriteLine written={written} onCall={live} />
         <BotRoom />
@@ -475,19 +503,6 @@ function CornerDot({ alert }: { alert: SectionAlert }) {
  * (24vw) and her lines a few words each, so the call draws her last line under her face.
  */
 const SIDES_MIN_WIDTH = 1000;
-
-/** Whether the window is at least `px` wide, kept current; a server render counts as wide. */
-function useWide(px: number) {
-  return useSyncExternalStore(
-    (listener) => {
-      const query = window.matchMedia(`(min-width: ${px}px)`);
-      query.addEventListener("change", listener);
-      return () => query.removeEventListener("change", listener);
-    },
-    () => window.matchMedia(`(min-width: ${px}px)`).matches,
-    () => true,
-  );
-}
 
 function SettingsCorner() {
   const alerts = useSectionAlerts();
