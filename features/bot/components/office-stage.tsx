@@ -35,10 +35,11 @@ import {
   type Mug,
   momentOf,
   motionOf,
-  NAME_LINE,
   type Paper,
   type Piece,
   restAt,
+  type Sheet,
+  SIGN_BOX,
   type Stage,
   type Stroke,
   stageOf,
@@ -139,10 +140,10 @@ const ink = (percent: number) =>
  * The office: a sketch of the thread's rooms, its bots at their desks and on the move, pan and
  * zoom like a canvas. It builds itself as it opens, and its bots leap now and then (office.scene
  * tricksOf). Over each bot a plate says in one line what it is on, what it asks or what it handed
- * back; a bot that is not at work folds to its name until pointed at, and pressing a plate opens
- * it where it is to what the bot was asked and how far it has come. The job's name heads it at
- * the top left, how the job stands is stamped on the ground beside the building, and the wall
- * clock says how long it has run.
+ * back; a bot that is not at work folds to the mark of how it stands until pointed at, and
+ * pressing a plate opens it where it is to what the bot was asked and how far it has come. The
+ * job's name heads it at the top left, how the job stands is stamped on the ground beside the
+ * building, and the wall clock says how long it has run.
  */
 export function OfficeStage({
   scene,
@@ -173,33 +174,35 @@ export function OfficeStage({
   const [calm] = useState(
     () => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
   );
-  // The job's name as laid out on the ground (Mission), so the building is fitted with it
-  const [named, setNamed] = useState<{ w: number; h: number } | null>(null);
   const stage = useMemo(
-    () =>
-      size && size.w > 0 && size.h > 0 ? stageOf(scene, size, named) : null,
-    [scene, size, named],
+    () => (size && size.w > 0 && size.h > 0 ? stageOf(scene, size) : null),
+    [scene, size],
   );
   const trips = useMemo(
     () => (stage ? tripsOf(scene, stage.plan) : []),
     [scene, stage],
   );
+  // The build runs once, from the first drawing; when it is over the office stands (scene
+  // seconds) and the clock may move
+  const [stood, setStood] = useState<number | null>(null);
+  const built = stood !== null;
+  const builds = stage?.built ?? null;
+  useEffect(() => {
+    if (builds === null || built) return;
+    const done = window.setTimeout(
+      () => setStood((Date.now() - start) / 1000),
+      builds,
+    );
+    return () => window.clearTimeout(done);
+  }, [builds === null, built, start]);
   const tricks = useMemo(
-    () => (calm ? [] : tricksOf(scene, trips)),
-    [calm, scene, trips],
+    () => (calm ? [] : tricksOf(scene, trips, stood)),
+    [calm, scene, trips, stood],
   );
   const spans = useMemo(
     () => (stage ? motionOf(scene, stage, trips, tricks) : null),
     [scene, stage, trips, tricks],
   );
-  // The build runs once, from the first drawing: then the clock may move
-  const [built, setBuilt] = useState(false);
-  const builds = stage?.built ?? null;
-  useEffect(() => {
-    if (builds === null || built) return;
-    const done = window.setTimeout(() => setBuilt(true), builds);
-    return () => window.clearTimeout(done);
-  }, [builds === null, built]);
   const t = useSceneClock(start, built ? spans : null);
   const moment = stage
     ? momentOf(scene, stage, trips, tricks, t, selected)
@@ -405,6 +408,10 @@ export function OfficeStage({
               {moment.pins.map((paper) => (
                 <PaperShape key={paper.id} paper={paper} />
               ))}
+              {moment.tossed.map(
+                (sheet) =>
+                  sheet.landed && <SheetShape key={sheet.id} sheet={sheet} />,
+              )}
               {moment.trail.map((step) => (
                 <ellipse
                   key={step.id}
@@ -433,17 +440,17 @@ export function OfficeStage({
                   <PaperShape key={sprite.paper.id} paper={sprite.paper} />
                 ),
               )}
-              {moment.tossed.map((sheet) => (
-                <Sheet key={sheet.id} sheet={sheet} />
-              ))}
+              {moment.tossed.map(
+                (sheet) =>
+                  !sheet.landed && <SheetShape key={sheet.id} sheet={sheet} />,
+              )}
             </svg>
             <WallClock stage={stage} start={start} ended={scene.ended} />
-            <Mission
+            <GroundSign
               stage={stage}
-              label={label}
               sign={sign}
+              ended={scene.ended}
               land={built ? 0 : stage.popAt + 250}
-              onMeasure={setNamed}
             />
           </div>
           <div
@@ -485,6 +492,7 @@ export function OfficeStage({
                 size={stage.botSize * view.z}
                 width={size.w}
                 picked={selected === tag.bot}
+                hush={moment.hush}
                 onPick={() => onSelect(tag.bot)}
                 from={from}
               />
@@ -492,6 +500,7 @@ export function OfficeStage({
           </div>
           <OfficeHead
             label={label}
+            bots={scene.office.bots.length}
             files={
               scene.office.status === "done"
                 ? files.filter((file) => onDisk(file.path))
@@ -589,26 +598,36 @@ function Elapsed({
   );
 }
 
+/** How many of the job's files the head shows before the rest fold under "+N more". */
+const HEAD_FILES = 3;
+
 /**
- * The office's head, at its top left: the job's name, and once the job is done the files it
- * handed over, each under the bot whose words named it; pressing one opens it. How the job stands
- * is painted on the ground (Mission) and how long it has run is the wall clock's. During a call
- * her words stand above it (thursday), and it steps down under them.
+ * The office's head, at its top left: the job's name, and once the job is done how many bots
+ * worked on it and the files it handed over, each with the bot whose words named it; pressing one
+ * opens it. Past the first few the rest fold under "+N more", opened in place. How the job stands
+ * and how long it took are stamped on the ground (GroundSign) and kept by the wall clock. During
+ * a call her words stand above it (thursday), and it steps down under them.
  */
 function OfficeHead({
   label,
+  bots,
   files,
   from,
 }: {
   label: string;
+  bots: number;
   files: { path: string; bot: string }[];
   from: string;
 }) {
   const captioned = useOfficeCaption();
+  const [all, setAll] = useState(false);
+  // Folding away a single file saves nothing
+  const folds = files.length > HEAD_FILES + 1;
+  const shown = folds && !all ? files.slice(0, HEAD_FILES) : files;
   return (
     <div
       className={cn(
-        "pointer-events-none absolute left-6 flex max-w-[min(46rem,calc(100%-3rem))] animate-in flex-col gap-3 fade-in transition-[top] duration-300",
+        "pointer-events-none absolute left-6 flex max-w-[min(34rem,calc(100%-3rem))] animate-in flex-col gap-3 fade-in transition-[top] duration-300",
         captioned ? "top-24" : "top-5",
       )}
     >
@@ -616,26 +635,48 @@ function OfficeHead({
         {label}
       </h2>
       {files.length > 0 && (
-        <div className="pointer-events-auto flex animate-in flex-wrap gap-1.5 fade-in slide-in-from-top-1 duration-300">
-          {files.map((file) => {
-            const Icon = fileIcon(file.path);
-            return (
-              <FileLink
-                key={file.path}
-                path={file.path}
-                from={from}
-                className="flex h-7 max-w-64 items-center gap-1.5 rounded-full bg-background pr-3 pl-2.5 text-[12.5px] shadow-sm outline-none ring-1 ring-border transition-colors hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50"
+        <div className="flex animate-in flex-col gap-2 fade-in slide-in-from-top-1 duration-300">
+          <span className="font-mono text-[11.5px] text-muted-foreground tabular-nums">
+            {bots} {bots === 1 ? "bot" : "bots"} · {files.length}{" "}
+            {files.length === 1 ? "file" : "files"}
+          </span>
+          <div
+            className={cn(
+              "pointer-events-auto flex flex-wrap gap-1.5",
+              all &&
+                "max-h-60 overflow-y-auto rounded-2xl bg-background/80 p-1.5 ring-1 ring-border scrollbar-none",
+            )}
+          >
+            {shown.map((file) => {
+              const Icon = fileIcon(file.path);
+              return (
+                <FileLink
+                  key={file.path}
+                  path={file.path}
+                  from={from}
+                  className="flex h-7 max-w-64 items-center gap-1.5 rounded-full bg-background pr-3 pl-2.5 text-[12.5px] shadow-sm outline-none ring-1 ring-border transition-colors hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50"
+                >
+                  <Icon className="size-3.5 shrink-0 text-muted-foreground" />
+                  <span className="min-w-0 truncate">
+                    {file.path.split("/").pop()}
+                  </span>
+                  <span className="shrink-0 text-muted-foreground">
+                    {file.bot}
+                  </span>
+                </FileLink>
+              );
+            })}
+            {folds && (
+              <button
+                type="button"
+                onClick={() => setAll((was) => !was)}
+                aria-expanded={all}
+                className="flex h-7 items-center rounded-full bg-foreground/7 px-3 text-[12.5px] outline-none transition-colors hover:bg-foreground/12 focus-visible:ring-3 focus-visible:ring-ring/50"
               >
-                <Icon className="size-3.5 shrink-0 text-muted-foreground" />
-                <span className="min-w-0 truncate">
-                  {file.path.split("/").pop()}
-                </span>
-                <span className="shrink-0 text-muted-foreground">
-                  {file.bot}
-                </span>
-              </FileLink>
-            );
-          })}
+                {all ? "Fewer" : `+${files.length - HEAD_FILES} more`}
+              </button>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -768,85 +809,71 @@ const SIGN_WORDS: Record<Sign, string> = {
 };
 
 /**
- * The job's name, painted on the ground beside the building, with how the job stands stamped
- * over it. At most three quarters of the building's length a line. Measured as laid out, so the
- * building is fitted in view with it (office.scene stageOf); what changes with the state never
- * changes that measure.
+ * How the job stands, stamped on a plot of ground beside the building (office.scene SIGN_BOX,
+ * fitted in view with it): a band of tape while it is at work, then a stamp that lands as the
+ * state changes — ember when it is the user's turn or paused on Continue, the ink when it is
+ * done, faint when stopped — with how long it took under a finished or stopped one. One that
+ * stands as the office opens lands once the office stands (`land`), so it is seen landing.
  */
-function Mission({
+function GroundSign({
   stage,
-  label,
   sign,
+  ended,
   land,
-  onMeasure,
 }: {
   stage: Stage;
-  label: string;
   sign: Sign;
+  /** When the job was seen to end, in scene seconds; null while it runs. */
+  ended: number | null;
   /** How long the stamp waits to land (ms): until the office stands, as it opens; at once after. */
   land: number;
-  onMeasure: React.Dispatch<
-    React.SetStateAction<{ w: number; h: number } | null>
-  >;
 }) {
-  const block = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    const node = block.current;
-    if (!node) return;
-    const read = () => {
-      const w = node.offsetWidth;
-      const h = node.offsetHeight;
-      onMeasure((was) => (was && was.w === w && was.h === h ? was : { w, h }));
-    };
-    read();
-    // The name's own face may land after the first reading
-    void document.fonts?.ready.then(read);
-  }, [label, onMeasure]);
   return (
     <div
       className="office-fade pointer-events-none absolute top-0 left-0 origin-top-left"
       style={{
-        transform: stage.mission.matrix,
+        width: SIGN_BOX.w,
+        height: SIGN_BOX.h,
+        transform: stage.sign.matrix,
         animationDelay: `${stage.popAt}ms`,
       }}
     >
-      <div
-        ref={block}
-        className="relative flex w-max flex-col gap-1"
-        style={{ maxWidth: NAME_LINE }}
-      >
-        <span className="font-semibold text-[21px] text-foreground/30 tracking-[0.14em]">
-          THE JOB
-        </span>
-        <span className="line-clamp-3 text-balance break-words font-bold text-[84px] text-foreground/8 leading-[1.02] tracking-tight">
-          {label}
-        </span>
-        <span className="-mr-22 -ml-4.5 mt-1 h-0.5 bg-foreground/13" />
-        <Stamp key={sign} sign={sign} land={land} />
-      </div>
+      <Stamp key={sign} sign={sign} ended={ended} land={land} />
     </div>
   );
 }
 
-/**
- * How the job stands, stamped over its name on the ground: a band of tape while it is at work,
- * then a stamp that lands as the state changes — ember when it is the user's turn or paused on
- * Continue, the ink when it is done, faint when stopped. One that stands as the office opens
- * lands once the office stands (`land`, read as it mounts), so it is seen landing.
- */
-function Stamp({ sign, land }: { sign: Sign; land: number }) {
+function Stamp({
+  sign,
+  ended,
+  land,
+}: {
+  sign: Sign;
+  ended: number | null;
+  land: number;
+}) {
+  // Read as it mounts: a stamp that changes later lands at once
   const [wait] = useState(land);
   if (sign === "work")
     return (
-      <div className="absolute top-full -right-22 -left-4.5 mt-4 flex h-13.5 animate-office-tape items-center bg-[repeating-linear-gradient(-45deg,color-mix(in_oklab,var(--ink)_14%,transparent)_0_18px,transparent_18px_36px)] pl-7 font-bold text-[26px] text-foreground/45 tracking-[0.2em] motion-reduce:animate-none">
-        {SIGN_WORDS.work}
+      <div className="absolute inset-x-0 top-5 flex h-13.5 items-center overflow-hidden pl-7 font-bold text-[26px] text-foreground/45 tracking-[0.2em]">
+        {/* One repeat wider than the tape, slid along by a repeat and round again (office-tape) */}
+        <span
+          aria-hidden
+          className="absolute inset-y-0 right-0 -left-[51px] animate-office-tape bg-[repeating-linear-gradient(-45deg,color-mix(in_oklab,var(--ink)_14%,transparent)_0_18px,transparent_18px_36px)] motion-reduce:animate-none"
+        />
+        <span className="relative">{SIGN_WORDS.work}</span>
       </div>
     );
+  const took =
+    ended !== null && (sign === "done" || sign === "stopped")
+      ? `${sign === "done" ? "IN" : "AFTER"} ${clockOf(ended)}`
+      : null;
   return (
-    <div className="absolute top-9 left-10 -rotate-8">
+    <div className="absolute top-6 left-6 -rotate-8">
       <div
         className={cn(
-          "animate-office-stamp whitespace-nowrap rounded-[18px] border-[7px] border-double px-6.5 pt-1.5 pb-2.5 font-extrabold text-[92px] leading-none tracking-[0.06em] opacity-80 motion-reduce:animate-none",
+          "flex animate-office-stamp flex-col items-center whitespace-nowrap rounded-[18px] border-[7px] border-double px-6.5 pt-1.5 pb-2.5 font-extrabold text-[92px] leading-none tracking-[0.06em] opacity-80 motion-reduce:animate-none",
           sign === "done" && "text-foreground",
           (sign === "you" || sign === "paused") && "text-waiting",
           sign === "stopped" && "text-foreground/40",
@@ -854,6 +881,11 @@ function Stamp({ sign, land }: { sign: Sign; land: number }) {
         style={{ animationDelay: `${wait}ms` }}
       >
         {SIGN_WORDS[sign]}
+        {took && (
+          <span className="mt-2 border-current border-t-[3px] pt-2 font-bold font-mono text-[0.36em] tracking-[0.12em]">
+            {took}
+          </span>
+        )}
       </div>
     </div>
   );
@@ -1182,11 +1214,11 @@ function PaperShape({ paper }: { paper: Paper }) {
   );
 }
 
-/** A sheet thrown up at the report, turning over as it flutters down. */
-function Sheet({ sheet }: { sheet: Moment["tossed"][number] }) {
+/** A sheet thrown up at the report, lying in the ground's plane: its lines on its face, its back blank. */
+function SheetShape({ sheet }: { sheet: Sheet }) {
   return (
     <g
-      transform={`translate(${sheet.x} ${sheet.y}) rotate(${sheet.turn}) scale(${sheet.scale * sheet.face} ${sheet.scale})`}
+      transform={`${sheet.plane} rotate(${sheet.turn}) scale(${sheet.face} 1)`}
       opacity={sheet.opacity}
     >
       <rect
@@ -1198,23 +1230,24 @@ function Sheet({ sheet }: { sheet: Moment["tossed"][number] }) {
         style={{
           fill: sheet.dark ? "var(--ink)" : "var(--gray-0)",
           stroke: sheet.dark ? "var(--ink)" : ink(45),
-          strokeWidth: 1,
+          strokeWidth: 0.8,
         }}
       />
-      {[-5, -2, 1].map((top, index) => (
-        <rect
-          key={top}
-          x={-4.5}
-          y={top}
-          width={index === 2 ? 5 : 9}
-          height={1.4}
-          style={{
-            fill: sheet.dark
-              ? "color-mix(in oklab, var(--gray-0) 55%, transparent)"
-              : ink(32),
-          }}
-        />
-      ))}
+      {sheet.face > 0 &&
+        [-5, -2, 1].map((top, index) => (
+          <rect
+            key={top}
+            x={-4.5}
+            y={top}
+            width={index === 2 ? 5 : 9}
+            height={1.4}
+            style={{
+              fill: sheet.dark
+                ? "color-mix(in oklab, var(--gray-0) 55%, transparent)"
+                : ink(32),
+            }}
+          />
+        ))}
     </g>
   );
 }
@@ -1266,6 +1299,7 @@ function BotSprite({
             seed={walker.bot}
             {...iconProps(face?.icon)}
             state={walker.working ? "thinking" : "idle"}
+            crossed={walker.crossed}
             notify={false}
           />
         </g>
@@ -1433,8 +1467,8 @@ function ReportCard({ report, face }: { report: OfficeEvent; face?: BotRef }) {
 const PLATE_OPEN = 288;
 
 /**
- * A plate's measure: its mark and name with the pill's own padding (`pl-2`, `pr-2.25`), how
- * tall it stands (`h-6.5`), and the room kept between two plates.
+ * A plate's measure: the pill's own padding about its mark (`pl-2`, `pr-2.25`), how tall it
+ * stands (`h-6.5`), and the room kept between two plates.
  */
 const PLATE_PAD = 17;
 const PLATE_TALL = 26;
@@ -1442,12 +1476,12 @@ const PLATE_GAP = 4;
 /** How near the office's side an open plate may come before it unfolds inward instead. */
 const PLATE_EDGE = 12;
 
-/** How much room a plate takes as drawn: folded to its name, and what its line adds open. */
-type Room = { name: number; rest: number };
+/** How much room a plate takes as drawn: folded to its mark, and what its name and line add open. */
+type Room = { mark: number; rest: number };
 
 /**
  * Which open plates would lie over another plate, as the bots stand at their desks: those fold
- * to their names too, until pointed at. The pressed plate stays open, then any that wants the
+ * to their marks too, until pointed at. The pressed plate stays open, then any that wants the
  * user, then the rest in the office's order, so a crowded office still reads plate by plate
  * rather than as lines written over one another. Judged by the room each plate takes as drawn
  * (PlateAt), not by a guess at its letters.
@@ -1495,7 +1529,7 @@ function useCrowding(
       b.t < a.b + PLATE_GAP;
     const folded = entries.flatMap((one) => {
       const room = rooms.current.get(one.bot);
-      return room ? [box(one.bot, one.home.x, one.home.y, room.name)] : [];
+      return room ? [box(one.bot, one.home.x, one.home.y, room.mark)] : [];
     });
     const rank = (one: (typeof entries)[number]) =>
       one.bot === picked ? 2 : one.first ? 1 : 0;
@@ -1506,7 +1540,7 @@ function useCrowding(
       .sort((a, b) => rank(b) - rank(a))) {
       const room = rooms.current.get(one.bot);
       if (!room) continue;
-      const wide = box(one.bot, one.home.x, one.home.y, room.name + room.rest);
+      const wide = box(one.bot, one.home.x, one.home.y, room.mark + room.rest);
       const clash =
         one.bot !== picked &&
         [...folded, ...open].some(
@@ -1525,12 +1559,13 @@ function useCrowding(
 }
 
 /**
- * A bot's plate over its head: its mark and name, then one line for where it stands — the step
- * it is on shining while it works, what it asks in ember, what it handed back as files to open.
- * A bot that is not at work and wants nothing of you folds to its name, and unfolds while pointed
- * at or focused. Pressing it opens the plate itself, where it stands, to what the bot was asked
- * and how far it has come (office briefOf), until it is pressed again; above the bot, or over it
- * when the window's top is too near.
+ * A bot's plate over its head: the mark of how it stands and its name, then one line for where it
+ * stands — the step it is on shining while it works, what it asks in ember, what it handed back
+ * as files to open. A bot that is not at work and wants nothing of you folds to that mark alone,
+ * and unfolds while it or its bot is pointed at or focused. Pressing it opens the plate itself,
+ * where it stands, to what the bot was asked and how far it has come (office briefOf), until it
+ * is pressed again; above the bot, or over it when the window's top is too near. While sheets
+ * fly at the report the plates step back (`hush`).
  */
 function PlateAt({
   scene,
@@ -1546,6 +1581,7 @@ function PlateAt({
   size,
   width,
   picked,
+  hush,
   onPick,
   from,
 }: {
@@ -1563,6 +1599,7 @@ function PlateAt({
   size: number;
   width: number;
   picked: boolean;
+  hush: boolean;
   onPick: () => void;
   from: string;
 }) {
@@ -1574,33 +1611,33 @@ function PlateAt({
   // How much room it takes, folded and open, as drawn: for the crowding pass, and so a plate
   // near the office's edge unfolds away from it rather than past it; opened, how tall it stands
   const pill = useRef<HTMLDivElement>(null);
-  const name = useRef<HTMLSpanElement>(null);
+  const mark = useRef<HTMLSpanElement>(null);
   const [room, setRoom] = useState<Room | null>(null);
   const [tall, setTall] = useState(0);
   useLayoutEffect(() => {
-    if (!pill.current || !name.current) return;
+    if (!pill.current || !mark.current) return;
     let rest = 0;
     for (const inner of pill.current.querySelectorAll<HTMLElement>(
       "[data-unfold]",
     ))
       rest += inner.scrollWidth;
-    const next = { name: name.current.offsetWidth + PLATE_PAD, rest };
+    const next = { mark: mark.current.offsetWidth + PLATE_PAD, rest };
     onRoom(bot, next);
     setRoom((was) =>
-      was && was.name === next.name && was.rest === next.rest ? was : next,
+      was && was.mark === next.mark && was.rest === next.rest ? was : next,
     );
     const height = picked ? pill.current.offsetHeight : 0;
     setTall((was) => (was === height ? was : height));
   });
   const brief = picked ? briefOf(scene, bot, t) : null;
   const down = picked && tall > 0 && top - tall < 8;
-  const open = room ? room.name + room.rest : 0;
+  const open = room ? room.mark + room.rest : 0;
   const anchor = !room
     ? null
     : head.x + open / 2 > width - PLATE_EDGE
-      ? { right: -room.name / 2 }
+      ? { right: -room.mark / 2 }
       : head.x - open / 2 < PLATE_EDGE
-        ? { left: -room.name / 2 }
+        ? { left: -room.mark / 2 }
         : null;
   const time =
     plate.since !== null ? (
@@ -1617,12 +1654,13 @@ function PlateAt({
     <div
       data-plate
       className={cn(
-        "group/plate absolute size-0",
+        "group/plate absolute size-0 transition-opacity duration-500",
         picked
           ? "z-30"
           : folded
             ? "z-10 hover:z-30 focus-within:z-30"
             : "z-20 hover:z-30 focus-within:z-30",
+        hush && !picked && "opacity-15",
       )}
       style={{ left: head.x, top }}
     >
@@ -1689,10 +1727,12 @@ function PlateAt({
               picked ? "pl-3" : "pl-2",
             )}
           >
-            <span ref={name} className="flex shrink-0 items-center">
+            <span ref={mark} className="flex shrink-0 items-center">
               <StateGlyph state={state.key} />
-              <span className="ml-1.5 font-semibold">{bot}</span>
             </span>
+            <Unfold open={!folded}>
+              <span className="font-semibold">{bot}</span>
+            </Unfold>
             {line.kind !== "files" && (
               <Unfold open={!folded} fit={picked}>
                 <LineWords line={line} />
@@ -1877,7 +1917,10 @@ function BriefRow({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-/** The mark a state wears on a plate: a live dot, an ember one, an open ring, an hourglass, a tick. */
+/**
+ * The mark a state wears on a plate, all a folded one shows: a live dot, an ember one, an open
+ * ring, an hourglass, a tick, a square when stopped, a faint dot for a bot not called yet.
+ */
 function StateGlyph({ state }: { state: SeatKey }) {
   switch (state) {
     case "run":
@@ -1942,7 +1985,9 @@ function StateGlyph({ state }: { state: SeatKey }) {
       return (
         <span className="size-1.75 shrink-0 rounded-xs bg-muted-foreground" />
       );
-    default:
-      return null;
+    case "none":
+      return (
+        <span className="size-1.5 shrink-0 rounded-full bg-muted-foreground/50" />
+      );
   }
 }

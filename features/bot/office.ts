@@ -108,6 +108,8 @@ export type OfficeThread = {
   /** Seconds from the handover to the last line. */
   span: number;
   status: ThreadView["status"];
+  /** Whether the user has had the ending (Thread `seen`). */
+  seen: boolean;
 };
 
 /** What a step says, as the conversation's own rows say it (room-conversation stepOf). */
@@ -429,6 +431,7 @@ export function officeOf(thread: ThreadView): OfficeThread {
     // Folded rather than spread: a long job's lines outnumber what a call takes as arguments
     span: lines.reduce((most, line) => Math.max(most, sec(line)), 0),
     status: thread.status,
+    seen: thread.seen,
   };
 }
 
@@ -454,6 +457,8 @@ export type OfficeMemory = {
   ended: number | null;
   /** When the office first read the thread: what comes after it is seen as it happens. */
   opened: number;
+  /** It first read the thread done with its ending not yet seen: the office opens on that finish. */
+  fresh: boolean;
 };
 
 /**
@@ -504,6 +509,7 @@ export function watch(
     reports,
     ended: over ? (memory?.ended ?? (first ? office.span : now)) : null,
     opened: memory?.opened ?? now,
+    fresh: memory?.fresh ?? (office.status === "done" && !office.seen),
   };
 }
 
@@ -515,8 +521,9 @@ export type OfficeScene = {
   seats: Map<string, Seat>;
   /** When the thread was seen to end; null while it runs. */
   ended: number | null;
-  /** When the office first read the thread (OfficeMemory). */
+  /** When the office first read the thread, and whether it opened on a finish not yet seen (OfficeMemory). */
   opened: number;
+  fresh: boolean;
 };
 
 export function sceneOf(
@@ -579,6 +586,7 @@ export function sceneOf(
     seats,
     ended: memory.ended,
     opened: memory.opened,
+    fresh: memory.fresh,
   };
 }
 
@@ -692,8 +700,8 @@ export type Plate = {
   state: SeatState;
   line: PlateLine;
   /**
-   * Folded to its mark and name until pointed at: it is not at work and waits on nobody but
-   * other bots, so a crowded office shows first who is working and who wants the user.
+   * Folded to the mark of how it stands until pointed at: it is not at work and waits on nobody
+   * but other bots, so a crowded office names first who is working and who wants the user.
    */
   folded: boolean;
   /** Where the time beside it counts from (scene seconds), while it runs or waits on you. */
@@ -803,9 +811,9 @@ export function plateOf(
 }
 
 /**
- * How the job stands as a whole, painted on the ground by its name (office-stage Mission): at
- * work, the user's turn (a bot asks them something), paused (the app stopped a run and waits on
- * Continue), stopped, or done.
+ * How the job stands as a whole, stamped on the ground beside the building (office-stage
+ * GroundSign): at work, the user's turn (a bot asks them something), paused (the app stopped a
+ * run and waits on Continue), stopped, or done.
  */
 export type Sign = "work" | "you" | "paused" | "stopped" | "done";
 

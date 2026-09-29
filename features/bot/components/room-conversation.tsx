@@ -99,6 +99,9 @@ export function ThreadHeader({
         outline={thread.bot.icon?.outline}
         paint={thread.bot.icon?.paint}
         notify={false}
+        crossed={
+          thread.status === "cancelled" || isDown(thread, thread.bot.name)
+        }
       />
       <span className="min-w-0 flex-1 truncate text-[13px] font-medium">
         {thread.label}
@@ -401,6 +404,7 @@ function ThreadTabs({
                 outline={bot.icon?.outline}
                 paint={bot.icon?.paint}
                 notify={standing === "asking"}
+                crossed={isDown(thread, bot.name)}
                 className="shrink-0"
               />
               <span className="max-w-28 truncate">{bot.name}</span>
@@ -418,6 +422,16 @@ function ThreadTabs({
 /** A tab as a pill that fills while its side is on screen, in place of the boxed look TabsTrigger brings. */
 export const TAB =
   "h-7 flex-none rounded-full px-3 py-0 text-[12px] text-muted-foreground hover:bg-muted/60 data-active:bg-muted data-active:text-foreground group-data-[variant=default]/tabs-list:data-active:shadow-none dark:data-active:border-transparent dark:data-active:bg-muted";
+
+/**
+ * Whether a bot's part in this thread was stopped, or paused by the app on Continue: its face
+ * has its eyes crossed out, as in the office (office.scene Walker `crossed`).
+ */
+const isDown = (thread: ThreadView, bot: string) =>
+  thread.room.participants.some(
+    (one) =>
+      one.bot === bot && (one.state === "cancelled" || one.state === "paused"),
+  );
 
 /** Whether a bot is at work in this thread or waiting on the user's answer. */
 function standingOf(

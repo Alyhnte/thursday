@@ -852,14 +852,13 @@ test("the office holds a hand-off in its tray and walks it out with the answer w
   assert.match(briefOf(done.scene, "Alpha", 30).sofar, /Reported to you$/);
   // Seen done: everyone leaps as the report reaches your counter, and Gamma hopped as the card it
   // held was let out to it; nothing leaps for what was there before the office opened
-  const { stageOf, tricksOf, tripsOf } = await import(
-    "../features/bot/office.scene.ts"
-  );
+  const { momentOf, motionOf, restAt, stageOf, tricksOf, tripsOf } =
+    await import("../features/bot/office.scene.ts");
   const trips = tripsOf(
     done.scene,
     stageOf(done.scene, { w: 1200, h: 800 }).plan,
   );
-  const tricks = tricksOf(done.scene, trips);
+  const tricks = tricksOf(done.scene, trips, null);
   const reached = trips.find((trip) => trip.out === "report")?.arrive ?? 0;
   const cheers = tricks.filter((one) => one.kind === "cheer");
   assert.deepEqual(
@@ -882,6 +881,52 @@ test("the office holds a hand-off in its tray and walks it out with the answer w
       (event) => event.kind === "give" && event.to === "Gamma",
     )?.after,
     [],
+  );
+  // Opened a minute after a finish not seen yet, everyone leaps once the office stands, not while
+  // it builds; opened on one already seen, nobody does
+  const after = sceneOf(
+    late.office,
+    watch(null, late.office, late.office.span + 60),
+  );
+  assert.equal(after.fresh, true);
+  const lateTrips = tripsOf(after, stageOf(after, { w: 1200, h: 800 }).plan);
+  assert.ok(
+    !tricksOf(after, lateTrips, null).some((one) => one.kind === "cheer"),
+  );
+  const stood = after.opened + 1.2;
+  const welcome = tricksOf(after, lateTrips, stood).filter(
+    (one) => one.kind === "cheer",
+  );
+  assert.deepEqual(
+    welcome.map((one) => one.bot),
+    ["Alpha", "Beta", "Gamma"],
+  );
+  assert.ok(welcome.every((one) => one.at > stood));
+  // Each throws four sheets that fly with the plates stepped back, lie on the floor still, and fade
+  const lateStage = stageOf(after, { w: 1200, h: 800 });
+  const all = tricksOf(after, lateTrips, stood);
+  const sheetsAt = (t: number) =>
+    momentOf(after, lateStage, lateTrips, all, t, null);
+  const thrown = Math.max(...welcome.map((one) => one.at));
+  const flying = sheetsAt(thrown + 0.5);
+  assert.equal(flying.tossed.length, 12);
+  assert.ok(flying.hush && flying.tossed.some((sheet) => !sheet.landed));
+  const lying = sheetsAt(thrown + 5);
+  assert.equal(lying.tossed.length, 12);
+  assert.ok(!lying.hush && lying.tossed.every((sheet) => sheet.landed));
+  // nothing of the cheer moves while its sheets lie there
+  assert.ok(
+    restAt(motionOf(after, lateStage, lateTrips, welcome), thrown + 5) > 0,
+  );
+  assert.equal(sheetsAt(thrown + 12).tossed.length, 0);
+  const seenOffice = { ...late.office, seen: true };
+  const seen = sceneOf(
+    seenOffice,
+    watch(null, seenOffice, seenOffice.span + 60),
+  );
+  assert.equal(seen.fresh, false);
+  assert.ok(
+    !tricksOf(seen, lateTrips, stood).some((one) => one.kind === "cheer"),
   );
 });
 
@@ -1150,7 +1195,11 @@ test("the turn limit parks the room, and the office says so seat by seat", async
     watch(null, parked.office, parked.office.span + 100),
   );
   assert.deepEqual(
-    tricksOf(later, tripsOf(later, stageOf(later, { w: 1200, h: 800 }).plan)),
+    tricksOf(
+      later,
+      tripsOf(later, stageOf(later, { w: 1200, h: 800 }).plan),
+      later.opened + 1,
+    ),
     [],
   );
   assert.equal(seatAt(parked.scene, "Beta").label, "Answered");
@@ -1254,7 +1303,7 @@ test("the office reads any bot name, whatever a plain object already holds by it
   );
   const stage = stageOf(scene, { w: 1200, h: 800 });
   const trips = tripsOf(scene, stage.plan);
-  const tricks = tricksOf(scene, trips);
+  const tricks = tricksOf(scene, trips, null);
   const moment = momentOf(scene, stage, trips, tricks, 61, null);
   // The held one waits on the one at work: a line over the floor from it to the held bot
   assert.deepEqual(

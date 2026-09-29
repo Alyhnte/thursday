@@ -658,13 +658,16 @@
     }
   }
 
-  /* The tape's stripes running while the job is at work; --tape is one stripe's length along it. */
+  /*
+   * The tape's stripes running while the job is at work, moved rather than repainted so they run
+   * on however busy the page is: one repeat of its 18px + 18px stripes at -45deg, 36px x sqrt 2.
+   */
   @keyframes office-tape {
     from {
-      background-position: 0 0;
+      transform: none;
     }
     to {
-      background-position: var(--tape, 50.91px) 0;
+      transform: translateX(50.91px);
     }
   }
 

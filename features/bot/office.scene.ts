@@ -144,16 +144,16 @@ type Fit = {
 /** Room the fitted building leaves on screen: the office's head above it (office-stage OfficeHead), the zoom buttons below. */
 const MARGIN = { top: 96, side: 20, bottom: 16 };
 
-/** A ground unit is this many of the job name's own pixels, as it lies on the ground (office-stage Mission). */
-export const NAME_PX = 10;
-/** The widest a line of the job's name runs, in its own pixels: three quarters of the building's length. */
-export const NAME_LINE = 100 * 7.5;
+/** A ground unit is this many of the sign's own pixels, as it lies on the ground (office-stage GroundSign). */
+const SIGN_PX = 10;
+/** The plot of ground the job's sign is stamped on, in its own pixels: room for its widest stamp and the time under it. */
+export const SIGN_BOX = { w: 640, h: 260 };
 
-/** The building, and the ground its job's name lies on, fitted into a box on screen. */
+/** The building, and the plot of ground its sign lies on, fitted into a box on screen. */
 function fitOf(
   width: number,
   box: { w: number; h: number },
-  name: { x0: number; x1: number; y0: number; y1: number } | null,
+  sign: { x0: number; x1: number; y0: number; y1: number },
 ): Fit {
   let a0 = Number.POSITIVE_INFINITY;
   let a1 = Number.NEGATIVE_INFINITY;
@@ -170,9 +170,8 @@ function fitOf(
   for (const x of [-4, width + 3])
     for (const y of [-4, DEPTH + 3])
       for (const z of [-6, WALL + 2]) reach(x, y, z);
-  if (name)
-    for (const x of [name.x0, name.x1])
-      for (const y of [name.y0, name.y1]) reach(x, y, -5);
+  for (const x of [sign.x0, sign.x1])
+    for (const y of [sign.y0, sign.y1]) reach(x, y, -5);
   const w = Math.max(1, box.w - 2 * MARGIN.side);
   const h = Math.max(1, box.h - MARGIN.top - MARGIN.bottom);
   const s = Math.min(w / (a1 - a0), h / (b1 - b0), 7.4);
@@ -347,9 +346,9 @@ export type Stage = {
   /** Shadows under the furniture; `of` names the piece that casts one. */
   shades: { points: string; delay: number; of: string | null }[];
   pieces: Piece[];
-  /** The clock on the coordinator's wall, and the job's name on the ground at four o'clock. */
+  /** The clock on the coordinator's wall, and the plot the job's sign is stamped on at four o'clock (SIGN_BOX). */
   clock: { matrix: string; w: number; h: number };
-  mission: { matrix: string };
+  sign: { matrix: string };
   /** The ground under the building, `w` by `d` in the plan's own units, laid on screen by `matrix`. */
   ground: { matrix: string; w: number; d: number };
   /** Size a bot is drawn at. */
@@ -382,30 +381,22 @@ export function joinsOf(scene: OfficeScene) {
 export function stageOf(
   scene: OfficeScene,
   size: { w: number; h: number },
-  /** The job's name as laid out, in its own pixels (office-stage Mission); null: none on the ground. */
-  name: { w: number; h: number } | null = null,
 ): Stage {
   const { helpers, at: joinAt } = joinsOf(scene);
   const plan = planOf(scene.office.coord, helpers);
   const W = plan.width;
   const D = DEPTH;
   const Z0 = -5;
-  // The job's name runs along the building's right side, centred a little behind its middle,
+  // The sign's plot runs along the building's right side, centred a little behind its middle,
   // where the view has room, and is fitted in view with the building
-  const span = (name?.w ?? 0) / NAME_PX;
-  const nameAt = clamp(D * 0.45 + span / 2, span, D + 12);
-  const fit = fitOf(
-    plan.width,
-    size,
-    name
-      ? {
-          x0: W + 9,
-          x1: W + 9 + name.h / NAME_PX,
-          y0: nameAt,
-          y1: nameAt - span,
-        }
-      : null,
-  );
+  const span = SIGN_BOX.w / SIGN_PX;
+  const signAt = D * 0.45 + span / 2;
+  const fit = fitOf(plan.width, size, {
+    x0: W + 9,
+    x1: W + 9 + SIGN_BOX.h / SIGN_PX,
+    y0: signAt,
+    y1: signAt - span,
+  });
   const faces: Face[] = [];
   const lines: Stroke[] = [];
   const shades: Stage["shades"] = [];
@@ -832,7 +823,7 @@ export function stageOf(
     shades,
     pieces,
     clock: { matrix: onWall(23.8, 0.2, 14.6, 6.4), w: 150, h: 64 },
-    mission: { matrix: onGround(W + 9, nameAt, Z0, NAME_PX) },
+    sign: { matrix: onGround(W + 9, signAt, Z0, SIGN_PX) },
     ground: {
       matrix: `matrix(${[UX * fit.s, UY * fit.s, -UX * fit.s, UY * fit.s, gx, gy].map(r2).join(",")})`,
       w: W,
@@ -1074,7 +1065,8 @@ function walkOf(trips: Trip[], who: string, t: number) {
  * A leap a bot takes by itself: a hop when work lands on its desk or it is back with the job or
  * your answer, a flip as it joins, now and then one while it stands about, and everyone's leap,
  * sheets thrown up, once the report reaches your counter. Only what the office sees happen: what
- * it opened on has happened already.
+ * it opened on has happened already, except a finish you had not seen yet (OfficeScene `fresh`),
+ * cheered once the office stands.
  */
 export type Trick = { bot: string; kind: "hop" | "flip" | "cheer"; at: number };
 
@@ -1088,8 +1080,11 @@ const LAND = 0.13;
 const IDLE = 30;
 /** How long after the office opens its bots still leap by themselves (s): one left open goes still. */
 const IDLE_FOR = 3600;
-/** How long a sheet thrown up at the report stays in the air, rising and fluttering down (s). */
-const FLIGHT = 2.8;
+/** How long a sheet thrown at the report lies where it landed, and then takes to fade (s). */
+const LIE = 5;
+const FADE = 0.8;
+/** The sheets each bot throws up at the report. */
+const SHEETS = [0, 1, 2, 3];
 
 /** A number in [0, 1) from a name and a count: the same for the same pair, scattered between them. */
 const scatter = (name: string, k: number) => {
@@ -1101,8 +1096,15 @@ const scatter = (name: string, k: number) => {
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 };
 
-/** Every leap from when the office opened: the ones the work sets off, then the odd one on its own. */
-export function tricksOf(scene: OfficeScene, trips: Trip[]): Trick[] {
+/**
+ * Every leap from when the office opened: the ones the work sets off, then the odd one on its own.
+ * `stood` is when the office stood built (scene seconds), null while it builds.
+ */
+export function tricksOf(
+  scene: OfficeScene,
+  trips: Trip[],
+  stood: number | null,
+): Trick[] {
   const coord = scene.office.coord;
   const from = scene.opened;
   const tricks: Trick[] = [];
@@ -1128,23 +1130,31 @@ export function tricksOf(scene: OfficeScene, trips: Trip[]): Trick[] {
     )
       add(to, "hop", trip.arrive + 0.05);
   }
-  // The report reaching your counter, seen as it happens: everyone leaps, throwing sheets up,
-  // then hops once more
+  // The report reaching your counter, seen as it happens or first seen as the office stands:
+  // everyone leaps, throwing sheets up, then hops once more
   const report = trips.findLast((trip) => trip.out === "report");
-  if (report && scene.office.status === "done" && report.event.closed === null)
+  const cheer =
+    !report || scene.office.status !== "done" || report.event.closed !== null
+      ? null
+      : report.arrive >= from
+        ? report.arrive
+        : scene.fresh && stood !== null
+          ? stood
+          : null;
+  if (report && cheer !== null)
     scene.office.bots.forEach((bot, index) => {
       if (
         bot !== coord &&
         (come.get(bot) ?? Number.POSITIVE_INFINITY) > report.arrive
       )
         return;
-      let at = report.arrive + 0.15 + index * 0.07;
-      // One on its way back from a desk joins in once it is home
+      let at = cheer + 0.15 + index * 0.07;
+      // One on its way joins in once home, or once there when it stays where it went; one
+      // that stays (a trip with no way back, as the report's to your counter) leaps there
       const walk = walkOf(trips, bot, at);
-      if (walk && walk.phase !== "at") {
-        if (!Number.isFinite(walk.trip.back)) return;
-        at = walk.trip.back + 0.1;
-      }
+      const home = Number.isFinite(walk?.trip.back);
+      if (walk && (walk.phase === "out" || (walk.phase === "back" && home)))
+        at = (home ? walk.trip.back : walk.trip.arrive) + 0.1;
       add(bot, "cheer", at);
       add(bot, "hop", at + LEAP.cheer + 0.06);
     });
@@ -1153,9 +1163,14 @@ export function tricksOf(scene: OfficeScene, trips: Trip[]): Trick[] {
   const sign = signOf(scene);
   if (sign === "paused" || sign === "stopped") return tricks;
   const byWork = [...tricks];
+  // standing still: at its desk, where it went, or staying there with no way back
   const standing = (bot: string, at: number) => {
     const walk = walkOf(trips, bot, at);
-    return !walk || walk.phase === "at";
+    return (
+      !walk ||
+      walk.phase === "at" ||
+      (walk.phase === "back" && !Number.isFinite(walk.trip.back))
+    );
   };
   for (const bot of scene.office.bots) {
     if (seatAt(scene, bot).key === "none") continue;
@@ -1202,50 +1217,97 @@ function leapAt(kind: Trick["kind"], u: number, size: number) {
   return { lift: 0, spin: 0, squash: 0.14 * Math.sin(p * Math.PI) };
 }
 
+/** Where a thrown sheet leaves the hands, in the bot's heights; how long a falling one takes to reach its speed (s). */
+const HANDS = 0.95;
+const RAMP = 0.3;
+
 /**
- * A sheet thrown up at the report, `u` seconds after it left the hand at (x, y): up fast, then
- * fluttering down, turning over and swaying as paper does, gone at the end of its flight.
+ * How a sheet thrown at the report flies: how long it rises and then falls to the floor (s),
+ * how high it goes and how fast it sinks (the bot's heights, and those a second).
+ */
+function flightOf(bot: string, index: number) {
+  const r = (k: number) => scatter(bot, 7919 * (index + 1) + k);
+  const top = HANDS + 1.5 + 0.7 * r(3);
+  const sink = 1.15 * (0.85 + 0.3 * r(4));
+  const rise = 0.4 + 0.1 * r(6);
+  return { rise, fall: top / sink + RAMP / 2, top, sink };
+}
+
+/** A sheet thrown at the report, as drawn: lying in the ground's plane at its height, laid on screen by `plane`. */
+export type Sheet = {
+  id: string;
+  /** Its place and size on screen, lying in the ground's plane (an SVG matrix). */
+  plane: string;
+  /** How far it has turned about the ground's up (degrees). */
+  turn: number;
+  /** Rocked about its length: 1 face up, -1 its blank back up. */
+  face: number;
+  /** On the floor: drawn under the furniture rather than over everything. */
+  landed: boolean;
+  dark: boolean;
+  opacity: number;
+};
+
+/**
+ * A sheet `u` seconds after it left the hands of `bot`, standing at `spot` on the plan: thrown
+ * up turning over, then falling as paper falls, swinging side to side and rocking less as it
+ * sinks, to lie flat where it lands a while before it fades. Kept inside the walls.
  */
 function sheetAt(
   bot: string,
   index: number,
-  x: number,
-  y: number,
+  spot: { x: number; y: number },
   u: number,
   size: number,
-) {
+  fit: Fit,
+  width: number,
+): Sheet {
   const r = (k: number) => scatter(bot, 7919 * (index + 1) + k);
-  // fanned out from the hand, left to right, each a little its own
-  const lean = (index - 1.5) * 0.42 + (r(1) - 0.5) * 0.3;
-  const high = size * (1.6 + 0.7 * r(2));
-  const top = 0.42;
-  const drift = Math.sin(lean) * size * 1.1;
-  const phase = r(3) * Math.PI * 2;
-  let sx: number;
-  let sy: number;
-  let turn: number;
-  if (u < top) {
-    const p = u / top;
-    sx = x + drift * p;
-    sy = y - high * (1 - (1 - p) ** 2);
-    turn = (r(4) - 0.5) * 60 + (index - 1.5) * 200 * p;
-  } else {
-    const fall = u - top;
-    const sway = Math.sin(fall * 5.4 + phase);
-    sx = x + drift + sway * size * 0.24;
-    sy = y - high + size * 1.25 * fall * Math.min(1, fall / 0.35);
-    turn = (r(4) - 0.5) * 60 + (index - 1.5) * 200 + sway * 26;
-  }
+  const { rise, fall, top, sink } = flightOf(bot, index);
+  const unit = size / fit.s;
+  const way = r(1) * Math.PI * 2;
+  const far = unit * (0.5 + 1.1 * r(2));
+  const swing = 4.2 + 1.4 * r(5);
+  const phase = r(7) * Math.PI * 2;
+  const turns = 1 + Math.round(r(9));
+  const spin = (r(11) < 0.5 ? -1 : 1) * (40 + 60 * r(10));
+  const f = clamp(u - rise, 0, fall);
+  const q = f / fall;
+  // how far out along its way, and the swing across it
+  const out = u < rise ? 0.3 * (u / rise) : 0.3 + 0.7 * q;
+  const sway = u < rise ? 0 : Math.sin(f * swing + phase) * unit * 0.35;
+  const x = clamp(
+    spot.x + Math.cos(way) * far * out - Math.sin(way) * sway,
+    1.5,
+    width - 1.5,
+  );
+  const y = clamp(
+    spot.y + Math.sin(way) * far * out + Math.cos(way) * sway,
+    1.5,
+    DEPTH - 1.5,
+  );
+  // its height, in the bot's heights
+  const high =
+    u < rise
+      ? HANDS + (top - HANDS) * (1 - (1 - u / rise) ** 2)
+      : top - sink * (f < RAMP ? (f * f) / (2 * RAMP) : f - RAMP / 2);
+  const [sx, sy] = fit.at(x, y, (Math.max(0, high) * unit) / UZ);
+  // over and over on the way up; on the way down rocking about the side it will land on
+  const rock =
+    u < rise
+      ? (u / rise) * turns * Math.PI
+      : turns * Math.PI + Math.cos(f * swing + phase) * 0.9 * (1 - q);
+  // about two thirds of the bot's height long (18 of SheetShape's units)
+  const k = (size * 0.62) / 18;
+  const opacity = clamp((rise + fall + LIE + FADE - u) / FADE, 0, 1);
   return {
     id: `${bot}-sheet${index}`,
-    x: r1(sx),
-    y: r1(sy),
-    turn: r1(turn),
-    /** How far it has turned over about its own length, as a sheet in the air does: 1 flat on, -1 its back. */
-    face: r2(Math.cos(u * (3.2 + r(5) * 2) + phase)),
-    scale: r2(size / 36),
-    dark: index % 2 === 1,
-    opacity: r2(clamp((FLIGHT - u) / 0.5, 0, 1)),
+    plane: `matrix(${[UX * k, UY * k, -UX * k, UY * k, sx, sy].map(r2).join(",")})`,
+    turn: r1(r(8) * 360 + (u < rise ? 160 * (u / rise) : 160 + spin * f)),
+    face: r2(Math.cos(rock)),
+    landed: u >= rise + fall,
+    dark: index % 4 === 1,
+    opacity: r2(opacity),
   };
 }
 
@@ -1278,6 +1340,8 @@ export type Walker = {
   size: number;
   carry: { dark: boolean; ember: boolean; stamp: boolean } | null;
   working: boolean;
+  /** Stopped, or paused on Continue: its eyes crossed out. */
+  crossed: boolean;
   selected: boolean;
 };
 
@@ -1289,8 +1353,10 @@ export type Moment = {
     | { kind: "paper"; paper: Paper }
   )[];
   pins: Paper[];
-  /** Sheets thrown up as the report reaches your counter, over everything. */
-  tossed: ReturnType<typeof sheetAt>[];
+  /** Sheets thrown up as the report reaches your counter: over everything, and on the floor once landed. */
+  tossed: Sheet[];
+  /** Sheets are in the air: the plates step back so they are seen. */
+  hush: boolean;
   trail: { id: string; x: number; y: number; opacity: number }[];
   shades: Stage["shades"];
   /** Hourglasses over trays holding a hand-off until others answer. */
@@ -1429,6 +1495,7 @@ export function momentOf(
           }
         : null,
       working: state.key === "run" && !walking,
+      crossed: state.key === "stopped" || state.key === "paused",
       selected: selected === bot,
     });
     tags.push({
@@ -1736,25 +1803,30 @@ export function momentOf(
     : refused && sender
       ? stampedAt(sender[0], sender[1], refused.at, refused)
       : null;
-  // sheets thrown up at the report, from where each bot's hands were as it left the ground
-  const tossed: Moment["tossed"] = [];
+  // sheets thrown up at the report, from where each bot stood as it left the ground
+  const tossed: Sheet[] = [];
+  let hush = false;
   for (const trick of tricks) {
+    if (trick.kind !== "cheer") continue;
     const u = t - trick.at - CROUCH;
-    if (trick.kind !== "cheer" || u < 0 || u >= FLIGHT) continue;
     const seat = seatOf(trick.bot);
-    if (!standing.has(trick.bot) || !seat) continue;
+    if (u < 0 || !standing.has(trick.bot) || !seat) continue;
     const walk = walkOf(trips, trick.bot, trick.at + CROUCH);
     const spot = walk
       ? along(walk.trip.route, walk.u)
       : { x: seat[0], y: seat[1] };
-    const [hx, hy] = fit.at(spot.x, spot.y, 0);
-    for (const index of [0, 1, 2, 3])
-      tossed.push(sheetAt(trick.bot, index, hx, hy - size * 0.95, u, size));
+    for (const index of SHEETS) {
+      const { rise, fall } = flightOf(trick.bot, index);
+      if (u >= rise + fall + LIE + FADE) continue;
+      if (u < rise + fall) hush = true;
+      tossed.push(sheetAt(trick.bot, index, spot, u, size, fit, plan.width));
+    }
   }
   return {
     sprites,
     pins,
     tossed,
+    hush,
     trail,
     shades,
     glasses,
@@ -1781,11 +1853,20 @@ export function motionOf(
   tricks: Trick[],
 ): [number, number][] {
   const spans: [number, number][] = [];
-  for (const trick of tricks)
-    spans.push([
-      trick.at,
-      trick.at + (trick.kind === "cheer" ? CROUCH + FLIGHT : LEAP[trick.kind]),
-    ]);
+  for (const trick of tricks) {
+    spans.push([trick.at, trick.at + LEAP[trick.kind]]);
+    // a cheer's sheets move while they fly and while they fade, and lie still between
+    if (trick.kind === "cheer")
+      for (const index of SHEETS) {
+        const { rise, fall } = flightOf(trick.bot, index);
+        const thrown = trick.at + CROUCH;
+        spans.push([thrown, thrown + rise + fall]);
+        spans.push([
+          thrown + rise + fall + LIE,
+          thrown + rise + fall + LIE + FADE,
+        ]);
+      }
+  }
   for (const trip of trips) {
     spans.push([trip.leave, trip.arrive + SETTLE]);
     if (Number.isFinite(trip.back)) spans.push([trip.stay, trip.back + SETTLE]);
