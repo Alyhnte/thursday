@@ -572,8 +572,8 @@ export const TEXT_MODEL_PROVIDERS: Record<
         efforts: ["none", "minimal", "low", "medium", "high", "xhigh"],
       },
       {
-        id: "claude-sonnet-5",
-        label: "Sonnet 5",
+        id: "claude-sonnet-5-5",
+        label: "Sonnet 5.5",
         tier: "mid",
         context: 1_000_000,
         efforts: ["none", "low", "medium", "high", "xhigh"],
@@ -660,8 +660,8 @@ export const TEXT_MODEL_PROVIDERS: Record<
         context: 500_000,
       },
       {
-        id: "anthropic/claude-sonnet-5",
-        label: "Claude Sonnet 5",
+        id: "anthropic/claude-sonnet-5.5",
+        label: "Claude Sonnet 5.5",
         tier: "mid",
       },
       {
@@ -721,8 +721,8 @@ export const TEXT_MODEL_PROVIDERS: Record<
         context: 500_000,
       },
       {
-        id: "anthropic/claude-sonnet-5",
-        label: "Claude Sonnet 5",
+        id: "anthropic/claude-sonnet-5.5",
+        label: "Claude Sonnet 5.5",
         tier: "mid",
         context: 1_000_000,
       },
