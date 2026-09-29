@@ -423,6 +423,11 @@ const REQUIRED = [
   "skills/artifact/runtime/motion/motion.html",
   "skills/artifact/runtime/motion/film.js",
   "skills/artifact/runtime/motion/fonts/Gaegu-Bold.woff2",
+  // The app's type, carried into every page the shell dresses (shell/wear.mjs)
+  "skills/artifact/runtime/shell/fonts/Geist-latin.woff2",
+  "skills/artifact/runtime/shell/fonts/Geist-latin-ext.woff2",
+  "skills/artifact/runtime/shell/fonts/GeistMono-latin.woff2",
+  "skills/artifact/runtime/shell/fonts/GeistMono-latin-ext.woff2",
   "skills/artifact/runtime/render.mjs",
   "skills/artifact/runtime/shell/wear.mjs",
   "skills/artifact/runtime/shell/put.mjs",

@@ -44,6 +44,9 @@ now only run the chart, the document script and the camera the artifact skill ho
   cut paper, crayon, people, things and places are drawn in code, and the music is made from
   sine partials; its reverb is the Freeverb layout of eight combs and four all-passes (Jezar,
   public domain). Its handwriting is Gaegu Bold (OFL, `runtime/motion/fonts/OFL.txt`).
+- **`artifact/runtime/shell/fonts`** is Geist and Geist Mono (OFL, `OFL.txt` beside them, no
+  Reserved Font Name), the app's own type: the latin and latin-ext subsets Google Fonts serves
+  (Geist v5, Geist Mono v6), unchanged from there, carried into every page the shell dresses.
 - **`find-skills`** is adapted from vercel-labs/skills' find-skills at 7407f38 (MIT, `LICENSE` in
   the folder), and **`skill-creator`** from Anthropic's skill-creator at anthropics/skills 34040c9
   (Apache-2.0, `LICENSE.txt`); each ends with a line saying what changed. Both have the bot at

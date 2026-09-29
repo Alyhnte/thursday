@@ -348,6 +348,7 @@ ${pic ? `<a class="pic" href="${esc(source.url ?? "#")}"><img src="${pic}" alt="
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+{{shell.meta}}
 <title>${esc(d.title)}</title>
 <script>
 // shell.theme
@@ -359,11 +360,28 @@ ${CSS.trim()}
 </style>
 </head>
 <body>
+<header class="sh-head">
+{{shell.who}}
+<span class="sh-title">${esc(d.title)}</span>
+<span class="sh-gap"></span>
+{{shell.theme}}
+<details class="sh-menu">
+{{shell.export}}
+<div class="sh-list">
+<button type="button" class="sh-item" data-export="print">Print<small>PDF</small></button>
+{{shell.download}}
+</div>
+</details>
+</header>
 <div class="pg-page">
 <main class="pg-paper">
 ${html.join("\n")}
 </main>
 </div>
+{{shell.sign}}
+<script>
+// shell.js
+</script>
 </body>
 </html>
 `);

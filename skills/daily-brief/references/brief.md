@@ -74,7 +74,8 @@ goes in exactly as it came. Leave out `glance` when there is none. `items` group
 sections by the topic they were found under, in your order; `"section": "…"` on an item moves
 it to another. `lang` sets dates and numbers; for a page that is not in English, `labels`
 gives the page's own words in that language: `title`, `why` ("Why it matters"), `listen`
-("The 60-second version"), `photo`, `made` (keep `{time}` and `{count}` in it).
+("The 60-second version"), `hear` ("Listen", on the button that plays the audio), `photo`,
+`made` (keep `{time}` and `{count}` in it).
 
 - **headline** — the news in plain words, under about 70 characters. Rewrite the publisher's
   when it is a tease ("You won't believe…", a question, "Here's why"). The subject does

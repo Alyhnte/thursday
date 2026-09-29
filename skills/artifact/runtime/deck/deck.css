@@ -43,7 +43,7 @@ body:not(.shot) section[data-slide]:not(.open) {
    swatches that pick one wear it too. The first is every slide's until another is named,
    so it weighs nothing (:where). */
 :where(section[data-slide], .dk-swatch) {
-  --dk-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --dk-sans: var(--sh-font);
   --dk-serif: Georgia, "Times New Roman", serif;
   --dk-paper: #fbfbf8;
   --dk-card: #ffffff;

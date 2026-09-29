@@ -1,5 +1,6 @@
 <!-- The parts of the head every kind has, put in by wear.mjs where a kind's page writes
-     {{shell.meta}}, {{shell.who}}, {{shell.theme}}, {{shell.export}} or {{shell.download}}.
+     {{shell.meta}}, {{shell.who}}, {{shell.theme}}, {{shell.export}}, {{shell.download}}
+     or {{shell.sign}}, the maker's name at the end of a page that is read.
      The generator names a page the shell dressed. The app's own tab looks for it in a page's
      first bytes and leaves its bar off (app/artifact), so it stands near the top. The
      revision is new on every write, from a bot's put or a reader's save: a save that names
@@ -27,6 +28,9 @@
   <span class="sh-word">Export</span>
   <svg class="sh-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
 </summary>
+
+<!-- part: sign -->
+<footer class="sh-sign" data-bot="{{bot}}">{{mark}}<span>Made by <b>{{bot}}</b> · Thursday</span></footer>
 
 <!-- part: download -->
 <button type="button" class="sh-item" data-export="html">Download this file<small>HTML</small></button>

@@ -14,10 +14,18 @@
    blue, its red, a border that is the ink at 10%, muted text that clears 4.5:1. */
 :root {
   color-scheme: light dark;
-  /* The type of every page's own words, until a kind sets its own. No face is named for
-     Chinese, Japanese or Korean: the page's lang, else the reader's system, picks the one
-     that script needs, where a named one drew all three in one country's letterforms. */
-  --sh-font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* The type of every page's own words, until a kind sets its own: the app's own Geist for
+     Latin letters, carried in the page (wear.mjs, fonts/), so it opens offline looking as
+     the app does. No face is named for Chinese, Japanese or Korean, nor for any script
+     Geist does not draw: the page's lang, else the reader's system, picks the one that
+     script needs, where a named one drew all three in one country's letterforms. */
+  --sh-font:
+    "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --sh-mono: "Geist Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  /* The colour of the bot that made the page, taken from its face (wear.mjs): a kind's
+     one accent, so a page says whose it is. Ink when no bot made it, or its face is not
+     one colour. */
+  --sh-maker: var(--sh-ink);
   --sh-paper: #ffffff;
   --sh-ink: #0d0d0d;
   --sh-ink-2: #4f4f4f;
@@ -86,6 +94,31 @@ body {
   font: 14px / 1.5 var(--sh-font);
   -webkit-text-size-adjust: 100%;
   text-wrap: pretty;
+}
+
+/* Who made it, at the end of a page that is read: the maker's face and name. A page made
+   outside a bot's job names nobody and shows none. */
+.sh-sign {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 2rem 1rem 2.5rem;
+  color: var(--sh-ink-3);
+  font: 500 11.5px / 1.4 var(--sh-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.sh-sign .sh-mark {
+  width: 18px;
+  height: 18px;
+}
+.sh-sign b {
+  color: var(--sh-ink-2);
+  font-weight: 600;
+}
+.sh-sign[data-bot=""] {
+  display: none;
 }
 
 /* The head: who made it, what it is, what it can do, the theme, export. The kind's own
@@ -175,9 +208,10 @@ body {
     display: none;
   }
 }
-/* On a phone the head's tools leave room for one name: the page's, not who made it. */
+/* On a phone the head's tools leave room for one name: the page's. Who made it keeps its
+   face, so the page still says whose it is. */
 @media (max-width: 480px) {
-  .sh-head .sh-who,
+  .sh-head .sh-who b,
   .sh-head .sh-who + .sh-dot {
     display: none;
   }

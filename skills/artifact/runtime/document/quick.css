@@ -13,7 +13,8 @@
   --muted: color-mix(in srgb, var(--sh-ink) 58%, var(--sh-paper));
   --line: var(--sh-line);
   --soft: var(--sh-soft);
-  --accent: var(--sh-brand);
+  /* The maker's colour (shell --sh-maker): a document says whose it is */
+  --accent: var(--sh-maker);
   --good: var(--sh-good);
   --warn: var(--sh-warn);
   --bad: var(--sh-bad);

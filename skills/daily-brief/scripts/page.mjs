@@ -3,7 +3,9 @@
  * The brief as one page: what the model wrote (brief.json) laid over what the scripts
  * fetched (stories.json, glance.json), written to `brief-<date>.html` in the bot's artifacts
  * folder. Pictures and audio are inlined, so the one file opens anywhere — on this screen,
- * or on a phone it was sent to. The layout is never typed by hand.
+ * or on a phone it was sent to. It wears the artifact skill's shell, as every page a bot
+ * makes does: the maker's face and name in its head and at its end, the app's type, the
+ * maker's colour as its one accent. The layout is never typed by hand.
  *
  *   node page.mjs <brief.json> [--look <dir>]
  *
@@ -19,7 +21,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, extname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   artifactsDir,
   host,
@@ -38,6 +40,7 @@ const LABELS = {
   title: "Morning Brief",
   why: "Why it matters",
   listen: "The 60-second version",
+  hear: "Listen",
   read: "Read",
   photo: "Photo",
   made: "Made {time} from {count} publishers. Photos belong to the publishers credited on them.",
@@ -162,27 +165,27 @@ run(async () => {
       : rel.format(-Math.round(h), "hour");
   };
 
-  const picture = (s) => {
+  const picture = (s, credit) => {
     if (!s.image?.file || !existsSync(s.image.file))
-      return `<div class="pic"><div class="none">${esc(s.site ?? host(s.url))}</div></div>`;
-    return `<div class="pic"><img src="${inline(s.image.file)}" alt="${esc(s.headline)}"><span class="credit">${esc(L.photo)}: ${esc(s.image.site ?? s.site)}</span></div>`;
+      return `<div class="b-pic"><div class="b-none">${esc(s.site ?? host(s.url))}</div></div>`;
+    return `<div class="b-pic"><img src="${inline(s.image.file)}" alt="${esc(s.headline)}">${credit ? `<span class="b-credit">${esc(L.photo)} · ${esc(s.image.site ?? s.site)}</span>` : ""}</div>`;
   };
   const source = (s) =>
-    `<p class="src"><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.site ?? host(s.url))}</a>${s.published ? ` · ${esc(when(s.published))}` : ""}${s.outlets > 1 ? ` · +${s.outlets - 1}` : ""}</p>`;
+    `<p class="b-src"><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.site ?? host(s.url))}</a>${s.published ? ` · ${esc(when(s.published))}` : ""}${s.outlets > 1 ? ` · +${s.outlets - 1}` : ""}</p>`;
   const why = (s) =>
     s.why?.trim()
-      ? `<p class="why"><b>${esc(L.why)}.</b> ${esc(s.why)}</p>`
+      ? `<p class="b-why"><span><b>${esc(L.why)}.</b> ${esc(s.why)}</span></p>`
       : "";
   const link = (s, text) =>
     `<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(text)}</a>`;
 
   const [lead, ...items] = joined;
-  const leadHtml = `<article class="story lead">
-${picture(lead)}
-<div>
-<p class="kicker">${esc(lead.kicker ?? lead.topic ?? "")}</p>
+  const leadHtml = `<article class="b-card b-lead">
+${picture(lead, true)}
+<div class="b-body">
+${(lead.kicker ?? lead.topic) ? `<p class="b-kicker">${esc(lead.kicker ?? lead.topic)}</p>` : ""}
 <h2>${link(lead, lead.headline)}</h2>
-<p class="sum">${esc(lead.summary)}</p>
+<p class="b-sum">${esc(lead.summary)}</p>
 ${why(lead)}
 ${source(lead)}
 </div>
@@ -198,19 +201,19 @@ ${source(lead)}
   }
   const topicHtml = topics
     .map(
-      (t) => `<section class="topic">
-${t.name ? `<h2>${esc(t.name)}</h2>` : ""}
-<div class="list">
+      (t) => `<section class="b-topic">
+${t.name ? `<h2>${esc(t.name)}<span>${t.items.length}</span></h2>` : ""}
+<div class="b-card">
 ${t.items
   .map(
-    (s) => `<article class="story item">
-${picture(s)}
-<div class="head"><h3>${link(s, s.headline)}</h3></div>
-<div class="body">
-<p class="sum">${esc(s.summary)}</p>
+    (s) => `<article class="b-row">
+<div>
+<h3>${link(s, s.headline)}</h3>
+<p class="b-sum">${esc(s.summary)}</p>
 ${why(s)}
 ${source(s)}
 </div>
+${picture(s, false)}
 </article>`,
   )
   .join("\n")}
@@ -221,25 +224,29 @@ ${source(s)}
 
   const num = (v, digits) =>
     new Intl.NumberFormat(lang, { maximumFractionDigits: digits }).format(v);
-  const chips = [];
+  const pills = [];
   if (glance?.weather) {
     const w = glance.weather;
-    chips.push(
-      `<div class="chip sky">${skyIcon(w.sky)}<div><div class="k">${esc(w.place)}</div><div class="v">${w.now}${esc(w.unit)}</div><div class="k">${w.low}° / ${w.high}°${w.rain != null ? ` · ☂ ${w.rain}%` : ""}</div></div></div>`,
+    pills.push(
+      `<span class="b-pill">${skyIcon(w.sky)}<b>${w.now}${esc(w.unit)}</b>${esc(w.place)}<span class="b-mono">${w.low}°–${w.high}°${w.rain != null ? ` · ☂ ${w.rain}%` : ""}</span></span>`,
     );
   }
   for (const m of glance?.markets ?? []) {
     const dir = m.pct > 0.005 ? "up" : m.pct < -0.005 ? "down" : "";
     const arrow = dir === "up" ? "▲" : dir === "down" ? "▼" : "–";
-    chips.push(
-      `<div class="chip"><div class="k">${esc(m.label)}</div><div class="v">${num(m.price, Math.abs(m.price) >= 1000 ? 0 : 2)}</div><div class="d ${dir}">${arrow} ${num(Math.abs(m.pct), 2)}%</div></div>`,
+    pills.push(
+      `<span class="b-pill"><span class="b-mono">${esc(m.label)}</span><b>${num(m.price, Math.abs(m.price) >= 1000 ? 0 : 2)}</b><span class="b-mono${dir ? ` b-${dir}` : ""}">${arrow} ${num(Math.abs(m.pct), 2)}%</span></span>`,
     );
   }
 
   const spoken = brief.spoken?.trim();
+  const bars = `<span class="b-bars" aria-hidden="true">${[5, 9, 12, 7, 10, 4].map((h) => `<i style="height:${h}px"></i>`).join("")}</span>`;
+  const hear = audioFile
+    ? `<button type="button" class="b-hear" data-hear aria-pressed="false"><span class="b-dot"><svg class="b-play" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.8v8.4L10 6z"/></svg><svg class="b-pause" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 2h2v8H3zM7 2h2v8H7z"/></svg></span>${esc(L.hear)} ${bars}<span class="b-time" data-time></span></button><audio data-audio preload="metadata" src="${inline(audioFile)}"></audio>`
+    : "";
   const listen =
     spoken || audioFile
-      ? `<div class="listen">${audioFile ? `<audio controls preload="none" src="${inline(audioFile)}"></audio>` : ""}${spoken ? `<details><summary>${esc(L.listen)}</summary><p>${esc(spoken)}</p></details>` : ""}</div>`
+      ? `<div class="b-listen">${hear}${spoken ? `<details class="b-said"><summary>${esc(L.listen)}</summary><p>${esc(spoken)}</p></details>` : ""}</div>`
       : "";
 
   const publishers = new Set(joined.map((s) => s.site ?? host(s.url)));
@@ -261,33 +268,81 @@ ${source(s)}
     links: s.links ?? [],
   }));
 
-  const html = `<!doctype html>
+  // The shell every page a bot makes wears: its head, type, theme and the maker's name
+  const skills = process.env.THURSDAY_SKILLS;
+  const wearAt =
+    skills && join(skills, "artifact", "runtime", "shell", "wear.mjs");
+  if (!wearAt || !existsSync(wearAt))
+    throw new Stop(
+      "THURSDAY_SKILLS does not name the shipped skills: run this from a bot's shell in the app.",
+    );
+  const { wear } = await import(pathToFileURL(wearAt).href);
+
+  const html = wear(`<!doctype html>
 <html lang="${esc(lang)}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+{{shell.meta}}
 <title>${esc(heading)} · ${esc(dayLine)}</title>
+<script>
+// shell.theme
+</script>
 <style>
+/* shell.css */
 ${readFileSync(join(SKILL, "page", "brief.css"), "utf8").trim()}
 </style>
 </head>
 <body>
-<header class="mast">
-<p class="day">${esc(dayLine)}</p>
-<h1>${esc(heading)}</h1>
-${brief.lede?.trim() ? `<p class="lede">${esc(brief.lede)}</p>` : ""}
+<header class="sh-head">
+{{shell.who}}
+<span class="sh-title">${esc(heading)}</span>
+<span class="sh-gap"></span>
+{{shell.theme}}
+<details class="sh-menu">
+{{shell.export}}
+<div class="sh-list">
+<button type="button" class="sh-item" data-export="print">Print<small>PDF</small></button>
+{{shell.download}}
+</div>
+</details>
 </header>
-${chips.length ? `<div class="glance">${chips.join("")}</div>` : ""}
-${listen}
+<div class="b-page">
+<header class="b-mast">
+<p class="b-day">${esc(dayLine)} · ${esc(madeAt)}</p>
+<h1 class="b-lede">${esc(brief.lede?.trim() || heading)}</h1>
+</header>
+${pills.length || listen ? `<div class="b-side">${pills.length ? `<div class="b-glance">${pills.join("")}</div>` : ""}${listen}</div>` : ""}
 ${leadHtml}
+<div class="b-topics">
 ${topicHtml}
-<footer class="foot">
-<p>${esc(L.made.replace("{time}", madeAt).replace("{count}", String(publishers.size)))}</p>
-</footer>
+</div>
+<p class="b-made">${esc(L.made.replace("{time}", madeAt).replace("{count}", String(publishers.size)))}</p>
+</div>
+{{shell.sign}}
 <script type="application/json" id="brief-data">${JSON.stringify({ date, told }).replace(/</g, "\\u003c")}</script>
+<script>
+// shell.js
+</script>
+<script>
+// The brief read aloud: the black pill plays and pauses it, and says how far it is
+(() => {
+  const button = document.querySelector("[data-hear]");
+  const audio = document.querySelector("[data-audio]");
+  const time = document.querySelector("[data-time]");
+  if (!button || !audio) return;
+  const clock = (s) => Number.isFinite(s) ? Math.floor(s / 60) + ":" + String(Math.floor(s % 60)).padStart(2, "0") : "";
+  const say = () => { time.textContent = audio.paused && !audio.currentTime ? clock(audio.duration) : clock(audio.currentTime); };
+  button.addEventListener("click", () => (audio.paused ? audio.play() : audio.pause()));
+  audio.addEventListener("play", () => button.setAttribute("aria-pressed", "true"));
+  audio.addEventListener("pause", () => button.setAttribute("aria-pressed", "false"));
+  audio.addEventListener("ended", () => { audio.currentTime = 0; say(); });
+  for (const event of ["loadedmetadata", "timeupdate"]) audio.addEventListener(event, say);
+})();
+</script>
 </body>
 </html>
-`;
+`);
 
   const out = join(artifactsDir(), `brief-${date}.html`);
   mkdirSync(dirname(out), { recursive: true });
@@ -295,7 +350,7 @@ ${topicHtml}
   writeFileSync(out, html);
   const noPicture = joined.filter((s) => !s.image?.file).map((s) => s.id);
   console.log(
-    `${shown(out)}${replaced ? " (replaced)" : ""}: ${joined.length} stories, ${joined.length - noPicture.length} pictures${noPicture.length ? ` (none for ${noPicture.join(", ")})` : ""}${chips.length ? `, ${chips.length} at a glance` : ""}${audioFile ? ", audio" : ""}, ${Math.round(statSync(out).size / 1024)} KB.`,
+    `${shown(out)}${replaced ? " (replaced)" : ""}: ${joined.length} stories, ${joined.length - noPicture.length} pictures${noPicture.length ? ` (none for ${noPicture.join(", ")})` : ""}${pills.length ? `, ${pills.length} at a glance` : ""}${audioFile ? ", audio" : ""}, ${Math.round(statSync(out).size / 1024)} KB.`,
   );
   if (items.length < 3 || items.length > 7)
     console.log(

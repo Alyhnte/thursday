@@ -165,7 +165,8 @@ computer's own program.
 ## Canvases, decks, videos and pages
 
 A page, canvas or deck opened inside the app takes the keyboard once clicked; opened in its own tab
-(↗) it has the whole window. Its top bar names the bot that made it.
+(↗) it has the whole window. Its top bar names the bot that made it, with its face; a page that is
+read — a report, a brief, a trip — ends with the same, and its one colour is that bot's.
 
 **Designer**'s canvas lays two to four options side by side, each with a note on what it is for and
 what it costs, the one it recommends marked. Drag to move, pinch or hold ⌘ and scroll to zoom, the

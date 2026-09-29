@@ -1,31 +1,31 @@
-/* The itinerary's whole look: one file that opens offline, light and dark, phone to print.
-   The day-by-day plan is what the page is for; everything above it stays quiet. */
+/* The itinerary's own look, under the artifact shell's head and type (put on by
+   itinerary.mjs): one file that opens offline, light and dark, phone to print. The
+   day-by-day plan is what the page is for; everything above it stays quiet. Its colours are
+   the shell's, on the app's grey ground (app/globals.css), and its one accent is the colour
+   of the bot that made it (--sh-maker), so the theme button and the maker reach it too. */
 :root {
-  color-scheme: light dark;
-  --bg: #faf8f4;
+  --bg: #f3f3f3;
   --card: #ffffff;
-  --fg: #1c1917;
-  --muted: #736b63;
-  --line: #e9e4dc;
-  --soft: #f2eee7;
-  --accent: #0f6e66;
-  --accent-soft: #e2f1ef;
-  --sun: #b45309;
-  --shade: 0 1px 2px rgb(28 25 23 / 0.05), 0 4px 16px rgb(28 25 23 / 0.04);
+  --fg: var(--sh-ink);
+  --muted: var(--sh-ink-3);
+  --line: var(--sh-line);
+  --soft: var(--sh-sunk);
+  --accent: var(--sh-maker);
+  --accent-soft: color-mix(in srgb, var(--sh-maker) 12%, var(--card));
+  --sun: var(--sh-warn);
+  --shade: 0 1px 2px rgb(13 13 13 / 0.05), 0 4px 16px rgb(13 13 13 / 0.04);
 }
 @media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #111312;
-    --card: #191c1b;
-    --fg: #f1efeb;
-    --muted: #a39d95;
-    --line: #2a2e2c;
-    --soft: #1f2322;
-    --accent: #5fd0c3;
-    --accent-soft: #173330;
-    --sun: #f2b35b;
+  :root:not([data-theme="light"]) {
+    --bg: #0d0d0d;
+    --card: #161616;
     --shade: none;
   }
+}
+:root[data-theme="dark"] {
+  --bg: #0d0d0d;
+  --card: #161616;
+  --shade: none;
 }
 * {
   box-sizing: border-box;
@@ -37,12 +37,7 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--fg);
-  font:
-    16px / 1.6 ui-sans-serif,
-    system-ui,
-    -apple-system,
-    "Segoe UI",
-    sans-serif;
+  font: 16px / 1.6 var(--sh-font);
   text-wrap: pretty;
 }
 main {

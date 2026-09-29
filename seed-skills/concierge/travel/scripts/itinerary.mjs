@@ -3,7 +3,9 @@
  * The trip as one page: cover, flights, the stay, weather, day by day with a real
  * photo and a map link per stop, and the costs. Written from a small JSON file
  * (references/itinerary.md shows every field) into the bot's artifacts folder as one
- * HTML file with its pictures inside, so it opens offline and prints.
+ * HTML file with its pictures inside, so it opens offline and prints. It wears the artifact
+ * skill's shell, as every page a bot makes does: the maker's face and name in its head and at
+ * its end, the app's type, the maker's colour as its one accent.
  *
  *   node itinerary.mjs <trip.json> [--name <file name>]
  *
@@ -23,7 +25,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, extname, join, relative, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { fail, money, parseArgs } from "./lib.mjs";
 
 const SKILL = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -491,26 +493,56 @@ if (trip.sources?.length)
   );
 
 const css = readFileSync(join(SKILL, "page", "itinerary.css"), "utf8").trim();
+// The shell every page a bot makes wears: its head, type, theme and the maker's name
+const wearAt = join(
+  process.env.THURSDAY_SKILLS ?? "",
+  "artifact/runtime/shell/wear.mjs",
+);
+if (!process.env.THURSDAY_SKILLS || !existsSync(wearAt))
+  fail("THURSDAY_SKILLS is not set: run this from a bot's shell in the app.");
+const { wear } = await import(pathToFileURL(wearAt).href);
 mkdirSync(dirname(out), { recursive: true });
 writeFileSync(
   out,
-  `<!doctype html>
+  wear(`<!doctype html>
 <html lang="${esc(lang)}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+{{shell.meta}}
 <title>${esc(trip.title)}</title>
+<script>
+// shell.theme
+</script>
 <style>
+/* shell.css */
 ${css}
 </style>
 </head>
 <body>
+<header class="sh-head">
+{{shell.who}}
+<span class="sh-title">${esc(trip.title)}</span>
+<span class="sh-gap"></span>
+{{shell.theme}}
+<details class="sh-menu">
+{{shell.export}}
+<div class="sh-list">
+<button type="button" class="sh-item" data-export="print">Print<small>PDF</small></button>
+{{shell.download}}
+</div>
+</details>
+</header>
 <main>
 ${parts.join("\n")}
 </main>
+{{shell.sign}}
+<script>
+// shell.js
+</script>
 </body>
 </html>
-`,
+`),
 );
 const kb = Math.round(statSync(out).size / 1024);
 console.log(
