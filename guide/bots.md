@@ -70,7 +70,8 @@ motion gets the walking without the leaps. A bot that was stopped, or paused wai
 Over each bot a plate says in one line where it stands: the step it is on while it works, what it
 asks while it waits on the user, or the file it handed back once it answered. A bot that is not
 working and wants nothing of the user folds its plate to a small mark of how it stands (a tick
-when done, an hourglass while held); pointing at the bot or its mark unfolds it. Pressing it opens the plate where it is, to what the bot was asked, the question it asks or
+when done, an hourglass while held); pointing at the bot or its mark unfolds it. Pressing the
+bot or its plate opens the plate where it is, to what the bot was asked, the question it asks or
 the answer it gave, and how far it has come, and opens that bot's tab in the room; a tap on the
 floor closes it. The office's top left names the job, and once the job is done, says how many
 bots worked on it and lists the files it handed over, each with the bot that made it; pressing

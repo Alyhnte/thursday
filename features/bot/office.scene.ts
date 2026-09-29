@@ -1486,9 +1486,7 @@ export function momentOf(
       spin: r1(leap.spin),
       squash: r2(leap.squash),
       scale: r2(0.6 + 0.4 * easeOut(pop)),
-      opacity: r2(
-        (state.key === "none" ? 0.4 : state.key === "held" ? 0.75 : 1) * pop,
-      ),
+      opacity: r2(pop),
       size,
       carry: carry
         ? {

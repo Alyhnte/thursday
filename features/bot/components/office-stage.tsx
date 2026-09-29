@@ -1665,9 +1665,14 @@ function PlateAt({
       )}
       style={{ left: head.x, top }}
     >
-      {/* The bot's body answers to the pointer too */}
-      <span
-        className="pointer-events-auto absolute top-1"
+      {/* The bot's body answers to the pointer too: pointed at, its plate unfolds, and pressed,
+          it opens as the plate does; the plate's own button is the one keys and readers reach */}
+      <button
+        type="button"
+        tabIndex={-1}
+        aria-hidden
+        onClick={onPick}
+        className="pointer-events-auto absolute top-1 cursor-pointer"
         style={{
           left: -size * 0.4,
           width: size * 0.8,
@@ -1706,7 +1711,6 @@ function PlateAt({
               : state.key === "held"
                 ? "border border-foreground/35 border-dashed bg-background/95"
                 : "bg-background/95 ring-1 ring-border",
-          state.key === "none" && !picked && "opacity-55",
         )}
       >
         {/* The plate's own line: its row as it stands, and the first row of it opened */}
@@ -1920,7 +1924,7 @@ function BriefRow({ label, children }: { label: string; children: ReactNode }) {
 
 /**
  * The mark a state wears on a plate, all a folded one shows: a live dot, an ember one, an open
- * ring, an hourglass, a tick, a square when stopped, a faint dot for a bot not called yet.
+ * ring, an hourglass, a tick, a square when stopped, a small dot for a bot not called yet.
  */
 function StateGlyph({ state }: { state: SeatKey }) {
   switch (state) {
@@ -1988,7 +1992,7 @@ function StateGlyph({ state }: { state: SeatKey }) {
       );
     case "none":
       return (
-        <span className="size-1.5 shrink-0 rounded-full bg-muted-foreground/50" />
+        <span className="size-1.5 shrink-0 rounded-full bg-muted-foreground" />
       );
   }
 }
