@@ -480,6 +480,7 @@ export function useRoomOffice(): boolean {
 }
 
 const writes = new Set<() => void>();
+const draws = new Set<() => void>();
 let writeLineUp = false;
 const writeLineListeners = new Set<() => void>();
 let callWaits = false;
@@ -498,6 +499,16 @@ export const writeLine = {
     writes.add(listener);
     return () => {
       writes.delete(listener);
+    };
+  },
+  /** Asks for the drawing pad, from the call's line: the write line holds it (draw-pad). */
+  draw() {
+    for (const listener of draws) listener();
+  },
+  onDraw(listener: () => void) {
+    draws.add(listener);
+    return () => {
+      draws.delete(listener);
     };
   },
   shown(up: boolean) {

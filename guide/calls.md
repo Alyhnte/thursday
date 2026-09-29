@@ -54,6 +54,10 @@ picture of it as it is at that moment goes to the model behind her, nowhere else
 stops it. When the browser refuses — on a Mac, the browser needs Screen Recording, or Camera, in
 System Settings › Privacy & Security — its reason shows, and nothing is shown.
 
+**Draw**, beside them, opens a pad over the call: pick a colour, draw, and **Show her** puts the
+drawing before her as a picture, the moment it is pressed — "what do you think of this logo?"
+**Esc** closes the pad and keeps what is on it for next time; **Clear** wipes it.
+
 ## Ending it
 
 Saying goodbye usually ends the call, but not always. Tapping her face ends it for certain, and so
@@ -71,10 +75,12 @@ as on a spoken call, with no voice and no per-minute billing.
 
 - **Her answers** keep their shape (lists, tables), and what she names is a link: a file opens over
   the call, a web page in a new tab.
-- **Files**: the paperclip, a paste, or a drop anywhere on the window — at most 8 at a time, 25 MB
-  each. A picture (png, jpg, webp, gif) goes to her with the words, so "what does this say?" is
-  answered on the spot. One over 4 MB, or one sent while she runs on a model that cannot see
-  pictures, does not go with them, and she says so.
+- **Files**: the paperclip's **A file from this computer**, a paste, or a drop anywhere on the
+  window — at most 8 at a time, 25 MB each. A picture (png, jpg, webp, gif) goes to her with the
+  words, so "what does this say?" is answered on the spot. One over 4 MB, or one sent while she
+  runs on a model that cannot see pictures, does not go with them, and she says so.
+- **A drawing**: the paperclip's **Draw something** opens a pad over the screen. **Add to the
+  message** puts it on the line as a picture, sent with the words like any other.
 - **Who it goes to**: the chip at the left of the line, or `@` and a name at the start (**Tab** or
   **Enter** takes the highlighted one). A bot picked there gets that one message, then the line goes
   back to her; **Esc** with a bot picked also goes back to her.

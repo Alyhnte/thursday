@@ -47,7 +47,11 @@ import { BotMark } from "@/features/bot/components/bot-mark";
 import { BotRoom } from "@/features/bot/components/bot-room";
 import { toolIcon } from "@/features/bot/components/bot-tool";
 import { useAnswerThread } from "@/features/bot/components/thread-reply";
-import { useRoomOffice, useRoomOpen } from "@/features/bot/thread.store";
+import {
+  useRoomOffice,
+  useRoomOpen,
+  writeLine,
+} from "@/features/bot/thread.store";
 import {
   CallLines,
   useVoiceLine,
@@ -1647,12 +1651,24 @@ const SHOW_WAYS: Record<
 };
 
 /**
- * The ways to show her a screen or the camera, on the line while a spoken call is up; one at
- * a time. The browser asks which screen, window or tab, or for the camera, and only from a
- * press (show).
+ * The ways to show her something, on the line while a spoken call is up: a screen or the
+ * camera, one at a time — the browser asks which screen, window or tab, or for the camera, and
+ * only from a press (show) — and a drawing, made on the write line's pad (draw-pad).
  */
 function ShowOnLine() {
   const shown = useShown();
+  const draw = (
+    <>
+      <span className="text-muted-foreground/40">·</span>
+      <button
+        type="button"
+        onClick={() => writeLine.draw()}
+        className={LINE_BUTTON}
+      >
+        Draw
+      </button>
+    </>
+  );
   if (shown)
     return (
       <>
@@ -1662,30 +1678,36 @@ function ShowOnLine() {
         <button type="button" onClick={stopShowing} className={LINE_BUTTON}>
           Stop
         </button>
+        {draw}
       </>
     );
-  return (["screen", "camera"] as const).filter(canShow).map((kind) => (
-    <Fragment key={kind}>
-      <span className="text-muted-foreground/40">·</span>
-      <button
-        type="button"
-        // What the browser refused, in its words: a press that did nothing left the person
-        // guessing, where the system's screen recording permission was the answer
-        onClick={() =>
-          show(kind).catch((cause: unknown) =>
-            toast.add({
-              type: "warning",
-              title: SHOW_WAYS[kind].refused,
-              description: errorToString(cause),
-            }),
-          )
-        }
-        className={LINE_BUTTON}
-      >
-        {SHOW_WAYS[kind].press}
-      </button>
-    </Fragment>
-  ));
+  return (
+    <>
+      {(["screen", "camera"] as const).filter(canShow).map((kind) => (
+        <Fragment key={kind}>
+          <span className="text-muted-foreground/40">·</span>
+          <button
+            type="button"
+            // What the browser refused, in its words: a press that did nothing left the person
+            // guessing, where the system's screen recording permission was the answer
+            onClick={() =>
+              show(kind).catch((cause: unknown) =>
+                toast.add({
+                  type: "warning",
+                  title: SHOW_WAYS[kind].refused,
+                  description: errorToString(cause),
+                }),
+              )
+            }
+            className={LINE_BUTTON}
+          >
+            {SHOW_WAYS[kind].press}
+          </button>
+        </Fragment>
+      ))}
+      {draw}
+    </>
+  );
 }
 
 /**

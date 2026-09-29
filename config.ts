@@ -920,6 +920,15 @@ export const SHOWING = {
 };
 
 /**
+ * The drawing pad (features/thursday/components/draw-pad), whose drawing is handed over as a
+ * picture.
+ * - `longestSide`  the longest side, in pixels, a drawing is kept at, cropped to what was drawn.
+ *   Larger keeps thin strokes and writing readable to the model that looks at it, in a heavier
+ *   file; it is never kept larger than it was drawn.
+ */
+export const DRAW_PAD = { longestSide: 1024 };
+
+/**
  * One web search (features/ai/tools/search.tool), Exa or a model's own.
  * - `sources`  hits carried back. Each is a page's worth of tokens in the run from then on,
  *            and the first few answer most questions; a bot that needs more searches again.

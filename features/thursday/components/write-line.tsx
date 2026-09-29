@@ -3,13 +3,21 @@
 import {
   ArrowDownToLine,
   ArrowUp,
+  Brush,
   ChevronDown,
+  FolderOpen,
   Paperclip,
   RotateCw,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { queryKey } from "@/app/api/query-key";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Popover,
   PopoverContent,
@@ -46,6 +54,7 @@ import { composing, useEscape, windowKey } from "@/hooks/use-hotkey";
 import { useServerAction } from "@/lib/protocol/use-server-action";
 import { revalidate, useServerRoute } from "@/lib/protocol/use-server-route";
 import { cn } from "@/lib/utils";
+import { DrawPad } from "./draw-pad";
 import { ThursdayMark } from "./thursday-mark";
 
 /**
@@ -57,7 +66,9 @@ import { ThursdayMark } from "./thursday-mark";
  * thread it started. Sent to Thursday — who it opens on until someone else is picked —
  * it becomes a call in writing (use-text-call): the line stays up as that call's way
  * in, says what the call runs on, and Esc ends the call rather than closing the line. A
- * bot can still be picked during it, for one message; then the line is hers again.
+ * bot can still be picked during it, for one message; then the line is hers again. Its
+ * paperclip offers a file from this computer or a drawing (draw-pad), which the line holds
+ * for the call's line too (writeLine.draw): a drawing arrives as a pasted picture does.
  */
 
 /** What the line needs of a call in writing, and what such a call would run on. */
@@ -111,6 +122,8 @@ export function WriteLine({
 
   const [open, setOpen] = useState(false);
   const [picking, setPicking] = useState(false);
+  /** The drawing pad is open over the screen (draw-pad). */
+  const [drawing, setDrawing] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [draft, setDraft] = useState("");
   const spoken = useRef(onCall);
@@ -163,6 +176,8 @@ export function WriteLine({
   // `/` is the window's unless something is being typed into, and an open thread's:
   // there the key goes to that thread's own message box (bot-room)
   useEffect(() => writeLine.subscribe(show), [show]);
+  // Draw on the call's line: the pad is the line's, and its drawing lands here
+  useEffect(() => writeLine.onDraw(() => setDrawing(true)), []);
   useEffect(() => {
     if (room === "thread") return;
     const onKeyDown = (event: KeyboardEvent) => {
@@ -329,12 +344,29 @@ export function WriteLine({
     return () => clearTimeout(leaving);
   }, [up]);
 
+  // Over the screen and out of the foot's grid (a portal), and there with the line put away:
+  // Draw on the call's line opens it before the line is up. What it hands over lands as a
+  // pasted picture does, which brings the line up
+  const pad = (
+    <DrawPad
+      open={drawing}
+      onClose={() => setDrawing(false)}
+      onDone={(file) => {
+        setDrawing(false);
+        take([file]);
+      }}
+      // on a spoken call she is given it as it lands; in writing it goes with the words
+      action={onCall ? "Show her" : "Add to the message"}
+    />
+  );
+
   // The line outlives `up` by as long as it takes to go: without that it is there and then it
   // is not, which is what made the key read as a switch rather than as something opening.
-  if (!standing) return null;
+  if (!standing) return pad;
 
   return (
     <>
+      {pad}
       {dragging && (
         <div
           aria-hidden
@@ -532,14 +564,40 @@ export function WriteLine({
                   event.target.value = "";
                 }}
               />
-              <button
-                type="button"
-                aria-label="Add files"
-                onClick={() => picker.current?.click()}
-                className="grid size-9 shrink-0 place-items-center rounded-full text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
-              >
-                <Paperclip className="size-4" />
-              </button>
+              {/* A file from this computer, or a drawing made here: both land on the line */}
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <button
+                      type="button"
+                      aria-label="Add a file or a drawing"
+                      className="grid size-9 shrink-0 place-items-center rounded-full text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 data-popup-open:bg-muted data-popup-open:text-foreground"
+                    />
+                  }
+                >
+                  <Paperclip className="size-4" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  side="top"
+                  align="end"
+                  sideOffset={14}
+                  className="w-64 rounded-[18px] p-1.5"
+                >
+                  <DropdownMenuItem
+                    onClick={() => picker.current?.click()}
+                    className="h-11 gap-2.5 rounded-xl px-2.5 text-[13.5px]"
+                  >
+                    <FolderOpen />A file from this computer
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => setDrawing(true)}
+                    className="h-11 gap-2.5 rounded-xl px-2.5 text-[13.5px]"
+                  >
+                    <Brush />
+                    Draw something
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               <button
                 type="submit"
                 aria-label="Send"
