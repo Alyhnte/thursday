@@ -4461,6 +4461,12 @@ test("the Skills screen lists each bot's own — its kit and what it found or wr
   const { createBot, deleteBot } = await import("../features/bot/bot.query.ts");
   const { existsSync } = await import("node:fs");
   const made = await createBot({
+    name: "Writer",
+    description: "Writing",
+    toolIds: [],
+  });
+  // Installed under the seed's old name, and kept by that name
+  const kept = await createBot({
     name: "Marketer",
     description: "Marketing",
     toolIds: [],
@@ -4484,9 +4490,16 @@ test("the Skills screen lists each bot's own — its kit and what it found or wr
     assert.equal(found?.name, "notes-style");
     assert.equal(found?.bot, "Jarvis");
     const kit = all.find(
-      (skill) => skill.source === "kit:Marketer" && skill.name === "marketing",
+      (skill) => skill.source === "kit:Writer" && skill.name === "marketing",
     );
-    assert.equal(kit?.bot, "Marketer");
+    assert.equal(kit?.bot, "Writer");
+    // The bot installed under the old name still lists the kit it reads
+    assert.ok(
+      all.some(
+        (skill) =>
+          skill.source === "kit:Marketer" && skill.name === "marketing",
+      ),
+    );
     // Every bot's still come first and last, as before
     assert.equal(all[0]?.source, "default");
 
@@ -4498,18 +4511,19 @@ test("the Skills screen lists each bot's own — its kit and what it found or wr
       "---\nname: notes-style\ndescription: Changed. Use it.\n---\n",
     );
     await assert.rejects(
-      writeSkillFile("kit:Marketer", "marketing", "SKILL.md", "x"),
+      writeSkillFile("kit:Writer", "marketing", "SKILL.md", "x"),
       /read-only/,
     );
     await assert.rejects(
-      deleteSkill("kit:Marketer", "marketing"),
+      deleteSkill("kit:Writer", "marketing"),
       /switched off/,
     );
     await deleteSkill("own:Jarvis", "notes-style");
     assert.equal(existsSync(own), false);
   } finally {
     await rm(own, { recursive: true, force: true });
-    if (made) await deleteBot("Marketer");
+    if (made) await deleteBot("Writer");
+    if (kept) await deleteBot("Marketer");
   }
 });
 

@@ -86,11 +86,11 @@ A skill is a written-down way of doing something that a bot reads before it star
 ship with the app are shared by every bot: using the browser; using this Mac's apps (on a Mac only);
 making documents, slides, pages and small apps with charts; reading videos, podcasts, articles and
 PDFs; reports built on published numbers; a daily news brief; finding more skills; and writing a new
-one. **Marketer** and **Concierge** also carry skills of their own, for marketing and for trips,
-that no other bot sees.
+one. **Writer** and **Concierge** also carry skills of their own, for marketing a product and for
+trips, that no other bot sees.
 
 **Settings › Skills** lists them in groups: **Custom** (the user's own), one group for each bot that
-has its own (such as **Marketer's own**), and **Default** (the ones that ship, read-only). There a
+has its own (such as **Writer's own**), and **Default** (the ones that ship, read-only). There a
 skill can be switched off, uploaded (a `.md`, `.zip` or `.skill` file up to 20 MB), written from
 scratch, or deleted when it is the user's own. In one of the user's own, **Edit** on a file
 changes it in place.

@@ -5,6 +5,7 @@ import { botFolder, WORKSPACE } from "@/features/workspace/workspace";
 import { logger } from "@/lib/logger";
 import type { Sandbox } from "@/lib/sandbox";
 import { errorToString } from "@/lib/utils";
+import { seedKitName } from "./seed-kit";
 import {
   isSkillOff,
   parseFrontmatter,
@@ -25,12 +26,13 @@ export const ownSkills = (bot: string) =>
   join(WORKSPACE, botFolder(bot), PATHS.skills.own);
 
 /**
- * The skills a ready-made bot ships with (`seed-skills/<name>`), for the bot of that name: a
- * method only its trade needs, which every other bot would pay for on every step. Read where
- * it ships, so an update reaches it; a name with nothing there has none.
+ * The skills a ready-made bot ships with (`seed-skills/<name>`), for the bot of that name, or
+ * of the name it was installed under before a rename (seed-kit): a method only its trade
+ * needs, which every other bot would pay for on every step. Read where it ships, so an update
+ * reaches it; a name with nothing there has none.
  */
 export const seedSkills = (bot: string): string | null => {
-  const key = bot.trim().toLowerCase();
+  const key = seedKitName(bot);
   return /^[a-z0-9][a-z0-9_-]*$/.test(key) ? join(seeds, key) : null;
 };
 

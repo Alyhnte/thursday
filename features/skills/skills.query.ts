@@ -31,6 +31,7 @@ import { botFolderName, WORKSPACE } from "@/features/workspace/workspace";
 import { logger } from "@/lib/logger";
 import { publicError } from "@/lib/public-error";
 import { errorToString } from "@/lib/utils";
+import { seedKitName } from "./seed-kit";
 
 /** Skills are folders on disk, so "query" here means the filesystem. Nothing else touches the skill dirs. */
 
@@ -39,9 +40,9 @@ function rootOf(source: SkillSource): string {
   if (source === "default") return resolve(APP_DIR, PATHS.skills.default);
   if (source === "custom") return resolve(DATA_DIR, PATHS.skills.custom);
   const bot = botOfSource(source) ?? "";
-  // A kit is read where it ships, by the bot's name lowercased (skills.discover seedSkills)
+  // A kit is read where it ships, by the bot's name (skills.discover seedSkills)
   return source.startsWith("kit:")
-    ? resolve(APP_DIR, PATHS.skills.seeds, bot.toLowerCase())
+    ? resolve(APP_DIR, PATHS.skills.seeds, seedKitName(bot))
     : resolve(WORKSPACE, PATHS.bots, bot, PATHS.skills.own);
 }
 

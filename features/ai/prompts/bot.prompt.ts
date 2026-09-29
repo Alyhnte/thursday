@@ -165,7 +165,8 @@ function identity(name: string, me: JobBot | null, seat?: Seat | null): string {
  * above is the app's default, and a bot whose own instructions lose to a default is not the bot
  * it was set up to be. A ready-made bot's role, while nobody has changed it, is the app's words
  * and is said as such (D7): told they were the owner's, the model gave the app's wording the
- * weight of a person's wish.
+ * weight of a person's wish. Its form is where the bot starts, not where the job ends: with
+ * the role winning outright, a one-page study guide came back as a seven-page picture book.
  */
 const ownerInstruction = (name: string, persona?: string | null) => {
   const role = persona?.trim();
@@ -173,7 +174,7 @@ const ownerInstruction = (name: string, persona?: string | null) => {
   return findBotSeed(name)?.systemPrompt.trim() === role
     ? `## Your role
 
-What this bot is for, as the app sets it up. Where it and anything above disagree, it wins.
+What this bot is for, as the app sets it up. Where it and anything above disagree, it wins. The form it names is where to start: a job that asks for another — one page, slides, a sheet, a few lines — gets that one.
 
 ${role}`
     : `## Owner's instructions

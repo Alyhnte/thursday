@@ -30,11 +30,13 @@ bots. A ready-made bot differs only in its role, and some carry a skill of their
   flights and stays found and compared, a booking, an order or a form filled in. With the kiwi
   connector on (**Settings › Connectors**) it searches flights without opening a window.
 - **Designer** makes what gets looked at: two to four ways a screen or page could look side by
-  side, a deck, a post or poster at its real size.
+  side, a deck, a post or poster at its real size, a short film for a birthday or a thank-you.
 - **Tutor** explains anything simply, a picture at a time: slides that read like a picture book,
   read aloud when asked, or a one-page guide to study from.
-- **Marketer** keeps one brief per product and works from it: positioning, page copy, a launch
-  plan, social posts, emails, an SEO audit.
+- **Writer** writes what goes out in the user's name, the way they write: their mail read and
+  answered as drafts, letters, posts, page copy, and a product's marketing — positioning, a launch
+  plan, emails, an SEO audit — from one brief per product. It sends only what they asked to have
+  sent, such as a finished page mailed to them.
 - **Jarvis** takes whatever nobody else is for — the web, files, this computer.
 
 A bot keeps its own memory — what a job taught it, how the user asked it to work — listed on its

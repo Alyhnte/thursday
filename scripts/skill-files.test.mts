@@ -188,11 +188,13 @@ test("a skill folded into another opens the one it is in now, and a runtime fold
 test("a ready-made bot's kit is listed to that bot alone, and an old copy left unchanged in its folder is not", async () => {
   const { createHash } = await import("node:crypto");
   const { seedSkills } = await import("../features/skills/skills.discover.ts");
-  const kit = seedSkills("Marketer");
+  const kit = seedSkills("Writer");
   assert.ok(kit, "a seed's name names a kit folder");
   assert.equal(seedSkills("../etc"), null, "a name that is no folder has none");
+  // A bot installed under a seed's old name keeps its kit, read where it ships now
+  assert.equal(seedSkills("Marketer"), kit);
 
-  const own = join(home, "marketer-own");
+  const own = join(home, "writer-own");
   const copy = "---\nname: social\ndescription: Old social.\n---\n\nOld.\n";
   await mkdir(join(own, "social"), { recursive: true });
   await writeFile(join(own, "social", "SKILL.md"), copy);

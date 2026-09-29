@@ -37,8 +37,11 @@ three of these that fit them rather than a list:
   on one page."
 - An errand on a website: a booking, an order, a form. The bot fills it in and stops at the
   pay button.
-- Their mail: what arrived, what needs an answer, a reply written and ready.
-- Something to make: a report with charts, a page, slides, a short video, a post with images.
+- Their mail: what arrived, what needs an answer, a reply written and ready; or something
+  finished sent by mail, to them or to someone they name.
+- Something to make: a report with charts, a page, slides, a short film for a birthday, a post
+  with images.
+- Something to understand: explained simply, a picture at a time, read aloud if they like.
 - Something on this computer: what is in a folder, a file converted, a script that runs again
   tomorrow.
 - Something that should happen by itself: "every weekday at nine, go through my mail and

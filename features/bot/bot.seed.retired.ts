@@ -26,24 +26,24 @@ export const SEED_WORDS = {
         "34a40602b63070cf8fffb472d80ca953ba4970df79efea8994c9ddada1e40852",
     },
     Designer: {
-      role: "bc38b9ebdb47b1997276a8c01540f75ee630ee9e62476b1cf28cbcc14a8a79e6",
+      role: "c4871108bd180d7cf72b4acaaa61104bab2fc5a1d074007417bf581ad028fd37",
       description:
-        "c7e32c06db49c5705d7df5cc7c4d0107c5833329b6fda26d9f357bc2e7629724",
+        "c0f80c16fb292da454862bdda221f18371cbb5586df8b0804330b9f7990a75b9",
     },
     Jarvis: {
       role: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       description:
         "64df098cccbd120689eba7a7e5e6eca7c57952ebef8de04f166769ddec26edca",
     },
-    Marketer: {
-      role: "48ac45457c2f1756e0adc439478e94cdd314b535ba8d84eba6b3a043119b5f55",
-      description:
-        "52c4fcfca1ee31d4bd6b219b51157cc7673d5e4093a163cdd16a7055337dbceb",
-    },
     Tutor: {
       role: "55c0b1264bb177f052a0048b3c1909ffca36b7c1a33e61dc8b9536ca4e3bbc59",
       description:
         "f3356e55e33626d633bd890c30c2472c324105a57b0504084ee135c4f4fe5f36",
+    },
+    Writer: {
+      role: "988acc75013760a2ba515bec06b4edcecb82b9fda2e7ee2584e3790f4cb83224",
+      description:
+        "7d06574dc1112687082f15f6dec88f0074f3baaf7d791c17f62cfb8d749ad815",
     },
   },
   before: {
@@ -66,6 +66,7 @@ export const SEED_WORDS = {
       ],
       Designer: [
         "41f33cca88277e694d851c30aad3feadbf298db5865d55addbb9c099e2c31c46",
+        "bc38b9ebdb47b1997276a8c01540f75ee630ee9e62476b1cf28cbcc14a8a79e6",
       ],
       Jarvis: [
         "51bf694bcd2f55f283f24dae6210c9a18c69fb2c44beacbda0b925f798e8ea35",
@@ -73,14 +74,6 @@ export const SEED_WORDS = {
         "c8ea86b600576cce7e97bc0e249bd13c779a1ef6598bdaa7a75556ef35b80e7b",
         "d4af22b54f71da38146f15b1ea465362c411634485eb80c80e08fb845068f22d",
         "d911d8abf3d2d252e3556026b8bc258027342c017d1a065f056a3e0c7d4d794a",
-      ],
-      Marketer: [
-        "6e0bf4b5821da96d9ee080bb5981191fc2584e7f90027cdd86d5d5073c5a15eb",
-        "845e74d57daf14c00a5b47ee73b7094cecd13756721b46ff6e31980ba72efe36",
-        "b610e11935754fd46387cb28b1b1e72b971c6e7f91f3cda56085709321f23aa3",
-        "b8880b433456f5d66821575f463b8bef3bb9652c6f752886577486f709461340",
-        "b8cf680316e888d1192471c6ef103381adbcb32731fb38badc08a4cf49e940ca",
-        "d532807b2e69bce7836b005e18b5f78437c5c44dabc7839b45f6e2549866da3a",
       ],
       Tutor: [
         "1761c048db262a2864d3cd6e3d338f52a370b65efd9f61555970008defd66277",
@@ -95,6 +88,9 @@ export const SEED_WORDS = {
         "543b28dacc6fa6dbecb7ec138f898acf4b9a96ec4ceca877b16367352a5c9abb",
         "5a6f1f4b9d2f9c39332e6bc6067cbfdc8f2d5ac4d457d0a50a51abf03e41e44b",
       ],
+      Designer: [
+        "c7e32c06db49c5705d7df5cc7c4d0107c5833329b6fda26d9f357bc2e7629724",
+      ],
       Jarvis: [
         "0cf6188509b3e35ee354dea80502917e7d88e81bbe412be8890c6c4caa10c0ec",
         "2f1c7c26704774ac6ab850720ad589795403679fbac74eac1096a2d4d63322b2",
@@ -102,9 +98,6 @@ export const SEED_WORDS = {
         "b5bd73e04eea0054ff6994c92a8135ae0a20381c303c7691e01a1b717cbd1c09",
         "c31d7da13ecd60a2dc68feee4030fa3930aba4c5ee0b94a36bb405b1ce4646eb",
         "ed80dc597d2b15e3f5390318fd53413ef246e6a71a5cc1513472d1efd7860927",
-      ],
-      Marketer: [
-        "e291b52aa429ee4cf982ad28115eece42aecf473d02330e0dd78b292f5d1b7b9",
       ],
       Tutor: [
         "21e0c69699688b77609c91bdc1387c0545b3e899404d07347ce6f21713573a1f",

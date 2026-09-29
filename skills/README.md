@@ -49,11 +49,11 @@ now only run the chart, the document script and the camera the artifact skill ho
   (Apache-2.0, `LICENSE.txt`); each ends with a line saying what changed. Both have the bot at
   work decide who a new skill is for, itself or every bot, and find-skills asks the user before it
   installs one.
-- **`seed-skills/marketer/marketing`** is a trimmed copy of six skills of
+- **`seed-skills/writer/marketing`** is a trimmed copy of six skills of
   [coreyhaines31/marketingskills](https://github.com/coreyhaines31/marketingskills) —
   `product-marketing`, `copywriting`, `launch`, `social`, `emails` and `seo-audit` — at
   `5b2c0007766c6a1cf1d53fd8fc73e979e0821022` (MIT, `LICENSE` in the folder), merged into one skill
-  that ships for the Marketer alone. Update it by copying upstream again and repeating the changes
+  that ships for the Writer alone. Update it by copying upstream again and repeating the changes
   below, not by editing it here.
 - **`data-report`**'s report forms borrow their shape from answer-first business writing and from
   the report outlines in [anthropics/financial-services](https://github.com/anthropics/financial-services)

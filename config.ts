@@ -607,7 +607,7 @@ export const ROUTINE = { tickMs: 30_000, max: 12, minHours: 1, runsShown: 5 };
  * skill a bot finds through its own description.
  */
 export const ARTIFACT_SKILL = "artifact";
-/** The Marketer's own, shipped in `seed-skills/marketer/` (PATHS.skills.seeds). */
+/** The Writer's own, shipped in `seed-skills/writer/` (PATHS.skills.seeds). */
 export const MARKETING_SKILL = "marketing";
 /** The Concierge's own, shipped in `seed-skills/concierge/`. */
 export const TRAVEL_SKILL = "travel";
@@ -621,6 +621,15 @@ export const SKILLS_FOLDED: Record<string, string> = {
   design: ARTIFACT_SKILL,
   "picture-book": ARTIFACT_SKILL,
   "interactive-page": ARTIFACT_SKILL,
+};
+
+/**
+ * Ready-made bots renamed, by the old name's kit folder and the one it ships in now. A bot
+ * installed under the old name keeps it — a bot's name never changes — and its role still
+ * names the kit's skills, so it reads the kit where it ships now (features/skills/seed-kit).
+ */
+export const SEED_KITS_RENAMED: Record<string, string> = {
+  marketer: "writer",
 };
 
 /**
