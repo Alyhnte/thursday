@@ -3,6 +3,7 @@ import type { ModelMessage } from "ai";
 import { appEvents, presence } from "@/app/api/events/app-event.server";
 import { BOT_RUN, FINISHED_NOTICE, WORKSPACE_KEEP } from "@/config";
 import { isProviderRefusal, modelErrorToString } from "@/features/ai/model";
+import type { TextModelProviderId } from "@/features/ai/model.schema";
 import {
   buildJoinOpening,
   buildThreadOpening,
@@ -232,7 +233,7 @@ async function drive(work: RoomWork, signal: AbortSignal) {
       )
         return;
       const drained = stopRuns(work.threadId);
-      await pauseRoom(work.threadId, why);
+      await pauseRoom(work.threadId, why, turn.failure?.refused);
       await drained;
     }).catch((cause) =>
       logger.error(`thread ${work.threadId}: pausing`, cause),
@@ -271,7 +272,11 @@ async function drive(work: RoomWork, signal: AbortSignal) {
 async function attempt(work: RoomWork, signal: AbortSignal, fresh = true) {
   const writer = new TranscriptWriter(work, signal);
   let ending: { text: string; stopped: boolean } | null = null;
-  let failure: { message: string; retry: boolean } | null = null;
+  let failure: {
+    message: string;
+    retry: boolean;
+    refused?: TextModelProviderId;
+  } | null = null;
   try {
     const thread = await findThread(work.threadId);
     if (!thread) return null;
@@ -350,7 +355,11 @@ async function attempt(work: RoomWork, signal: AbortSignal, fresh = true) {
             await addThreadUsage(work.threadId, event.usage);
           if (event.type === "turn-end") ending = event;
           if (event.type === "error") {
-            failure = { message: event.message, retry: event.retry };
+            failure = {
+              message: event.message,
+              retry: event.retry,
+              refused: event.refused,
+            };
             if (event.budget) await lowerRoomContextBudget(work, event.budget);
           }
         },
@@ -368,7 +377,11 @@ async function attempt(work: RoomWork, signal: AbortSignal, fresh = true) {
   }
   return {
     ending: ending as { text: string; stopped: boolean } | null,
-    failure: failure as { message: string; retry: boolean } | null,
+    failure: failure as {
+      message: string;
+      retry: boolean;
+      refused?: TextModelProviderId;
+    } | null,
   };
 }
 

@@ -1,7 +1,10 @@
 import type { UIMessage } from "ai";
 import z from "zod";
 import { queryKey } from "@/app/api/query-key";
-import { TEXT_MODEL_PROVIDERS } from "@/features/ai/model.schema";
+import {
+  TEXT_MODEL_PROVIDERS,
+  type TextModelProviderId,
+} from "@/features/ai/model.schema";
 import type { ThreadStatus } from "@/features/bot/bot.schema";
 import { mimeOf } from "@/features/workspace/file-kind";
 import type { DateLike } from "@/lib/date-like";
@@ -130,6 +133,14 @@ export const TEXT_CALL_NOTE = "note";
  */
 export const TEXT_CALL_MOVED = "moved";
 export type TextCallMoved = { why: string; line: string };
+
+/**
+ * The data part that says the provider turned down the key or sign-in the turn ran on (ai/model
+ * isKeyRefused), sent just ahead of the error it explains, so the page offers Settings rather
+ * than only the same turn again. Transient, as `moved` is.
+ */
+export const TEXT_CALL_REFUSED = "refused";
+export type TextCallRefused = { provider: TextModelProviderId };
 
 /** The note a part carries, or null for any other part. */
 export const noteOf = (

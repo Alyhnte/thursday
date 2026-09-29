@@ -3562,6 +3562,8 @@ test("a provider's refusal waits for a person at once; a break is tried once mor
   });
   const paused = await waitFor(id, "waiting");
   assert.equal(paused.outcome, "Invalid API key (401)");
+  // The key itself was turned down: the screen offers Settings, naming who refused it
+  assert.equal(paused.pending?.refused, "openai");
   const notes = async () => (await rowsOf(id)).filter((row) => row.note).length;
   assert.equal(await notes(), 1);
 
@@ -3599,10 +3601,13 @@ test("a refusal that came with no status word pauses on what the provider said",
     label: "Unworded",
     from: "user",
   });
+  const paused = await waitFor(id, "waiting");
   assert.equal(
-    (await waitFor(id, "waiting")).outcome,
+    paused.outcome,
     '(403) {"detail":"This model is not on your plan."}',
   );
+  // A model the account may not use: a new key would not mend it
+  assert.equal(paused.pending?.refused, undefined);
   await cancelThread(id);
 });
 

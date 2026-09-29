@@ -23,12 +23,14 @@ import { LIVE_PROVIDER, type LiveSettings } from "@/features/ai/live.schema";
 import { loadTools } from "@/features/ai/load-tools";
 import {
   getTextModel,
+  isKeyRefused,
   isPlanSpent,
   modelErrorToString,
   seesToolImages,
 } from "@/features/ai/model";
 import {
   TEXT_MODEL_PROVIDERS,
+  type TextModelProviderId,
   type TextModelRef,
   textModelRefSchema,
 } from "@/features/ai/model.schema";
@@ -58,11 +60,13 @@ import {
   TEXT_CALL_MOVED,
   TEXT_CALL_NOTE,
   TEXT_CALL_PROVIDERS,
+  TEXT_CALL_REFUSED,
   type TextCallHandshake,
   type TextCallMoved,
   type TextCallNote,
   TextCallNoteSchema,
   type TextCallProvider,
+  type TextCallRefused,
   textCallRunsOn,
   type Where,
   WhereSchema,
@@ -277,6 +281,9 @@ export async function streamTextCall(
 
   /** Where the turn went instead of the plan, once it has: said to the page as it starts. */
   let moved: TextCallMoved | null = null;
+  /** The provider the turn is on now, and the one that refused its key, once one has. */
+  let on: TextModelProviderId = run.ref.provider;
+  let refused: TextCallRefused | null = null;
   const parts = streamParts(async function* () {
     // What opens the stream is held until her first step has something to show: a spent
     // plan refuses before that, and the turn then starts again on the key as if it were new
@@ -300,6 +307,7 @@ export async function streamTextCall(
     if (!spare) return yield* held;
     logger.info(`text call ${run.callId}: ${spare.line}`);
     moved = { why: spare.why, line: spare.line };
+    on = spare.ref.provider;
     // What the refused step had read goes to the step that runs in its place
     inbox.unshift(...(took.get(0) ?? []));
     took.delete(0);
@@ -324,6 +332,13 @@ export async function streamTextCall(
             data: note,
           });
       }
+      // Just ahead of the error it explains: the page offers Settings, not only the turn again
+      if (chunk.type === "error" && refused)
+        controller.enqueue({
+          type: `data-${TEXT_CALL_REFUSED}`,
+          data: refused,
+          transient: true,
+        });
       controller.enqueue(chunk);
       // Once, as the answer on the key begins: said, not kept in the conversation
       if (chunk.type === "start" && moved)
@@ -341,7 +356,10 @@ export async function streamTextCall(
     stream: toUIMessageStream({
       stream: parts,
       tools: run.tools,
-      onError: modelErrorToString,
+      onError: (cause) => {
+        if (isKeyRefused(cause)) refused = { provider: on };
+        return modelErrorToString(cause);
+      },
     }).pipeThrough(told),
   });
 }

@@ -12,6 +12,7 @@ import {
   threadTable as thread,
   threadWorkTable as work,
 } from "@/database/tables";
+import type { TextModelProviderId } from "@/features/ai/model.schema";
 import { TOOL_NAMES } from "@/features/ai/tools/tool-name";
 import { publicError } from "@/lib/public-error";
 import { clip } from "@/lib/utils";
@@ -902,7 +903,12 @@ export async function settleRoom(threadId: string) {
   changed();
 }
 
-export async function pauseRoom(threadId: string, why: string) {
+/** `refused`: the provider that turned down the key or sign-in the run was on, when that is why. */
+export async function pauseRoom(
+  threadId: string,
+  why: string,
+  refused?: TextModelProviderId,
+) {
   await database.transaction(async (tx) => {
     const all = await tx.select().from(work).where(eq(work.threadId, threadId));
     for (const row of all.filter(
@@ -919,7 +925,10 @@ export async function pauseRoom(threadId: string, why: string) {
       .set({
         status: "waiting",
         outcome: why,
-        pending: { options: [THREAD_CONTINUE] },
+        pending: {
+          options: [THREAD_CONTINUE],
+          ...(refused ? { refused } : {}),
+        },
         seen: false,
         endedAt: null,
         updatedAt: new Date(),

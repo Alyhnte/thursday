@@ -9,6 +9,7 @@ import {
   CornerDownLeft,
   Loader2,
   Paperclip,
+  Settings2,
   Square,
   X,
 } from "lucide-react";
@@ -26,6 +27,7 @@ import { FoldedText } from "@/components/ui/folded-text";
 import { Markdown } from "@/components/ui/markdown";
 import { ShinyText } from "@/components/ui/shiny-text";
 import { Textarea } from "@/components/ui/textarea";
+import { refusedWords } from "@/features/ai/model.schema";
 import {
   answerThreadAction,
   cancelThreadAction,
@@ -43,6 +45,7 @@ import {
   screenActs,
   threadDrafts,
 } from "@/features/bot/thread.store";
+import { openSettings } from "@/features/settings/settings.store";
 import { SignInAsk } from "@/features/signins/components/signin-ask";
 import {
   GivenFiles,
@@ -283,20 +286,48 @@ export function ThreadReply({
         <SheetHead bot={faceOf(thread.bot)} word="Paused">
           <span className="ml-auto flex shrink-0">{stopButton(true)}</span>
         </SheetHead>
+        {/* A refused key is said in a sentence, the provider's own words small under it */}
+        {asking?.refused && (
+          <p className="text-[13px] leading-5 text-destructive">
+            {refusedWords(asking.refused)}.
+          </p>
+        )}
         {asking?.question && (
           <FoldedText
             text={asking.question}
             subject="message"
-            clamp="line-clamp-3"
+            clamp={asking.refused ? "line-clamp-2" : "line-clamp-3"}
             tall="max-h-40"
+            className={
+              asking.refused
+                ? "font-mono text-[11px] leading-4 text-muted-foreground"
+                : undefined
+            }
           />
         )}
-        <Choices
-          options={asking?.options.length ? asking.options : [THREAD_CONTINUE]}
-          picked={picked}
-          busy={busy}
-          onChoose={choose}
-        />
+        <div className="flex flex-wrap gap-1.5">
+          {/* Mended in Settings, where the GPT Subscription and every key are; Continue then
+              picks the job up on it */}
+          {asking?.refused && (
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => openSettings("keys")}
+              className="h-7 gap-1.5 rounded-full px-3 text-[12.5px]"
+            >
+              <Settings2 className="size-3.5" />
+              Open Settings
+            </Button>
+          )}
+          <Choices
+            options={
+              asking?.options.length ? asking.options : [THREAD_CONTINUE]
+            }
+            picked={picked}
+            busy={busy}
+            onChoose={choose}
+          />
+        </div>
         <DraftComposer
           key={JSON.stringify([thread.id, recipientName, "paused"])}
           threadId={thread.id}

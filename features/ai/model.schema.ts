@@ -1001,6 +1001,15 @@ export const TEXT_MODEL_PROVIDERS: Record<
   },
 };
 
+/**
+ * A provider turning down the key or sign-in a call went out on (ai/model isKeyRefused), as
+ * the screen says it: "OpenAI refused the key it runs on". Only Settings › API keys mends it.
+ */
+export const refusedWords = (provider: TextModelProviderId): string => {
+  const { label, signIn } = TEXT_MODEL_PROVIDERS[provider];
+  return `${label} refused the ${signIn ? "sign-in" : "key"} it runs on`;
+};
+
 /** A provider's model at one tier, or its first one when it has none at that size. */
 const modelOfTier = (
   provider: { suggestModels: SuggestModel[] },

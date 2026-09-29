@@ -154,6 +154,17 @@ export function isProviderRefusal(cause: unknown): boolean {
 }
 
 /**
+ * Whether the provider turned down the key or sign-in itself: a 401, the one status every
+ * provider answers an unknown key or a lapsed sign-in with. A 403 is left out: it also means
+ * a model the account may not use, or a region, which a new key does not mend.
+ */
+export function isKeyRefused(cause: unknown): boolean {
+  return causeChain(cause).some(
+    (error) => (error as { statusCode?: unknown }).statusCode === 401,
+  );
+}
+
+/**
  * Whether the GPT subscription refused a request because the plan's usage is spent until its
  * window resets (ai/chatgpt usageLimitOf): its 402, read by the code the backend gave.
  */

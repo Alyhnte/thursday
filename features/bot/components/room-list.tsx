@@ -1,7 +1,7 @@
 "use client";
 
 import { format, isThisYear, isToday, isYesterday } from "date-fns";
-import { ChevronLeft, ChevronsRight, Loader2 } from "lucide-react";
+import { ChevronLeft, ChevronsRight, Loader2, Settings2 } from "lucide-react";
 import {
   Fragment,
   type RefObject,
@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { ShinyText } from "@/components/ui/shiny-text";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { refusedWords } from "@/features/ai/model.schema";
 import {
   type Bot,
   DEFAULT_BOT,
@@ -28,6 +29,7 @@ import { BotMark } from "@/features/bot/components/bot-mark";
 import { BotRoster } from "@/features/bot/components/bot-roster";
 import { useAnswerThread } from "@/features/bot/components/thread-reply";
 import { RoutineMark } from "@/features/routine/components/routine-mark";
+import { openSettings } from "@/features/settings/settings.store";
 import { type DateLike, shortAgo, toDate } from "@/lib/date-like";
 import { type ServerPages } from "@/lib/protocol/use-server-pages";
 import { cn, plainText, WAITING_INK } from "@/lib/utils";
@@ -463,6 +465,18 @@ export function ThreadRow({
 
       {options.length > 0 && (
         <div className="flex flex-wrap gap-1.5 pt-0.5 pr-2 pb-2 pl-12.5">
+          {/* A refused key is mended in Settings; Continue then picks the job up on it */}
+          {!question && thread.ask?.refused && (
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => openSettings("keys")}
+              className="h-7 gap-1.5 rounded-full px-3 text-[12px]"
+            >
+              <Settings2 className="size-3.5" />
+              Open Settings
+            </Button>
+          )}
           {options.map((option) => (
             <Button
               key={option}
@@ -504,9 +518,11 @@ function secondLine(thread: ThreadView): { text: string; tone: string } {
     // A budget stop is not a question, but it waits on the user exactly as one
     // does, so it carries the waiting colour too; only the words differ.
     return {
-      text: isAppStop(thread.ask)
-        ? plainText(thread.outcome ?? thread.ask.question)
-        : thread.ask.question,
+      text: thread.ask.refused
+        ? `${refusedWords(thread.ask.refused)}.`
+        : isAppStop(thread.ask)
+          ? plainText(thread.outcome ?? thread.ask.question)
+          : thread.ask.question,
       tone: WAITING_INK,
     };
   }

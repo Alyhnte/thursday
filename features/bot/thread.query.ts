@@ -36,12 +36,12 @@ import {
   type BotWorkLine,
   type ResultPart,
   type StepUsage,
+  speakerOf,
   type Thread,
   type ThreadLine,
   type ThreadPending,
   type ThreadSpeaker,
   type ThreadStatus,
-  speakerOf,
   untagSpeaker,
 } from "./bot.schema";
 import { messageKey } from "./room.query";
@@ -650,6 +650,7 @@ function viewOf(row: ThreadRow, lines: ThreadLine[]): Omit<Thread, "room"> {
             options: pending?.options ?? [],
             messageId: pending?.messageId,
             bot: pending?.bot,
+            refused: pending?.refused,
           }
         : null,
     tokens: { input: inputTokens, output: outputTokens },

@@ -18,12 +18,14 @@ import {
   compactBudget,
   getTextModel,
   isContextOverflow,
+  isKeyRefused,
   isProviderRefusal,
   modelErrorToString,
   promptCacheOptions,
   resolveDefaultModel,
   runEffort,
 } from "@/features/ai/model";
+import type { TextModelProviderId } from "@/features/ai/model.schema";
 import { loadBotPrompt } from "@/features/ai/prompts/bot.prompt";
 import { sendMessageSpec } from "@/features/ai/tools/bot.tool";
 import { TOOL_NAMES } from "@/features/ai/tools/tool-name";
@@ -99,9 +101,16 @@ type BotEvent =
   /**
    * The run broke, in words a person can act on; `budget` is where to compact next
    * time, when the model refused the context as too long; `retry` whether another try
-   * may pass (config BOT_RUN.retryMs), false when only a person can change the outcome.
+   * may pass (config BOT_RUN.retryMs), false when only a person can change the outcome;
+   * `refused` the provider that turned down the key or sign-in it ran on, when that is why.
    */
-  | { type: "error"; message: string; budget?: number; retry: boolean };
+  | {
+      type: "error";
+      message: string;
+      budget?: number;
+      retry: boolean;
+      refused?: TextModelProviderId;
+    };
 
 /** The event as the thread sees it: which participant and continuation. */
 export type ThreadEvent = BotEvent & { bot: string; parent: string | null };
@@ -408,7 +417,9 @@ export async function runBot(
     logger.error(`${name}: the model run broke`, cause);
     const message = modelErrorToString(cause);
     const retry = !isProviderRefusal(cause);
-    if (!isContextOverflow(cause)) return { type: "error", message, retry };
+    const refused = isKeyRefused(cause) ? { refused: model.ref.provider } : {};
+    if (!isContextOverflow(cause))
+      return { type: "error", message, retry, ...refused };
     const shrunk = Math.floor(
       Math.min(budget, sent || budget) * BOT_RUN.overflowShrink,
     );
@@ -417,6 +428,7 @@ export async function runBot(
       message,
       budget: Math.max(COMPACT_AT_MIN, shrunk),
       retry,
+      ...refused,
     };
   };
 

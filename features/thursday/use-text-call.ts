@@ -12,6 +12,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { queryKey } from "@/app/api/query-key";
 import { toast } from "@/components/ui/toast";
 import { CALL_LINE, TEXT_CALL } from "@/config";
+import type { TextModelProviderId } from "@/features/ai/model.schema";
 import { TOOL_NAMES } from "@/features/ai/tools/tool-name";
 import { acceptThreadRelaysAction } from "@/features/bot/bot.action";
 import type { Thread } from "@/features/bot/bot.schema";
@@ -36,9 +37,11 @@ import {
   picturePart,
   TEXT_CALL_MOVED,
   TEXT_CALL_NOTE,
+  TEXT_CALL_REFUSED,
   type TextCallHandshake,
   type TextCallMoved,
   type TextCallNote,
+  type TextCallRefused,
   type Where,
 } from "./thursday.schema";
 import { useThursdayStore } from "./thursday.store";
@@ -87,6 +90,8 @@ export type TextCall = {
   since: number | null;
   /** Why the last answer did not come, in the provider's own words. */
   error: string | null;
+  /** The provider that turned down the key or sign-in that answer ran on, when that is why. */
+  refused: TextModelProviderId | null;
   /**
    * Sends words to her, opening the call with the first. Resolves once they are on their way.
    * `files` are the workspace paths sent with them: the pictures among them reach her as
@@ -144,6 +149,8 @@ export function useTextCall(): TextCall {
    * call, since every turn after it asks the plan first and moves again until it resets.
    */
   const movedSaid = useRef(false);
+  /** Who refused the key the last answer ran on (thursday.text): until the next turn goes. */
+  const [refused, setRefused] = useState<TextModelProviderId | null>(null);
   const {
     messages,
     sendMessage,
@@ -156,6 +163,8 @@ export function useTextCall(): TextCall {
     transport,
     onFinish: (event) => after.current(event),
     onData: (part) => {
+      if (part.type === `data-${TEXT_CALL_REFUSED}`)
+        return setRefused((part.data as TextCallRefused).provider);
       if (part.type !== `data-${TEXT_CALL_MOVED}` || movedSaid.current) return;
       movedSaid.current = true;
       toast.add({
@@ -188,6 +197,7 @@ export function useTextCall(): TextCall {
       hold([]);
       const name = crypto.randomUUID();
       turn.current = name;
+      setRefused(null);
       const on = runsOn();
       sentOn.current = JSON.stringify(on ?? null);
       const parts = [
@@ -576,6 +586,7 @@ export function useTextCall(): TextCall {
     thinkingTitle,
     since: line?.at ?? null,
     error: error ? error.message : null,
+    refused: error ? refused : null,
     say,
     again,
     end,

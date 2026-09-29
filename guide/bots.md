@@ -150,7 +150,9 @@ it when it is in.
   pill says how many need a reply, and each can be answered right there (or just above the line at
   the foot, while that is open).
 - **A pause** — a model that broke twice, a provider that refused, the app restarting, a job that
-  reached its step limit — shows as *Paused*, and **Continue** picks it up where it left off.
+  reached its step limit — shows as *Paused*, and **Continue** picks it up where it left off. When
+  the provider turned down the key or sign-in the bot runs on, it says so, and **Open Settings**
+  beside **Continue** opens **Settings › API keys**; Continue once a key works.
 - **Signing in** is always the user's: the bot opens the page and waits.
 - **Paying** is the user's too: a bot fills a checkout in and stops at the button.
 

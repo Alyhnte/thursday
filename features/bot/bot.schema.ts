@@ -333,6 +333,8 @@ export type ThreadPending = {
   options: string[];
   messageId?: string;
   bot?: string;
+  /** A stop the app made because the provider turned down the key or sign-in the run was on. */
+  refused?: TextModelProviderId;
 };
 
 /**
@@ -483,6 +485,8 @@ const ThreadAskSchema = z.object({
   messageId: z.string().optional(),
   bot: z.string().optional(),
   options: z.string().array(),
+  /** The provider that turned down the key or sign-in the run was on (ThreadPending `refused`). */
+  refused: textModelProviderSchema.optional(),
 });
 
 export type ThreadAsk = z.infer<typeof ThreadAskSchema>;

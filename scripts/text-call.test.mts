@@ -470,6 +470,48 @@ test("words a broken turn never kept are kept with the next turn, once", async (
   ]);
 });
 
+/** A provider turning down the key itself, as the sdk wraps it: a 401 (ai/model isKeyRefused). */
+const keyRefused = (statusCode = 401) =>
+  new APICallError({
+    message: "Incorrect API key provided: sk-ab******cd.",
+    url: "https://api.openai.com/v1/responses",
+    requestBodyValues: {},
+    statusCode,
+    isRetryable: false,
+  });
+
+test("a refused key is named to the page just ahead of its error, and nothing else is", async () => {
+  const { callId } = await openTextCall();
+  builtFor.length = 0;
+  steps.push(() => {
+    throw keyRefused();
+  });
+  const chunks = await pageTurn({
+    callId,
+    turn: "turn-refused",
+    messages: [words("u-r1", "what is on today?")],
+  });
+  const at = chunks.findIndex((chunk) => chunk.type === "error");
+  assert.ok(at > 0);
+  assert.deepEqual(chunks[at - 1], {
+    type: "data-refused",
+    data: { provider: builtFor.at(-1) },
+    transient: true,
+  });
+
+  // A 403 is a model or a region the account may not use: said as it came, no Settings
+  steps.push(() => {
+    throw keyRefused(403);
+  });
+  const denied = await pageTurn({
+    callId,
+    turn: "turn-denied",
+    messages: [words("u-r2", "and tomorrow?")],
+  });
+  assert.ok(denied.some((chunk) => chunk.type === "error"));
+  assert.ok(!denied.some((chunk) => chunk.type === "data-refused"));
+});
+
 test("a call in writing reads its own words as the conversation, never again as an earlier call", async () => {
   const { callId } = await openTextCall();
   const first = words("u-7", "the harbour at dawn");

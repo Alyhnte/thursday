@@ -99,9 +99,11 @@ has the same memory, tools and bots as on a spoken call, with no voice and no pe
   when the plan resets. Every turn tries the plan first, so it goes back to the plan by itself once
   the plan resets. Turns on the key are billed to it. With no key, the turn fails as below.
 - **When a turn fails** — a refused key, a plan's limit with no key to go on — her face says ERROR
-  and the provider's reason shows in red under the line, with **Send it again** and a link to
-  **API keys**. When an OpenAI key is set and was not the problem, the button reads **Send it again
-  on your OpenAI key**.
+  and the provider's reason shows in red under the line, with **Send it again**. When the provider
+  turned down the key or sign-in itself, the line says so in a sentence with the provider's own
+  words small under it, and **Open Settings** opens **Settings › API keys**, where the GPT
+  Subscription and every key are; send it again once one works. When an OpenAI key is set and was
+  not the problem, the button reads **Send it again on your OpenAI key**.
 - **Ending it**: **Esc** ends it (saying goodbye does not), and so does starting a spoken call.
   Opening a thread in the corner does not: the corner says *Thursday is still on the line*, with
   **Back to her** to return.

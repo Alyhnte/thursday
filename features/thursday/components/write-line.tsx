@@ -8,6 +8,7 @@ import {
   FolderOpen,
   Paperclip,
   RotateCw,
+  Settings2,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { queryKey } from "@/app/api/query-key";
@@ -27,6 +28,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/toast";
 import { ModelPicker } from "@/features/ai/components/model-picker";
 import {
+  refusedWords,
   TEXT_MODEL_PROVIDERS,
   type TextModelRef,
 } from "@/features/ai/model.schema";
@@ -76,7 +78,7 @@ import { ThursdayMark } from "./thursday-mark";
 /** What the line needs of a call in writing, and what such a call would run on. */
 export type WrittenCall = Pick<
   TextCall,
-  "on" | "busy" | "error" | "say" | "again" | "end"
+  "on" | "busy" | "error" | "refused" | "say" | "again" | "end"
 > & {
   /**
    * What it would run on: the model picked here, else the rule's (the plan, else the
@@ -669,19 +671,43 @@ export function WriteLine({
             </form>
           </div>
 
-          {toHer && written?.error && (
-            <p className="px-4 text-center text-xs leading-5 text-destructive">
-              {written.error}
-            </p>
-          )}
+          {/* A refused key is said in a sentence, the provider's own words small under it */}
+          {toHer &&
+            written?.error &&
+            (written.refused ? (
+              <div className="flex flex-col items-center gap-0.5 px-4 text-center">
+                <p className="text-xs leading-5 text-destructive">
+                  {refusedWords(written.refused)}, so she could not answer.
+                </p>
+                <p className="line-clamp-2 font-mono text-[10.5px] leading-4 text-muted-foreground">
+                  {written.error}
+                </p>
+              </div>
+            ) : (
+              <p className="px-4 text-center text-xs leading-5 text-destructive">
+                {written.error}
+              </p>
+            ))}
           {/* The way on from a turn that broke: the same words again. Never by itself: what a
-              turn costs changes with what it runs on, so they press it */}
+              turn costs changes with what it runs on, so they press it. A refused key is mended
+              in Settings, where the GPT Subscription and every key are; the same words wait
+              beside it for once it is */}
           {toHer && written?.error && (
             <div className="flex items-center justify-center gap-3">
+              {written.refused && (
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => openSettings("keys")}
+                >
+                  <Settings2 />
+                  Open Settings
+                </Button>
+              )}
               <Button
                 type="button"
                 size="sm"
-                variant="brand"
+                variant={written.refused ? "ghost" : "brand"}
                 disabled={written.busy}
                 onClick={() => {
                   if (written.fallback)
