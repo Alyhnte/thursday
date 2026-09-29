@@ -25,13 +25,11 @@ import { fileURLToPath } from "node:url";
 import { imageSize } from "../../../browser/scripts/image-size.mjs";
 import { getBetween, keep, putBetween } from "../shell/put.mjs";
 import { retitle, wear } from "../shell/wear.mjs";
+import { deckIn, H, W } from "./data.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 // The shipped skills, where the artifact skill's camera takes the pictures
 const SKILLS = process.env.THURSDAY_SKILLS || resolve(HERE, "..", "..", "..");
-/** Every slide's size; the tool offers no other. */
-const W = 1920;
-const H = 1080;
 const SHOT = /^slide-(\d+)\.png$/;
 /** Every slide on one picture, beside the deck, for one look. */
 const SHEET = "slides.png";
@@ -49,20 +47,6 @@ const inline = (deck) =>
 
 const revisionOf = (html) =>
   /<meta name="revision" content="([^"]*)">/.exec(html)?.[1] ?? "";
-
-/** The deck a page holds as data, or null: one written by hand before decks were data. */
-function deckIn(html) {
-  const found =
-    /<!-- put: start[^>]*-->\s*<script type="application\/json" data-deck(?:="")?>([\s\S]*?)<\/script>/.exec(
-      html,
-    );
-  if (!found) return null;
-  try {
-    return JSON.parse(found[1]);
-  } catch {
-    return null;
-  }
-}
 
 /** A new deck's frame: the head, the stage, the notes and the strip, with nothing on it yet. */
 function frame() {

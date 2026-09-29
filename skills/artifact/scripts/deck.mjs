@@ -20,6 +20,7 @@ import {
   statSync,
 } from "node:fs";
 import { basename, dirname, extname, join, resolve } from "node:path";
+import { deckIn, H, W } from "../runtime/deck/data.mjs";
 import {
   ARTIFACTS,
   NAME,
@@ -46,21 +47,6 @@ function skills() {
   return at;
 }
 
-/** The deck a page holds as data (runtime/deck/deck.mjs writes it), or null. */
-function deckIn(html) {
-  const found =
-    /<!-- put: start[^>]*-->\s*<script type="application\/json" data-deck(?:="")?>([\s\S]*?)<\/script>/.exec(
-      html,
-    );
-  if (!found) return null;
-  try {
-    const deck = JSON.parse(found[1]);
-    return Array.isArray(deck?.slides) ? deck : null;
-  } catch {
-    return null;
-  }
-}
-
 /**
  * A deck named — its folder under your artifacts, as make_deck names it — or given by its
  * path, as make_deck handed it back: a path is read from the workspace root.
@@ -85,24 +71,12 @@ function openDeck(arg) {
     throw new Stop(
       `No deck at ${shown(file)}. Give its name, or its path as make_deck handed it back.`,
     );
-  const html = readFileSync(file, "utf8");
-  const deck = deckIn(html);
-  if (!deck)
+  const deck = deckIn(readFileSync(file, "utf8"));
+  if (!Array.isArray(deck?.slides))
     throw new Stop(
       `${shown(file)} is not a deck the make_deck tool made, so this cannot carry it on.`,
     );
-  const size = /<body[^>]*--w:\s*(\d+);\s*--h:\s*(\d+)/.exec(html);
-  if (!size)
-    throw new Stop(
-      `${shown(file)} does not say its slides' size. Make it again with make_deck.`,
-    );
-  return {
-    file,
-    html,
-    slides: deck.slides.length,
-    w: Number(size[1]),
-    h: Number(size[2]),
-  };
+  return { file, slides: deck.slides.length };
 }
 
 /**
@@ -120,7 +94,7 @@ function pdf(arg) {
       deck.file,
       "--shot",
       "--size",
-      `${deck.w}x${deck.h}`,
+      `${W}x${H}`,
       "--pdf",
       out,
       "--apart",
@@ -175,7 +149,7 @@ function video(arg, audio) {
         "--shot",
         // A slide that does not come out this size did not fit, and stops the run
         "--size",
-        `${deck.w}x${deck.h}`,
+        `${W}x${H}`,
         "--out",
         frames,
         "--name",
@@ -259,7 +233,7 @@ function video(arg, audio) {
   const secs = Math.round(lengths.reduce((a, b) => a + b, 0));
   const mb = (statSync(out).size / 1024 / 1024).toFixed(1);
   console.log(
-    `Made ${shown(out)}: ${voices.length} slides, ${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")} long, ${deck.w}x${deck.h}, ${mb} MB. Hand back this path.`,
+    `Made ${shown(out)}: ${voices.length} slides, ${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")} long, ${W}x${H}, ${mb} MB. Hand back this path.`,
   );
   console.log(
     `The voices are copied into ${shown(kept)}/slide-01… in slide order, kept for a slide said again later; the files you gave stay where they were.`,

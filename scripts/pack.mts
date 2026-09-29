@@ -429,6 +429,7 @@ const REQUIRED = [
   "skills/artifact/runtime/shell/fonts/GeistMono-latin.woff2",
   "skills/artifact/runtime/shell/fonts/GeistMono-latin-ext.woff2",
   "skills/artifact/runtime/render.mjs",
+  "skills/artifact/runtime/deck/data.mjs",
   "skills/artifact/runtime/shell/wear.mjs",
   "skills/artifact/runtime/shell/put.mjs",
   "skills/artifact/runtime/shell/workspace.mjs",
