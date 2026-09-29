@@ -365,8 +365,8 @@ test("a picture put down before a hand-over is in her next step before the hand-
   const fact = prompt.indexOf("put a file down on screen");
   const named = prompt.indexOf("inbox/photo.png, as an image:");
   const picture = prompt.indexOf('"type":"file"', named);
-  // Put down before the voice handed over, so read before its words: after them, the picture
-  // read as sent with "how do I look?" and was taken for the camera
+  // Put down before the voice handed over, so read before its words: after them, a picture
+  // put down a while ago read as sent with the words
   assert.ok(fact >= 0 && fact < named, "the fact, then the picture it names");
   assert.ok(picture > named, "the picture itself, after its path");
   assert.ok(picture < handed, "what was put down, then the hand-over");

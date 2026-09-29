@@ -461,8 +461,7 @@ async function respond(line: PlanLine, handed: Handed) {
       content: `Said since you last worked, as the voice's side transcribed it:\n<transcript_delta>${bounded(talk, "end")}</transcript_delta>`,
     });
   // What was put down before the voice handed over came before it: in after the hand-over,
-  // a picture put down a while ago read as sent with the words, and "how do I look?" with the
-  // camera on was answered from a drawing
+  // a picture put down a while ago read as sent with the words
   takeGiven(line);
   if (handed.id !== null)
     line.messages.push({

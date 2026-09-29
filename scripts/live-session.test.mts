@@ -7,7 +7,6 @@ import type {
   LiveSearch,
   LiveSource,
   LiveToolCall,
-  LiveToolResult,
   LiveTurn,
 } from "../lib/live/live.session.ts";
 
@@ -70,7 +69,7 @@ afterEach(async () => {
 async function connect({
   runTool = async () => "ok",
 }: {
-  runTool?: (call: LiveToolCall) => Promise<string | LiveToolResult>;
+  runTool?: (call: LiveToolCall) => Promise<string>;
 } = {}) {
   sent = [];
   released = false;
@@ -192,39 +191,9 @@ const backendOrder = () =>
         : `${item.type}:${item.call_id}`;
     });
 
-test("a picture a tool hands back goes in after its turn's outputs, as the user's image, before the backend goes on", async () => {
-  const image = "data:image/jpeg;base64,AAAA";
+test("with two tools in one turn, a picture put down waits until both outputs are in, whichever finishes first", async () => {
+  const pending = new Map<string, (value: string) => void>();
   const { session } = await connect({
-    runTool: async () => ({ output: "Their screen follows.", image }),
-  });
-  nested({ type: "response.created", response: { id: "r1" } });
-  functionCall("a");
-  nested({ type: "response.completed", response: { id: "r1", output: [] } });
-  await tick();
-  assert.deepEqual(backendOrder(), [
-    "function_call_output:a",
-    "message:user",
-    "continue",
-  ]);
-  assert.deepEqual(
-    sent.find(
-      (event) =>
-        (event.item as { type?: string } | undefined)?.type === "message",
-    )?.item,
-    {
-      type: "message",
-      role: "user",
-      content: [{ type: "input_image", image_url: image }],
-    },
-  );
-  // What a picture is made to fit: the connection's own limit
-  assert.equal(session.messageLimit(), 262_144);
-});
-
-test("with two tools in one turn, the picture waits until both outputs are in, whichever finishes first", async () => {
-  const image = "data:image/jpeg;base64,AAAA";
-  const pending = new Map<string, (value: string | LiveToolResult) => void>();
-  await connect({
     runTool: (call) => new Promise((resolve) => pending.set(call.id, resolve)),
   });
   nested({ type: "response.created", response: { id: "r1" } });
@@ -232,7 +201,8 @@ test("with two tools in one turn, the picture waits until both outputs are in, w
   functionCall("b");
   nested({ type: "response.completed", response: { id: "r1", output: [] } });
   await tick();
-  pending.get("a")?.({ output: "Their screen follows.", image });
+  session.picture("data:image/jpeg;base64,AAAA", "inbox/photo.png");
+  pending.get("a")?.("done");
   await tick();
   assert.deepEqual(backendOrder(), ["function_call_output:a"]);
   pending.get("b")?.("done");
@@ -243,32 +213,6 @@ test("with two tools in one turn, the picture waits until both outputs are in, w
     "message:user",
     "continue",
   ]);
-});
-
-test("a picture the connection will not carry is said to the backend and the user instead, and the turn still goes on", async () => {
-  refuses = (event) => JSON.stringify(event).includes('"type":"input_image"');
-  const { warnings } = await connect({
-    runTool: async () => ({
-      output: "Their screen follows.",
-      image: "data:image/jpeg;base64,AAAA",
-    }),
-  });
-  nested({ type: "response.created", response: { id: "r1" } });
-  functionCall("a");
-  nested({ type: "response.completed", response: { id: "r1", output: [] } });
-  await tick();
-  assert.deepEqual(backendOrder(), [
-    "function_call_output:a",
-    "message:developer",
-    "continue",
-  ]);
-  const note = sent.find(
-    (event) =>
-      (event.item as { role?: string } | undefined)?.role === "developer",
-  )?.item as { content: { text: string }[] };
-  assert.match(note.content[0].text, /did not go through.*Message too large/);
-  assert.equal(warnings.length, 1);
-  assert.match(warnings[0], /picture of what you show did not go through/);
 });
 
 test("a picture put down while the backend is quiet goes in at once, named by its path, and starts no turn", async () => {
@@ -284,10 +228,12 @@ test("a picture put down while the backend is quiet goes in at once, named by it
       { type: "input_image", image_url: image },
     ],
   });
+  // What a picture is made to fit: the connection's own limit
+  assert.equal(session.messageLimit(), 262_144);
 });
 
 test("a picture put down while the backend waits on its tools goes in after their outputs, before it goes on", async () => {
-  const pending = new Map<string, (value: string | LiveToolResult) => void>();
+  const pending = new Map<string, (value: string) => void>();
   const { session } = await connect({
     runTool: (call) => new Promise((resolve) => pending.set(call.id, resolve)),
   });
@@ -338,7 +284,7 @@ test("a picture put down while the backend answers goes in once that answer ends
 });
 
 test("a run asked for on what was put down goes at once while the backend is quiet, and after a running turn once, never twice", async () => {
-  const pending = new Map<string, (value: string | LiveToolResult) => void>();
+  const pending = new Map<string, (value: string) => void>();
   const { session } = await connect({
     runTool: (call) => new Promise((resolve) => pending.set(call.id, resolve)),
   });
@@ -374,7 +320,7 @@ test("a run asked for on what was put down goes at once while the backend is qui
 });
 
 test("what is put down or run after a turn is asked for and before it starts waits for that turn, and runs once after it", async () => {
-  const pending = new Map<string, (value: string | LiveToolResult) => void>();
+  const pending = new Map<string, (value: string) => void>();
   const { session } = await connect({
     runTool: (call) => new Promise((resolve) => pending.set(call.id, resolve)),
   });
@@ -437,7 +383,7 @@ test("a picture put down that the connection will not carry is said by its path,
 });
 
 test("a fact put down while the backend waits on its tools goes in after their outputs, in order with the picture it names", async () => {
-  const pending = new Map<string, (value: string | LiveToolResult) => void>();
+  const pending = new Map<string, (value: string) => void>();
   const { session } = await connect({
     runTool: (call) => new Promise((resolve) => pending.set(call.id, resolve)),
   });
@@ -459,7 +405,7 @@ test("a fact put down while the backend waits on its tools goes in after their o
 });
 
 test("a turn heard from again after an error took it for ended holds what is put down until its outputs are in", async () => {
-  const pending = new Map<string, (value: string | LiveToolResult) => void>();
+  const pending = new Map<string, (value: string) => void>();
   const { session } = await connect({
     runTool: (call) => new Promise((resolve) => pending.set(call.id, resolve)),
   });
@@ -1405,7 +1351,7 @@ test("both call prompts open as one Thursday: the voice gets the guide's delegat
     assert.match(on.text, /Prefer brief replies/);
     assert.match(
       on.text,
-      /\n\n## Always\n\nBackchannel policy: Use moderate backchannels\. .*\n\nInterruption policy: Stop speaking when the user interrupts\. Listen to what they say\.\n\nSpeak the language the user is speaking, [^\n]+\n\nDelegation policy:\nBackend tools:\n- Ending the call: hangs up the line — only the backend can, so a goodbye, or a hang-up they ask for, is handed over rather than answered\.\n(- [^\n]+\n){5}\nDelegate to the backend when:\n- They say goodbye or good night, in whatever words, or want the call to end\.\n(- [^\n]+\n)+\nDo not delegate to the backend when:\n- They say hello, [^\n]+\n(- [^\n]+\n)+\nDelegate before giving an answer that depends on backend work\. Do not guess the result while waiting\.\n\nWhat they tell you about themselves is handed over quietly: [^\n]+\n\n## What you know about them\n/,
+      /\n\n## Always\n\nBackchannel policy: Use moderate backchannels\. .*\n\nInterruption policy: Stop speaking when the user interrupts\. Listen to what they say\.\n\nSpeak the language the user is speaking, [^\n]+\n\nDelegation policy:\nBackend tools:\n- Ending the call: hangs up the line — only the backend can, so a goodbye, or a hang-up they ask for, is handed over rather than answered\.\n(- [^\n]+\n){4}\nDelegate to the backend when:\n- They say goodbye or good night, in whatever words, or want the call to end\.\n(- [^\n]+\n)+\nDo not delegate to the backend when:\n- They say hello, [^\n]+\n(- [^\n]+\n)+\nDelegate before giving an answer that depends on backend work\. Do not guess the result while waiting\.\n\nWhat they tell you about themselves is handed over quietly: [^\n]+\n\n## What you know about them\n/,
     );
     // Who she is to talk to sits right under the identity, character only: no stamp, no rule
     assert.match(

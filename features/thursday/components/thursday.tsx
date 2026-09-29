@@ -14,7 +14,6 @@ import {
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import {
-  Fragment,
   type ReactNode,
   useCallback,
   useEffect,
@@ -28,7 +27,6 @@ import { ButtonGroup } from "@/components/ui/button-group";
 import { Letters } from "@/components/ui/letters";
 import { ShinyText } from "@/components/ui/shiny-text";
 import { SourceChips } from "@/components/ui/source-chips";
-import { toast } from "@/components/ui/toast";
 import {
   Tooltip,
   TooltipContent,
@@ -72,13 +70,6 @@ import {
 import { openSettings } from "@/features/settings/settings.store";
 import { useCallHeld } from "@/features/thursday/call-signal";
 import { faceMoment, useFaceMoment } from "@/features/thursday/face-moment";
-import {
-  canShow,
-  type ShownKind,
-  show,
-  stopShowing,
-  useShown,
-} from "@/features/thursday/show";
 import { silentVoice } from "@/features/thursday/silent-voice";
 import {
   type CallMessage,
@@ -100,7 +91,7 @@ import { ArtifactView } from "@/features/workspace/components/artifact-view";
 import { useHotkeyLabel } from "@/hooks/use-hotkey";
 import { useWide } from "@/hooks/use-wide";
 import { useServerRoute } from "@/lib/protocol/use-server-route";
-import { cn, errorToString, plainText } from "@/lib/utils";
+import { cn, plainText } from "@/lib/utils";
 import { CaptionWords } from "./caption-words";
 import { ConnectWave } from "./connect-wave";
 import { Face } from "./face";
@@ -251,8 +242,6 @@ function CallScreen({
         <InstallNudge
           hidden={status !== "idle" || ringing !== null || writing}
         />
-        {/* On the caller's side, clear of the captions stacked beside her face */}
-        <ShownPreview />
       </div>
 
       {captioned && (
@@ -1604,7 +1593,7 @@ function Hint({
         ) : (
           <Elapsed since={since} />
         )}
-        <ShowOnLine />
+        <DrawOnLine />
       </>
     );
   } else if (ended) {
@@ -1669,31 +1658,9 @@ function Hint({
 const LINE_BUTTON =
   "rounded-md outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50";
 
-/** What each way to show her is called on the line, and what the browser refusing it says. */
-const SHOW_WAYS: Record<
-  ShownKind,
-  { press: string; on: string; refused: string }
-> = {
-  screen: {
-    press: "Share screen",
-    on: "Sharing screen",
-    refused: "Nothing was shared",
-  },
-  camera: {
-    press: "Camera",
-    on: "Camera on",
-    refused: "The camera did not start",
-  },
-};
-
-/**
- * The ways to show her something, on the line while a spoken call is up: a screen or the
- * camera, one at a time — the browser asks which screen, window or tab, or for the camera, and
- * only from a press (show) — and a drawing, made on the write line's pad (draw-pad).
- */
-function ShowOnLine() {
-  const shown = useShown();
-  const draw = (
+/** The drawing pad, on the line while a spoken call is up: what is drawn is handed to her (draw-pad). */
+function DrawOnLine() {
+  return (
     <>
       <span className="text-muted-foreground/40">·</span>
       <button
@@ -1704,80 +1671,6 @@ function ShowOnLine() {
         Draw
       </button>
     </>
-  );
-  if (shown)
-    return (
-      <>
-        <span className="text-muted-foreground/40">·</span>
-        <span>{SHOW_WAYS[shown.kind].on}</span>
-        <span className="text-muted-foreground/40">·</span>
-        <button type="button" onClick={stopShowing} className={LINE_BUTTON}>
-          Stop
-        </button>
-        {draw}
-      </>
-    );
-  return (
-    <>
-      {(["screen", "camera"] as const).filter(canShow).map((kind) => (
-        <Fragment key={kind}>
-          <span className="text-muted-foreground/40">·</span>
-          <button
-            type="button"
-            // What the browser refused, in its words: a press that did nothing left the person
-            // guessing, where the system's screen recording permission was the answer
-            onClick={() =>
-              show(kind).catch((cause: unknown) =>
-                toast.add({
-                  type: "warning",
-                  title: SHOW_WAYS[kind].refused,
-                  description: errorToString(cause),
-                }),
-              )
-            }
-            className={LINE_BUTTON}
-          >
-            {SHOW_WAYS[kind].press}
-          </button>
-        </Fragment>
-      ))}
-      {draw}
-    </>
-  );
-}
-
-/**
- * What is shown to her, small, while it is. Nothing of it leaves the page until she looks,
- * which the backend decides, most often when asked: the caption says only what the code holds.
- */
-function ShownPreview() {
-  const shown = useShown();
-  const video = useRef<HTMLVideoElement>(null);
-  const stream = shown?.stream ?? null;
-  useEffect(() => {
-    if (video.current) video.current.srcObject = stream;
-  }, [stream]);
-  if (!shown) return null;
-  const camera = shown.kind === "camera";
-  return (
-    <figure className="flex w-44 animate-in flex-col items-end gap-1.5 fade-in duration-300">
-      <video
-        ref={video}
-        autoPlay
-        muted
-        playsInline
-        aria-label={camera ? "Your camera" : "The screen you are sharing"}
-        // The camera as a mirror, the way people expect to see themselves; the picture she
-        // gets is not flipped
-        className={cn(
-          "w-full rounded-lg bg-muted object-contain ring-1 ring-border/60",
-          camera ? "aspect-[4/3] -scale-x-100" : "aspect-video",
-        )}
-      />
-      <figcaption className="font-mono text-[11px] text-muted-foreground">
-        Sent only when she looks
-      </figcaption>
-    </figure>
   );
 }
 

@@ -65,15 +65,8 @@ import {
   stoodBefore,
   toldWork,
 } from "./open-work";
+import { pictureOfFile } from "./picture";
 import { screenActLine } from "./screen-act";
-import {
-  canShow,
-  onShownChange,
-  pictureOfFile,
-  shownKind,
-  stopShowing,
-  takePicture,
-} from "./show";
 import {
   endCallAction,
   openCallAction,
@@ -100,8 +93,7 @@ import { whereNow } from "./where";
 /**
  * One live call, plus the thread inbox the app watches even with no call open.
  * The server opens the Live session (openCallAction) and runs the tools
- * (tool-call); the page itself hangs up, puts a word on the face, and takes the
- * picture of the screen or camera the user shows (show).
+ * (tool-call); the page itself hangs up and puts a word on the face.
  */
 
 /** Plays when the line opens. */
@@ -130,8 +122,8 @@ const FAILED_FACE_MS = 6000;
 
 /**
  * What one data channel message may carry when the far end names no limit (the SCTP default
- * the two ends both know), for a picture taken while the connection says none it can be held
- * to (show).
+ * the two ends both know), for a picture put down while the connection says none it can be
+ * held to.
  */
 const SCTP_DEFAULT_BYTES = 65_536;
 
@@ -160,8 +152,7 @@ const PICTURE_WORDS_BYTES = 64;
 
 /**
  * Files put down, into the backend's conversation: the fact with their paths, then each
- * picture among them as a picture, read through the file route and made to fit the line as a
- * shown one is. One that cannot be made so is said to it instead, never left out unsaid. Asked
+ * picture among them as a picture, read through the file route and made to fit the line. One that cannot be made so is said to it instead, never left out unsaid. Asked
  * to, the backend then runs on them, and what it makes of them is hers to say.
  */
 async function putDown(live: LiveSession, { fact, pictures, run }: PutDown) {
@@ -179,17 +170,6 @@ async function putDown(live: LiveSession, { fact, pictures, run }: PutDown) {
       );
   }
   if (run) live.run();
-}
-
-/** What she reads when she looks and nothing is shown: how they can show her, as far as this browser can. */
-function nothingShown(): string {
-  const ways = [
-    canShow("screen") && "a screen, a window or a tab with Share screen",
-    canShow("camera") && "their camera with Camera",
-  ].filter(Boolean);
-  return ways.length
-    ? `Nothing is being shown. They can show you ${ways.join(", or ")}, on the line under your face.`
-    : "Nothing is being shown, and this browser can show you neither a screen nor a camera.";
 }
 
 /**
@@ -319,8 +299,6 @@ export function useThursday(
     spoke: boolean;
     giveUp: ReturnType<typeof setTimeout> | null;
   }>({ on: false, spoke: false, giveUp: null });
-  /** What waits for her to finish reading something out before it goes in (shareNews). */
-  const afterReading = useRef<(() => void) | null>(null);
   /** What `session.closed` confirmed for the call being ended; recorded on its row. */
   const finalized = useRef<LiveClose | null>(null);
   /** When the line last had new words from the user, her voice or backend work: the idle clock. */
@@ -462,7 +440,6 @@ export function useThursday(
     onLineRows.current = [];
     onLine.current = [];
     reading.current = { on: false, spoke: false, giveUp: null };
-    afterReading.current?.();
     if (!relayOpen.current) return;
     relayOpen.current = false;
     setTool((open) =>
@@ -725,33 +702,6 @@ export function useThursday(
     [outbox, briefs],
   );
 
-  // Showing a screen or the camera, or stopping, is told too; while she reads the opening or
-  // an update it waits: put in at once, it went in over her greeting, and on two calls she
-  // never gave it. What earlier calls said about a screen is in her reading, and she answered
-  // from it with a different screen shared; the fact says what is on it now is only known by
-  // looking
-  const shareNews = useRef<string | null>(null);
-  useEffect(() => {
-    const tell = () => {
-      const news = shareNews.current;
-      if (!news || !calling.current || reading.current.on) return;
-      shareNews.current = null;
-      outbox.send(news);
-    };
-    afterReading.current = tell;
-    const stop = onShownChange((now, before) => {
-      if (!calling.current) return;
-      shareNews.current = now
-        ? `The user started showing you their ${now}. What is on it now is known only by looking at it; what was said about it before may not be what is there.`
-        : `The user stopped showing you their ${before ?? "screen"}.`;
-      tell();
-    });
-    return () => {
-      stop();
-      afterReading.current = null;
-    };
-  }, [outbox]);
-
   /** Closes the session and resets state. Turns were saved during the call. `why` is null when the user hung up. */
   const hangUp = useCallback(
     async (why: CallEnd | null = null) => {
@@ -767,9 +717,6 @@ export function useThursday(
       callId.current = null;
       calling.current = false;
       opening.current = false;
-      // What is shown is shown to a call, and goes with it; nothing about it is left to tell
-      shareNews.current = null;
-      stopShowing();
       // what stands over her face came with the call, and goes with it
       faceMoment.clear();
       rang.current = false;
@@ -861,8 +808,6 @@ export function useThursday(
       if (thinkTail.current) clearTimeout(thinkTail.current);
       if (failedFor.current) clearTimeout(failedFor.current);
       if (leaving.current) clearInterval(leaving.current);
-      // Held for the page, not this screen: left on, it would go on with no Stop in sight
-      stopShowing();
       faceMoment.clear();
     };
   }, []);
@@ -1118,19 +1063,6 @@ export function useThursday(
               const { word, reply } = readFaceWord(call.arguments);
               if (word) setFaceWord({ text: word, at: Date.now() });
               return reply;
-            }
-            // The page holds what is shown: the picture goes to the backend after this turn's
-            // results, made to fit one message of the connection
-            if (call.name === TOOL_NAMES.look_at_shared) {
-              if (!shownKind()) return nothingShown();
-              const taken = await takePicture(
-                pictureBytes(session.current?.messageLimit()),
-              );
-              if ("failed" in taken) return taken.failed;
-              return {
-                output: `Their ${taken.kind} as it is now follows, as a picture.`,
-                image: taken.url,
-              };
             }
             showTool(call);
             // Exa's search, while its key is set (load-tools): its pages come back with

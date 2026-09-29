@@ -8,7 +8,7 @@ const kept = [
   "Incorrect API key provided: sk-ux-te******alid.",
   "Saved to artifacts/jarvis/cafe_list_v2.md",
   "2 * 3 * 4 = 24",
-  "look_at_shared stays",
+  "thread_status stays",
   "*.md files and *.ts files",
 ];
 

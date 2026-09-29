@@ -43,7 +43,7 @@ export const LIVE_CALL = {
  *   and the talk its end. Codex's own bound (codex-rs core context/realtime_delegation.rs
  *   `MAX_REALTIME_DELEGATION_FIELD_BYTES`). More hands the backend more of the talk at more
  *   input; less cuts a long request short.
- * - `pictureBytes`  the largest picture of what the user shows (features/thursday/show.ts) the
+ * - `pictureBytes`  the largest picture put down on a call (features/thursday/picture.ts) the
  *   page sends her backend on this line, where it goes over HTTP instead of a data channel with
  *   a limit of its own: about what Chrome's channel takes on a key's call. More costs the
  *   backend more to read, less blurs small text.
@@ -919,25 +919,17 @@ export const MEMORY_EDIT = { maxSteps: 20 };
 export const LOOK = { maxBytes: 4 * 1024 * 1024, perRequest: 12 * 1024 * 1024 };
 
 /**
- * What the user shows a spoken call, a screen or their camera (features/thursday/show.ts).
- * - `frameRate`  how often the browser grabs the screen or camera while it is shown. Only a
- *   still is ever taken: more costs the computer for nothing, fewer makes a picture up to that
- *   much older.
- * - `longestSide`  the longest side, in pixels, a look is taken at. Larger keeps small text on
- *   a big screen readable, and has the picture shrink further to fit the connection's one
+ * A picture put down on a spoken call, a file or a drawing (features/thursday/picture.ts).
+ * - `longestSide`  the longest side, in pixels, it is sent at. Larger keeps small text in a
+ *   screenshot readable, and has the picture shrink further to fit the connection's one
  *   message; smaller loses that text first.
  * - `qualities` then `scales`  what a picture too large for that message steps down through:
  *   at each size the JPEG quality, then the size, until it fits.
- * - `firstFrameMs`  how long a picture waits for a capture that has not shown anything yet, as
- *   one just started has not. Longer gives a slow start its chance before she hears that nothing
- *   showed; she is silent that long first.
  */
-export const SHOWING = {
-  frameRate: 5,
+export const CALL_PICTURE = {
   longestSide: 1600,
   qualities: [0.8, 0.6, 0.45],
   scales: [1, 0.75, 0.5, 0.35],
-  firstFrameMs: 3000,
 };
 
 /**

@@ -47,17 +47,10 @@ several steps — goes to a bot while the call carries on. She picks the bot and
 While she is working, the line under her face says so. The microphone stays open: anything said
 meanwhile is heard and answered once she is done, so there is no need to repeat it.
 
-**Share screen**, on that line during a spoken call, shows her a screen, a window or a tab; the
-browser asks which. **Camera** shows her your camera instead — one or the other, not both. A small
-copy stands at the top right while it is on. Nothing of it is sent while it is only on: she looks
-when what they ask needs it — "what does this error say?", "what am I holding?" — and then a
-picture of it as it is at that moment goes to the model behind her, nowhere else. **Stop** on the line, the browser's own bar, or the end of the call
-stops it. When the browser refuses — on a Mac, the browser needs Screen Recording, or Camera, in
-System Settings › Privacy & Security — its reason shows, and nothing is shown.
-
-**Draw**, beside them, opens a pad over the call: pick a colour, draw, and **Show her** gives her
-the drawing the moment it is pressed. She looks at it and says what she makes of it, and you can go
-on from there — "what do you think of this logo?" It goes to her alone, not onto the write line.
+**Draw**, on that line during a spoken call, opens a pad over the call: pick a colour, draw, and
+**Show her** gives her the drawing the moment it is pressed. She looks at it and says what she makes
+of it, and you can go on from there — "what do you think of this logo?" It goes to her alone, not
+onto the write line.
 **Esc** closes the pad and keeps what is on it for next time; **Clear** wipes it. **Undo** and
 **Redo** beside it (⌘Z and ⇧⌘Z, or Ctrl+Z and Ctrl+Shift+Z) take back or bring back one stroke at a
 time, a Clear too.

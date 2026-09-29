@@ -65,7 +65,7 @@ const SDP_MAX_LENGTH = 65_536;
 
 /**
  * The same tool set /api/thursday/tool-call executes. Tools without `execute`
- * (`end_call`, `emote`, `look_at_shared`) are included: the model must see them and the page
+ * (`end_call`, `emote`) are included: the model must see them and the page
  * intercepts them.
  */
 async function loadToolManifest(

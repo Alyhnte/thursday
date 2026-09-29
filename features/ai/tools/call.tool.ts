@@ -41,24 +41,10 @@ const emoteTool = tool({
   inputSchema: emoteSpec.parameters,
 });
 
-const lookAtSharedSpec = {
-  description: `See what the user is showing you, their screen or their camera, as it is at this moment.
-
-The picture comes right after this result. When they are showing nothing, the result says so.`,
-  parameters: z.object({}),
-};
-
-/** Deliberately has no `execute`: the page holds what is shown and takes the picture. */
-const lookAtSharedTool = tool({
-  description: lookAtSharedSpec.description,
-  inputSchema: lookAtSharedSpec.parameters,
-});
-
 /** The tools that act on the call itself. */
 export function callTools() {
   return {
     [TOOL_NAMES.end_call]: endCallTool,
     [TOOL_NAMES.emote]: emoteTool,
-    [TOOL_NAMES.look_at_shared]: lookAtSharedTool,
   };
 }

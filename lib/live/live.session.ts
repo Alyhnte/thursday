@@ -26,14 +26,6 @@ export type LiveToolCall = {
   item?: string;
 };
 /**
- * What a tool answers with: its text, and a picture for the backend to see after it. A picture
- * cannot ride in a function output on this wire; it is queued as an input item once the turn's
- * outputs are in, which is how the guide has an image reach a Responses backend ("Add images
- * and visual context").
- */
-export type LiveToolResult = { output: string; image?: string };
-
-/**
  * One reasoning summary part of the backend, whole. A summary is the backend's
  * own account of its thinking, not its reasoning tokens, and comes only while a
  * model reasons.
@@ -81,7 +73,7 @@ type LiveOptions = {
   initialize(sdp: string): Promise<Negotiated>;
   audio: LiveAudio;
   on: {
-    runTool(call: LiveToolCall): Promise<string | LiveToolResult>;
+    runTool(call: LiveToolCall): Promise<string>;
     reasoning?(part: LiveReasoning): void;
     search?(search: LiveSearch): void;
     /** URL citations on a backend answer, by the response that wrote it. */
@@ -232,8 +224,8 @@ type Transcript = {
   end: number;
   fragments: { start: number; end: number; text: string }[];
 };
-/** A picture for the backend: its data URL, and the workspace path it was read from, if any. */
-type Picture = { image: string; path?: string };
+/** A picture for the backend: its data URL, and the workspace path it was read from. */
+type Picture = { image: string; path: string };
 /** What goes into the backend's conversation and starts no turn: a fact (`brief`), or a picture. */
 type Given = { fact: string } | Picture;
 type BackendResponse = {
@@ -551,10 +543,9 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
       },
     });
   /**
-   * A picture for the backend, as the user's image, named by its path when it is a file. One
-   * the connection will not carry is said to the backend instead, which was told a picture
-   * follows and without a word described what it never saw — and to the user, whose screen,
-   * camera or picture went unseen.
+   * A picture for the backend, as the user's image, named by its path. One the connection will
+   * not carry is said to the backend instead, which was told a picture follows and without a
+   * word described what it never saw — and to the user, whose picture went unseen.
    */
   const sendImage = ({ image, path }: Picture) => {
     try {
@@ -565,9 +556,7 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
           type: "message",
           role: "user",
           content: [
-            ...(path
-              ? [{ type: "input_text", text: `${path}, as an image:` }]
-              : []),
+            { type: "input_text", text: `${path}, as an image:` },
             { type: "input_image", image_url: image },
           ],
         },
@@ -576,13 +565,9 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
       const reason = errorToString(cause);
       logger.warn("Live picture not sent", { reason, bytes: image.length });
       sendFact(
-        `The picture of ${path ?? "what they show"} did not go through, so nothing on it was seen: ${reason}`,
+        `The picture of ${path} did not go through, so nothing on it was seen: ${reason}`,
       );
-      on.warn(
-        path
-          ? `${path} did not go through to her: ${reason}`
-          : `The picture of what you show did not go through: ${reason}`,
-      );
+      on.warn(`${path} did not go through to her: ${reason}`);
     }
   };
   const handle = (event: LiveEvent) => {
@@ -806,10 +791,8 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
               }),
             )
             .catch((cause) => `Error: ${errorToString(cause)}`)
-            .then((result) => {
+            .then((output) => {
               tools.delete(item.call_id);
-              const { output, image } =
-                typeof result === "string" ? { output: result } : result;
               if (!closed && !closing) {
                 transport.send({
                   type: "response.item.create",
@@ -820,8 +803,6 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
                     output,
                   },
                 });
-                // After every output of this turn (continueResponse)
-                if (image) response.held.push({ image });
               }
               activity();
             });
