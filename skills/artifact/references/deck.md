@@ -45,7 +45,7 @@ says the one thing to remember.
   word no picture has shown yet does not appear.
 - **Notes are the telling.** What is read over each slide in a video, a little fuller than its
   line, said the way a person reads a page aloud.
-- **A light palette** — forest, sea or clay — keeps drawn pictures on paper.
+- **A light palette** — forest, sea, clay or paper — keeps drawn pictures on paper.
 
 ## Pictures
 

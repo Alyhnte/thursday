@@ -98,9 +98,9 @@ body {
   text-wrap: pretty;
 }
 
-/* Who made it, at the end of what is read, in the flow of the page: the maker as the app
-   shows who did something — its face and name in an edged pill — and the words after it.
-   A page made outside a bot's job names nobody and shows none. */
+/* Who made it, at the end of what is read, in the flow of the page: the maker's face and
+   name, and the words after it. A page made outside a bot's job names nobody and shows
+   none. */
 .sh-sign {
   display: flex;
   flex-wrap: wrap;
@@ -117,10 +117,6 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 0.4375rem;
-  height: 30px;
-  padding: 0 0.75rem 0 0.4375rem;
-  border: 1px solid var(--sh-line);
-  border-radius: 999px;
   color: var(--sh-ink);
 }
 .sh-by .sh-mark {

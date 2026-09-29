@@ -60,18 +60,25 @@ arrow steps back one level, and the ✕ folds the room away.
 An open thread is also drawn as an office where her face stands, beside the room, when the window
 is wide enough: each bot at its desk, the work walked from desk to desk as it happens, a hand-off
 that waits for another bot's answer held in a tray under an hourglass, with a dashed line on the
-floor from the bot it waits for, and questions and the final report brought to your counter.
+floor from the bot it waits for, and questions and the final report brought to your counter. A
+bot flips as it first comes in to its desk, hops when more work lands there, and now and then
+leaps on its own; when the report reaches your counter, every bot leaps and throws its papers in
+the air. A computer set to reduce motion gets the walking without the leaps.
 Over each bot a plate says in one line where it stands: the step it is on while it works, what it
 asks while it waits on the user, or the file it handed back once it answered. A bot that is not
 working and wants nothing of the user folds its plate to its name; pointing at the plate unfolds
-it, and pressing it opens a card with what the bot was given, what it gave and why it stands
-where it stands. The office's top left names the job, marks each bot brought in (filled once it
-answered, orange while it waits on the user) and says how long the job has run. Once the job is
-done, the report is brought to your counter, and its card stays at the office's bottom left with
-the files it handed over, each under the bot that made it; pressing one opens it. Writing on
+it. Pressing it opens the plate where it is, to what the bot was asked, the question it asks or
+the answer it gave, and how far it has come, and opens that bot's tab in the room; a tap on the
+floor closes it. The office's top left names the job, and once the job is done, lists the files it
+handed over, each with the bot that made it; pressing one opens it. The clock on the wall says
+how long the job has run, and how it stands is stamped on the ground beside the building: at
+work, your turn, paused, stopped or done. While the app has stopped the job and waits on
+**Continue**, the ground around the building goes faintly red. Once the job is done, the report
+is brought to your counter and its words stay in a card at the office's bottom left; writing on
 after it, the bot carries the report back to its desk. A file dropped on the office goes to the
-thread, as one dropped on the room does. The office pans by dragging and zooms with the wheel or
-the buttons at its bottom left. Her face fades out as the office comes and back in as it goes,
+thread, as one dropped on the room does. The office opens a little zoomed out, pans by dragging
+and zooms with the wheel or the buttons at its bottom left, from 30% to 400%; the frame button
+brings it back. Her face fades out as the office comes and back in as it goes,
 and a call that is on shows her last words at the top; the corner of finished jobs stays quiet
 while a thread is open. **Office** and **Chat**, beside the ✕ of an open thread, pick how every
 thread is shown: beside its office, or as the conversation alone with her face kept. The choice
@@ -187,7 +194,8 @@ the notes. It designs from what exists — a codebase, a brand, a page — so gi
 screen it cannot open.
 
 A **deck** is for presenting, or for explaining one thing simply. Any bot can make one; the app
-lays out every slide, in one of four palettes: **Forest**, **Sea**, **Clay** or **Ink**.
+lays out every slide, in one of six palettes: **Forest**, **Sea**, **Clay**, **Ink**, **Paper** or
+**Night**.
 **Tutor**'s decks explain the way a picture book does — a picture and a line or two a slide, a new
 word marked where it is first named — and may end on a quiz: tapping a pick marks it and shows the
 answer. The top bar has the arrows, Notes (**n**), full screen (**f**), Present, a theme button and

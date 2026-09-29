@@ -44,47 +44,48 @@ body:not(.shot) section[data-slide]:not(.open) {
    so it weighs nothing (:where). */
 :where(section[data-slide], .dk-swatch) {
   --dk-sans: var(--sh-font);
-  --dk-mono: var(--sh-mono);
-  --dk-paper: #ffffff;
-  --dk-card: #f3f5f3;
-  --dk-ink: #0d0d0d;
-  --dk-muted: #5d5d5d;
-  --dk-line: #e3e5e3;
-  --dk-accent: #1b5a43;
-  --dk-on-accent: #ffffff;
-  --dk-on-accent-muted: #b4d2c4;
-  --dk-head: var(--dk-sans);
+  --dk-serif: Georgia, "Times New Roman", serif;
+  --dk-paper: #fbfbf8;
+  --dk-card: #ffffff;
+  --dk-ink: #1a1a1a;
+  --dk-muted: #5f666d;
+  --dk-line: #e3e6e4;
+  --dk-accent: #1f4e4a;
+  --dk-on-accent: #fbfbf8;
+  --dk-on-accent-muted: #b9ccc8;
+  --dk-head: var(--dk-serif);
 }
 [data-palette="sea"] {
-  --dk-paper: #ffffff;
-  --dk-card: #f2f5f9;
-  --dk-ink: #0d0d0d;
-  --dk-muted: #5d5d5d;
-  --dk-line: #e1e6ed;
-  --dk-accent: #0f4fa8;
-  --dk-on-accent: #ffffff;
-  --dk-on-accent-muted: #bccfee;
+  --dk-paper: #f6f8fb;
+  --dk-card: #ffffff;
+  --dk-ink: #0f1b2d;
+  --dk-muted: #556275;
+  --dk-line: #dde3eb;
+  --dk-accent: #1d4f91;
+  --dk-on-accent: #f6f8fb;
+  --dk-on-accent-muted: #bccde6;
+  --dk-head: var(--dk-sans);
 }
 [data-palette="clay"] {
-  --dk-paper: #ffffff;
-  --dk-card: #f6f3f1;
-  --dk-ink: #0d0d0d;
-  --dk-muted: #5d5d5d;
-  --dk-line: #ebe4df;
-  --dk-accent: #a33d1c;
-  --dk-on-accent: #ffffff;
-  --dk-on-accent-muted: #f7dbcf;
+  --dk-paper: #faf6f1;
+  --dk-card: #ffffff;
+  --dk-ink: #231913;
+  --dk-muted: #6b5f56;
+  --dk-line: #e9dfd4;
+  --dk-accent: #8e3b22;
+  --dk-on-accent: #faf6f1;
+  --dk-on-accent-muted: #e7c4b6;
 }
-/* The app's own: black and white, the turning slides the other way round */
 [data-palette="ink"] {
-  --dk-paper: #0d0d0d;
-  --dk-card: #181818;
-  --dk-ink: #f3f3f3;
-  --dk-muted: #9f9f9f;
-  --dk-line: #2a2a2a;
-  --dk-accent: #f3f3f3;
-  --dk-on-accent: #0d0d0d;
-  --dk-on-accent-muted: #5d5d5d;
+  --dk-paper: #141618;
+  --dk-card: #1c1f22;
+  --dk-ink: #f1efea;
+  --dk-muted: #a4aab0;
+  --dk-line: #2c3035;
+  --dk-accent: #e2b458;
+  --dk-on-accent: #141618;
+  --dk-on-accent-muted: #4a3b1a;
+  --dk-head: var(--dk-sans);
 }
 
 /* Every size that grows with what a slide says is multiplied by `--dk-fit`, which deck.js
@@ -116,33 +117,29 @@ section[data-slide].dk-footed {
   background: var(--dk-accent);
   color: var(--dk-on-accent);
 }
-/* Headings as the app sets them: bold and tight */
 .dk-title,
 .dk-claim,
 .dk-head,
 .dk-said {
   font-family: var(--dk-head);
-  font-weight: 650;
-  letter-spacing: -0.035em;
-  text-wrap: balance;
+  font-weight: 400;
+  letter-spacing: -0.01em;
 }
-/* A label in the mono type, as written */
 .dk-eyebrow {
   color: var(--dk-accent);
-  font-family: var(--dk-mono);
-  font-size: calc(30px * var(--dk-fit, 1));
+  font-size: calc(28px * var(--dk-fit, 1));
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 .dk-title {
   max-width: 1400px;
-  font-size: calc(120px * var(--dk-fit, 1));
-  font-weight: 700;
-  line-height: 1.02;
-  letter-spacing: -0.045em;
+  font-size: calc(112px * var(--dk-fit, 1));
+  line-height: 1.05;
 }
 .dk-claim {
   max-width: 1500px;
   font-size: calc(96px * var(--dk-fit, 1));
-  line-height: 1.06;
+  line-height: 1.1;
 }
 .dk-close .dk-claim {
   font-size: calc(88px * var(--dk-fit, 1));
@@ -151,7 +148,7 @@ section[data-slide].dk-footed {
 .dk-head {
   max-width: 1400px;
   font-size: calc(72px * var(--dk-fit, 1));
-  line-height: 1.08;
+  line-height: 1.1;
 }
 .dk-sub {
   max-width: 1200px;
@@ -171,8 +168,7 @@ section[data-slide].dk-footed {
   bottom: 64px;
   overflow: hidden;
   color: var(--dk-muted);
-  font-family: var(--dk-mono);
-  font-size: 22px;
+  font-size: 24px;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
@@ -183,8 +179,7 @@ section[data-slide].dk-footed {
   right: 128px;
   bottom: 64px;
   color: var(--dk-muted);
-  font-family: var(--dk-mono);
-  font-size: 22px;
+  font-size: 24px;
   font-variant-numeric: tabular-nums;
 }
 .dk-dark .dk-page {
@@ -193,8 +188,7 @@ section[data-slide].dk-footed {
 section[data-slide]:has(.dk-page) .dk-foot {
   right: 300px;
 }
-/* Who made it, over the cover's title: the face and name the page's head carries, in the
-   edged pill the app shows who did something in */
+/* Who made it, over the cover's title: the face and name the page's head carries */
 .dk-maker {
   position: absolute;
   top: 64px;
@@ -202,17 +196,13 @@ section[data-slide]:has(.dk-page) .dk-foot {
   display: flex;
   align-items: center;
   gap: 14px;
-  height: 64px;
-  padding: 0 28px 0 16px;
-  border: 2px solid var(--dk-line);
-  border-radius: 999px;
-  color: var(--dk-ink);
-  font-size: 26px;
+  color: var(--dk-muted);
+  font-size: 24px;
   font-weight: 600;
 }
 .dk-maker .sh-mark {
-  width: 34px;
-  height: 34px;
+  width: 32px;
+  height: 32px;
 }
 
 /* A content slide keeps its heading at the top margin, so it never hops between
@@ -243,21 +233,20 @@ section[data-slide]:has(.dk-page) .dk-foot {
   flex-direction: column;
   gap: calc(16px * var(--dk-fit, 1));
   min-width: 0;
-  padding: calc(52px * var(--dk-fit, 1));
-  border-radius: 32px;
+  padding: calc(48px * var(--dk-fit, 1));
+  border: 1px solid var(--dk-line);
+  border-radius: 16px;
   background: var(--dk-card);
 }
 .dk-card .dk-num {
-  margin-bottom: calc(24px * var(--dk-fit, 1));
   color: var(--dk-accent);
-  font-family: var(--dk-mono);
   font-size: calc(28px * var(--dk-fit, 1));
+  font-variant-numeric: tabular-nums;
 }
 .dk-card h3 {
-  font-size: calc(44px * var(--dk-fit, 1));
-  font-weight: 650;
-  line-height: 1.15;
-  letter-spacing: -0.03em;
+  font-size: calc(40px * var(--dk-fit, 1));
+  font-weight: 600;
+  line-height: 1.2;
 }
 .dk-card p:not(.dk-num) {
   color: var(--dk-muted);
@@ -276,9 +265,9 @@ section[data-slide]:has(.dk-page) .dk-foot {
 .dk-figure {
   color: var(--dk-accent);
   font-size: calc(300px * var(--dk-fit, 1));
-  font-weight: 700;
+  font-weight: 300;
   line-height: 1;
-  letter-spacing: -0.06em;
+  letter-spacing: -0.03em;
   white-space: nowrap;
   font-variant-numeric: lining-nums tabular-nums;
 }
@@ -295,27 +284,13 @@ section[data-slide]:has(.dk-page) .dk-foot {
   line-height: 1.3;
 }
 .dk-table :is(th, td) {
-  padding: calc(26px * var(--dk-fit, 1)) 20px;
-  border-bottom: 2px solid var(--dk-line);
+  padding: calc(24px * var(--dk-fit, 1)) 16px;
+  border-bottom: 1px solid var(--dk-line);
   text-align: left;
   vertical-align: top;
 }
-.dk-table :is(th, td):first-child {
-  padding-left: 0;
-}
-.dk-table tr:last-child td {
-  border-bottom: 0;
-}
-/* Heads as the app's table has them: small, in the mono type */
 .dk-table th {
-  color: var(--dk-muted);
-  font-family: var(--dk-mono);
-  font-size: calc(24px * var(--dk-fit, 1));
-  font-weight: 400;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-.dk-table td:first-child {
+  border-bottom: 2px solid var(--dk-ink);
   font-weight: 600;
 }
 .dk-table .dk-fig {
@@ -339,8 +314,8 @@ section[data-slide]:has(.dk-page) .dk-foot {
 }
 .dk-said {
   max-width: 1500px;
-  font-size: calc(76px * var(--dk-fit, 1));
-  line-height: 1.18;
+  font-size: calc(72px * var(--dk-fit, 1));
+  line-height: 1.3;
 }
 .dk-by {
   display: flex;
@@ -377,7 +352,7 @@ section[data-slide]:has(.dk-page) .dk-foot {
   flex: none;
   width: 760px;
   height: 824px;
-  border-radius: 32px;
+  border-radius: 16px;
   object-fit: cover;
 }
 .dk-pic.dk-whole {
@@ -405,7 +380,7 @@ section[data-slide]:has(.dk-page) .dk-foot {
   object-fit: contain;
 }
 .dk-shown.dk-photo {
-  border-radius: 32px;
+  border-radius: 16px;
   object-fit: cover;
 }
 .dk-caption {
@@ -413,9 +388,8 @@ section[data-slide]:has(.dk-page) .dk-foot {
   max-width: 1500px;
   font-family: var(--dk-head);
   font-size: calc(64px * var(--dk-fit, 1));
-  font-weight: 650;
-  line-height: 1.15;
-  letter-spacing: -0.03em;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
   text-wrap: balance;
 }
 .dk-more {
@@ -464,8 +438,8 @@ section[data-slide]:has(.dk-page) .dk-foot {
   gap: calc(24px * var(--dk-fit, 1));
   min-width: 0;
   padding: calc(40px * var(--dk-fit, 1)) 32px;
-  border: 3px solid transparent;
-  border-radius: 32px;
+  border: 4px solid var(--dk-line);
+  border-radius: 28px;
   background: var(--dk-card);
   font-size: calc(44px * var(--dk-fit, 1));
   font-weight: 600;
@@ -518,7 +492,6 @@ body:is(.shot, .dk-editing) .dk-quiz .dk-answer {
   min-width: 0;
 }
 .dk-step-l {
-  font-family: var(--dk-mono);
   font-size: calc(28px * var(--dk-fit, 1));
 }
 .dk-step-t {
@@ -779,8 +752,8 @@ body.shot section[data-slide] {
 }
 .dk-date {
   color: var(--dk-accent);
-  font-family: var(--dk-mono);
-  font-size: calc(34px * var(--dk-fit, 1));
+  font-family: var(--dk-head);
+  font-size: calc(44px * var(--dk-fit, 1));
 }
 /* A dot and the line on to the next dot; the last one has no line after it */
 .dk-mark {
@@ -806,10 +779,9 @@ body.shot section[data-slide] {
   padding-right: 32px;
 }
 .dk-when h3 {
-  font-size: calc(44px * var(--dk-fit, 1));
-  font-weight: 650;
-  line-height: 1.15;
-  letter-spacing: -0.03em;
+  font-size: calc(40px * var(--dk-fit, 1));
+  font-weight: 600;
+  line-height: 1.2;
 }
 .dk-when p:not(.dk-date) {
   color: var(--dk-muted);
@@ -827,8 +799,9 @@ body.shot section[data-slide] {
   flex-direction: column;
   gap: calc(24px * var(--dk-fit, 1));
   min-width: 0;
-  padding: calc(52px * var(--dk-fit, 1));
-  border-radius: 32px;
+  padding: calc(48px * var(--dk-fit, 1));
+  border: 1px solid var(--dk-line);
+  border-radius: 16px;
   background: var(--dk-card);
 }
 .dk-side.dk-after {
@@ -838,8 +811,8 @@ body.shot section[data-slide] {
 }
 .dk-side-l {
   color: var(--dk-muted);
-  font-family: var(--dk-mono);
   font-size: calc(28px * var(--dk-fit, 1));
+  font-weight: 600;
 }
 .dk-after .dk-side-l {
   color: var(--dk-on-accent-muted);
@@ -872,8 +845,8 @@ body.shot section[data-slide] {
   flex-direction: column;
   gap: calc(16px * var(--dk-fit, 1));
   min-width: max-content;
-  padding: 0 56px;
-  border-left: 2px solid var(--dk-line);
+  padding: 0 48px;
+  border-left: 1px solid var(--dk-line);
 }
 .dk-stat:first-child {
   padding-left: 0;
@@ -882,13 +855,147 @@ body.shot section[data-slide] {
 .dk-stat-v {
   color: var(--dk-accent);
   font-size: calc(150px * var(--dk-fit, 1));
-  font-weight: 700;
+  font-weight: 300;
   line-height: 1;
-  letter-spacing: -0.05em;
+  letter-spacing: -0.03em;
   white-space: nowrap;
   font-variant-numeric: lining-nums tabular-nums;
 }
 .dk-stat-l {
   color: var(--dk-muted);
   font-size: calc(32px * var(--dk-fit, 1));
+}
+
+/* The app's own palettes: paper, black on white, and night, white on black, the slides
+   where the argument turns the other way round. Their headings are the app's, bold and
+   tight; a label, a date, a source and the page are in the mono type as written; a card has
+   no edge; a table's heads are the app's table heads. */
+[data-palette="paper"] {
+  --dk-paper: #ffffff;
+  --dk-card: #f3f3f3;
+  --dk-ink: #0d0d0d;
+  --dk-muted: #5d5d5d;
+  --dk-line: #e3e3e3;
+  --dk-accent: #0d0d0d;
+  --dk-on-accent: #ffffff;
+  --dk-on-accent-muted: #afafaf;
+  --dk-head: var(--dk-sans);
+}
+[data-palette="night"] {
+  --dk-paper: #0d0d0d;
+  --dk-card: #181818;
+  --dk-ink: #f3f3f3;
+  --dk-muted: #9f9f9f;
+  --dk-line: #2a2a2a;
+  --dk-accent: #f3f3f3;
+  --dk-on-accent: #0d0d0d;
+  --dk-on-accent-muted: #5d5d5d;
+  --dk-head: var(--dk-sans);
+}
+:is([data-palette="paper"], [data-palette="night"])
+  :is(.dk-title, .dk-claim, .dk-head, .dk-said, .dk-caption) {
+  font-weight: 650;
+  letter-spacing: -0.035em;
+  text-wrap: balance;
+}
+:is([data-palette="paper"], [data-palette="night"]) .dk-title {
+  font-size: calc(120px * var(--dk-fit, 1));
+  font-weight: 700;
+  line-height: 1.02;
+  letter-spacing: -0.045em;
+}
+:is([data-palette="paper"], [data-palette="night"]) .dk-claim {
+  line-height: 1.06;
+}
+:is([data-palette="paper"], [data-palette="night"]) .dk-head {
+  line-height: 1.08;
+}
+:is([data-palette="paper"], [data-palette="night"]) .dk-said {
+  font-size: calc(76px * var(--dk-fit, 1));
+  line-height: 1.18;
+}
+:is([data-palette="paper"], [data-palette="night"]) .dk-caption {
+  line-height: 1.15;
+}
+:is([data-palette="paper"], [data-palette="night"])
+  :is(
+    .dk-eyebrow,
+    .dk-foot,
+    .dk-page,
+    .dk-num,
+    .dk-date,
+    .dk-step-l,
+    .dk-side-l
+  ) {
+  font-family: var(--sh-mono);
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+:is([data-palette="paper"], [data-palette="night"]) .dk-eyebrow {
+  font-size: calc(30px * var(--dk-fit, 1));
+}
+:is([data-palette="paper"], [data-palette="night"]) :is(.dk-foot, .dk-page) {
+  font-size: 22px;
+}
+:is([data-palette="paper"], [data-palette="night"]) .dk-date {
+  font-size: calc(34px * var(--dk-fit, 1));
+}
+:is([data-palette="paper"], [data-palette="night"]) :is(.dk-card, .dk-side) {
+  padding: calc(52px * var(--dk-fit, 1));
+  border: 0;
+  border-radius: 32px;
+}
+:is([data-palette="paper"], [data-palette="night"]) .dk-card .dk-num {
+  margin-bottom: calc(24px * var(--dk-fit, 1));
+}
+:is([data-palette="paper"], [data-palette="night"])
+  :is(.dk-card h3, .dk-when h3) {
+  font-size: calc(44px * var(--dk-fit, 1));
+  font-weight: 650;
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+}
+:is([data-palette="paper"], [data-palette="night"])
+  :is(.dk-figure, .dk-stat-v) {
+  font-weight: 700;
+  letter-spacing: -0.055em;
+}
+:is([data-palette="paper"], [data-palette="night"]) .dk-stat {
+  padding: 0 56px;
+  border-left-width: 2px;
+}
+:is([data-palette="paper"], [data-palette="night"]) .dk-stat:first-child {
+  padding-left: 0;
+}
+/* A table slide carries its palette itself */
+:is([data-palette="paper"], [data-palette="night"]).dk-table :is(th, td) {
+  border-bottom-width: 2px;
+}
+:is([data-palette="paper"], [data-palette="night"]).dk-table
+  :is(th, td):first-child {
+  padding-left: 0;
+}
+:is([data-palette="paper"], [data-palette="night"]).dk-table th {
+  border-bottom: 2px solid var(--dk-line);
+  color: var(--dk-muted);
+  font-family: var(--sh-mono);
+  font-size: calc(24px * var(--dk-fit, 1));
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+:is([data-palette="paper"], [data-palette="night"]).dk-table td:first-child {
+  font-weight: 600;
+}
+:is([data-palette="paper"], [data-palette="night"]).dk-table tr:last-child td {
+  border-bottom: 0;
+}
+:is([data-palette="paper"], [data-palette="night"])
+  :is(.dk-pic, .dk-shown.dk-photo) {
+  border-radius: 32px;
+}
+:is([data-palette="paper"], [data-palette="night"]) .dk-choice {
+  border: 3px solid transparent;
+  border-radius: 32px;
 }

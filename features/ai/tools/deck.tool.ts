@@ -45,7 +45,7 @@ const SCRIPT = join(
   "deck.mjs",
 );
 
-const THEMES = ["forest", "sea", "clay", "ink"] as const;
+const THEMES = ["forest", "sea", "clay", "ink", "paper", "night"] as const;
 
 /** Text on a slide, at most `max` characters. */
 const words = (max: number) => z.string().trim().max(max);
@@ -316,7 +316,7 @@ const deckSchema = z.object({
     .enum(THEMES)
     .nullish()
     .describe(
-      "forest (deep green on white), sea (blue on white), clay (terracotta on white) or ink (black and white). Null keeps the deck's own; a new one starts in forest.",
+      "forest (deep green on paper, serif headings), sea (blue, sans), clay (terracotta on warm paper, serif), ink (gold on near-black, sans), paper (black on white, bold sans) or night (white on black, bold sans). Null keeps the deck's own; a new one starts in forest.",
     ),
   revision: z
     .string()
