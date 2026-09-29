@@ -63,7 +63,11 @@ Three to five stops a day, in an order that makes geographic sense, with the tra
 counted: the first and last day are short, shaped around the flights and the check-in. Places come
 from what you know and one search for what is current (a closure, a festival on those dates, an
 exhibition); a place you are unsure still exists is checked, not guessed. Rain in the weather moves
-the outdoor stop to a dry day, and the page says so.
+the outdoor stop to a dry day, and the page says so. A stop's hours on that day, its price and
+whether it must be booked come from its own site, read in that same pass; what you did not read
+is left off the stop, not guessed. Three to six places beside the plan (`more`) and what to know
+before going (`before`: entry for their passports, money, plugs, getting around) fill the page
+for a trip of more than a day.
 
 ## 5. The page, in one call
 

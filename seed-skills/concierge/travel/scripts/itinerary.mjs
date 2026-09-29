@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
- * The trip as one page: cover, flights, the stay, weather, day by day with a real
- * photo and a map link per stop, and the costs. Written from a small JSON file
+ * The trip as one page: cover, flights, the stay, weather, day by day with real photos,
+ * what to know at each stop and a map link, more places beside the plan, the costs, and what
+ * to know and book before going. Written from a small JSON file
  * (references/itinerary.md shows every field) into the bot's artifacts folder as one
  * HTML file with its pictures inside, so it opens offline and prints. It wears the artifact
  * skill's shell, as every page a bot makes does: the maker's face and name in its head and at
@@ -55,8 +56,48 @@ trip.days.forEach((d, i) => {
   if (!Array.isArray(d.stops) || !d.stops.length)
     fail(`Day ${i + 1} has no "stops".`);
   d.stops.forEach((s, j) => {
-    if (!s.name) fail(`Day ${i + 1}, stop ${j + 1} has no "name".`);
+    const at = `Day ${i + 1}, stop ${j + 1}`;
+    if (!s.name) fail(`${at} has no "name".`);
+    // Each picture is fetched one at a time and carried inside the page: a stop that asked
+    // for many made a slow build and a heavy file
+    if (s.photos != null) {
+      if (!Array.isArray(s.photos) || s.photos.length > 2)
+        fail(
+          `${at} ("${s.name}") "photos" is a list of at most two, beside the stop's own photo.`,
+        );
+      s.photos.forEach((p, k) => {
+        if (!p?.wiki && !p?.photo)
+          fail(`${at} ("${s.name}") photos[${k}] needs a "wiki" or a "photo".`);
+      });
+    }
+    if (s.book != null && s.book !== true && typeof s.book !== "string")
+      fail(
+        `${at} ("${s.name}") "book" is true or a few words on what to book.`,
+      );
   });
+});
+const more = Array.isArray(trip.more) ? trip.more : [];
+more.forEach((m, i) => {
+  if (!m?.name) fail(`more[${i}] has no "name".`);
+});
+// The properties "before" may carry, each drawn with its own icon
+const ICONS = [
+  "entry",
+  "money",
+  "tipping",
+  "power",
+  "transit",
+  "emergency",
+  "health",
+  "internet",
+];
+const before = Array.isArray(trip.before) ? trip.before : [];
+before.forEach((b, i) => {
+  if (!b?.label || !b?.text) fail(`before[${i}] needs a "label" and a "text".`);
+  if (b.icon != null && !ICONS.includes(b.icon))
+    fail(
+      `before[${i}] "icon" is "${b.icon}": one of ${ICONS.join(", ")}, or leave it out.`,
+    );
 });
 // Every address the page links to, checked here so a typo costs no photo fetch
 const ABSOLUTE = /^https?:\/\/[^/\s]+/;
@@ -69,6 +110,9 @@ for (const [url, where] of [
         ? [[s.link, `Day ${i + 1}, stop ${j + 1} ("${s.name}") "link"`]]
         : [],
     ),
+  ),
+  ...more.flatMap((m, i) =>
+    m.link ? [[m.link, `more[${i}] ("${m.name}") "link"`]] : [],
   ),
   ...(Array.isArray(trip.sources) ? trip.sources : []).flatMap((s, i) =>
     typeof s === "string" ? [] : [[s?.url, `"sources"[${i}] "url"`]],
@@ -113,6 +157,9 @@ const L = {
   days: "Day by day",
   costs: "What it costs",
   notes: "Before you go",
+  more: "More places",
+  bookAhead: "Book ahead",
+  tip: "Tip",
   total: "Total",
   perPerson: "per person",
   map: "Map",
@@ -196,13 +243,13 @@ const plain = (html) =>
  * default (`free`) returns none for an article led by a non-free image, and the stop then shows
  * without its photo.
  */
-async function fromWiki(title) {
+async function fromWiki(title, width) {
   const [wiki, name] = /^[a-z]{2,3}:/.test(title)
     ? [title.slice(0, title.indexOf(":")), title.slice(title.indexOf(":") + 1)]
     : ["en", title];
   const api = `https://${wiki}.wikipedia.org/w/api.php?format=json&action=query&redirects=1`;
   const q = await getJson(
-    `${api}&prop=pageimages|info&inprop=url&piprop=thumbnail|name&pithumbsize=960&pilicense=any&titles=${encodeURIComponent(name)}`,
+    `${api}&prop=pageimages|info&inprop=url&piprop=thumbnail|name&pithumbsize=${width}&pilicense=any&titles=${encodeURIComponent(name)}`,
   );
   const page = Object.values(q.query?.pages ?? {})[0];
   if (!page || "missing" in page)
@@ -279,10 +326,16 @@ function fromFile(path) {
   };
 }
 
-/** Queue a picture for `thing` ({ wiki } or { photo }); the page reads it back after. */
-function want(thing, label) {
+/**
+ * Queue a picture for `thing` ({ wiki } or { photo }); the page reads it back after. A
+ * Wikipedia picture comes `width` wide: one shown across the page at 960, one a card or half
+ * a row takes at 500, a quarter of the bytes. Wikimedia serves its own steps of width and
+ * rounds any other up (640 came back 960).
+ */
+function want(thing, label, width = 960) {
+  if (!thing) return null;
   const key = thing.wiki
-    ? `wiki:${thing.wiki}`
+    ? `wiki:${width}:${thing.wiki}`
     : thing.photo
       ? `photo:${thing.photo}`
       : null;
@@ -292,7 +345,7 @@ function want(thing, label) {
       label,
       run: () =>
         thing.wiki
-          ? fromWiki(thing.wiki)
+          ? fromWiki(thing.wiki, width)
           : /^https?:\/\//.test(thing.photo)
             ? fromPage(thing.photo)
             : fromFile(thing.photo),
@@ -303,6 +356,18 @@ function want(thing, label) {
 const coverKey = trip.cover ? want(trip.cover, "cover") : null;
 const stayKey = trip.stay ? want(trip.stay, trip.stay.name) : null;
 const stopKeys = trip.days.map((d) => d.stops.map((s) => want(s, s.name)));
+const dayKeys = trip.days.map((d, i) =>
+  d.cover ? want(d.cover, `Day ${i + 1} cover`) : null,
+);
+const extraKeys = trip.days.map((d) =>
+  d.stops.map((s) =>
+    (s.photos ?? []).map((p) => ({
+      key: want(p, p.caption ?? s.name, 500),
+      caption: p.caption,
+    })),
+  ),
+);
+const moreKeys = more.map((m) => want(m, m.name, 500));
 
 const photos = new Map();
 // One at a time: Wikimedia answers a burst with 429
@@ -314,13 +379,18 @@ for (const [key, job] of photoJobs) {
   }
 }
 
-const figure = (key, cls = "") => {
+/** Who made a picture, linked to where it came from. */
+const creditOf = (p) =>
+  p.credit
+    ? p.href
+      ? `<a href="${esc(p.href)}">${esc(p.credit)}</a>`
+      : esc(p.credit)
+    : "";
+const figure = (key, cls = "", caption = "") => {
   const p = key && photos.get(key);
   if (!p) return "";
-  const credit = p.credit
-    ? `<figcaption>${p.href ? `<a href="${esc(p.href)}">${esc(p.credit)}</a>` : esc(p.credit)}</figcaption>`
-    : "";
-  return `<figure class="${cls}"><img src="${p.src}" alt="">${credit}</figure>`;
+  const said = [caption && esc(caption), creditOf(p)].filter(Boolean);
+  return `<figure class="${cls}"><img src="${p.src}" alt="">${said.length ? `<figcaption>${said.join(" · ")}</figcaption>` : ""}</figure>`;
 };
 
 // ---- The page
@@ -426,9 +496,33 @@ if (withWeather.length || trip.climate) {
 
 parts.push(`<h2>${esc(L.days)}</h2>`);
 trip.days.forEach((d, i) => {
+  // The day's picture: its own cover, else the first stop's photo, which that stop then
+  // does not show again
+  const own = photos.has(dayKeys[i]);
+  const lead = own
+    ? -1
+    : d.stops.findIndex((_, j) => photos.has(stopKeys[i][j]));
+  const dayPic = own
+    ? figure(dayKeys[i], "day-pic")
+    : lead >= 0
+      ? figure(stopKeys[i][lead], "day-pic", d.stops[lead].name)
+      : "";
   const stops = d.stops
     .map((s, j) => {
-      const pic = figure(stopKeys[i][j]);
+      const pics = [
+        ...(j === lead ? [] : [{ key: stopKeys[i][j] }]),
+        ...extraKeys[i][j],
+      ]
+        .map((p) => figure(p.key, "", p.caption))
+        .filter(Boolean);
+      const tags = [
+        s.hours ? `<span class="tag hours">${esc(s.hours)}</span>` : "",
+        s.duration ? `<span class="tag long">${esc(s.duration)}</span>` : "",
+        s.book
+          ? `<span class="tag book">${esc(s.book === true ? L.bookAhead : s.book)}</span>`
+          : "",
+        s.cost != null ? `<span class="tag cost">${cost(s.cost)}</span>` : "",
+      ].filter(Boolean);
       const links = [
         s.map !== false
           ? `<a href="${esc(mapsSearch(mapQuery(s)))}">${esc(L.map)}</a>`
@@ -436,11 +530,14 @@ trip.days.forEach((d, i) => {
         s.link
           ? `<a href="${esc(s.link)}">${esc(s.linkText ?? new URL(s.link).hostname.replace(/^www\./, ""))}</a>`
           : "",
-        s.cost != null ? `<span class="cost">${cost(s.cost)}</span>` : "",
       ].filter(Boolean);
-      return `<li class="stop${pic ? "" : " bare"}"><time>${esc(s.time ?? "")}</time><div><h4>${esc(s.name)}</h4>${
+      return `<li class="stop"><time>${esc(s.time ?? "")}</time><div><h4>${esc(s.name)}</h4>${
         s.what ? `<p>${esc(s.what)}</p>` : ""
-      }${s.tip ? `<div class="tip">${esc(s.tip)}</div>` : ""}${links.length ? `<div class="links">${links.join("")}</div>` : ""}</div>${pic}</li>`;
+      }${tags.length ? `<div class="tags">${tags.join("")}</div>` : ""}${
+        pics.length
+          ? `<div class="pics n${pics.length}">${pics.join("")}</div>`
+          : ""
+      }${s.tip ? `<p class="tip"><b>${esc(L.tip)}</b> ${esc(s.tip)}</p>` : ""}${links.length ? `<div class="links">${links.join("")}</div>` : ""}</div></li>`;
     })
     .join("");
   // One link opens every stop of the day in order, with transit between them
@@ -456,9 +553,31 @@ trip.days.forEach((d, i) => {
   parts.push(
     `<article class="panel day"><header><span class="n">${esc(L.day)} ${i + 1}</span><h3>${esc(d.title ?? "")}</h3><span class="meta">${fmtDay(d.date)}${
       d.weather ? ` · <span class="sky">${esc(d.weather)}</span>` : ""
-    }</span></header><ol class="stops">${stops}</ol>${route ? `<footer><a href="${esc(route)}">${esc(L.route)}</a></footer>` : ""}</article>`,
+    }</span></header>${dayPic}<ol class="stops">${stops}</ol>${route ? `<footer><a href="${esc(route)}">${esc(L.route)}</a></footer>` : ""}</article>`,
   );
 });
+
+// Places beside the plan, for a day that runs short: a card each, its picture over its words
+if (more.length)
+  parts.push(
+    `<h2>${esc(L.more)}</h2><section class="places">${more
+      .map((m, i) => {
+        const links = [
+          m.map !== false
+            ? `<a href="${esc(mapsSearch(mapQuery(m)))}">${esc(L.map)}</a>`
+            : "",
+          m.link
+            ? `<a href="${esc(m.link)}">${esc(m.linkText ?? new URL(m.link).hostname.replace(/^www\./, ""))}</a>`
+            : "",
+        ].filter(Boolean);
+        return `<article class="panel place">${figure(moreKeys[i])}<div class="body">${
+          m.tag ? `<span class="kind">${esc(m.tag)}</span>` : ""
+        }<h3>${esc(m.name)}</h3>${m.what ? `<p>${esc(m.what)}</p>` : ""}${
+          m.near ? `<p class="near">${esc(m.near)}</p>` : ""
+        }${links.length ? `<div class="links">${links.join("")}</div>` : ""}</div></article>`;
+      })
+      .join("")}</section>`,
+  );
 
 if (costs.length) {
   const rows = costs
@@ -476,9 +595,36 @@ if (costs.length) {
   );
 }
 
-if (trip.notes?.length)
+// Before going: what to know as properties, the notes, and what to book as a list to tick
+const toBook = trip.days.flatMap((d) =>
+  d.stops
+    .filter((s) => s.book)
+    .map(
+      (s) =>
+        `<li><label><input type="checkbox"><span>${esc(s.name)}</span><small>${[
+          fmtDay(d.date),
+          typeof s.book === "string" ? esc(s.book) : "",
+        ]
+          .filter(Boolean)
+          .join(" · ")}</small></label></li>`,
+    ),
+);
+if (before.length || trip.notes?.length || toBook.length)
   parts.push(
-    `<h2>${esc(L.notes)}</h2><section class="panel"><ul class="notes">${trip.notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul></section>`,
+    `<h2>${esc(L.notes)}</h2>${
+      before.length
+        ? `<dl class="props">${before
+            .map(
+              (b) =>
+                `<div><dt class="${b.icon ? `i-${b.icon}` : ""}">${esc(b.label)}</dt><dd>${esc(b.text)}</dd></div>`,
+            )
+            .join("")}</dl>`
+        : ""
+    }${trip.notes?.length ? `<ul class="notes">${trip.notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>` : ""}${
+      toBook.length
+        ? `<h3 class="sub">${esc(L.bookAhead)}</h3><ul class="to-book">${toBook.join("")}</ul>`
+        : ""
+    }`,
   );
 
 if (trip.sources?.length)

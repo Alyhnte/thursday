@@ -13,7 +13,7 @@ call. `S=<this skill's dir>/scripts`, `D=$THURSDAY_SKILLS/data-report/scripts`.
 |---|---|
 | `node $D/weather.mjs "<place>[, <CC>]" <from> [<to>] [--f]` | The forecast a line a day, or past the 16 days it reaches, what the same days were like the last five years. `--f` prints °F |
 | `node $D/fx.mjs <amount> <FROM> <TO[,TO…]>` | The amount at today's rate, with the rate's date and where it came from |
-| `node $S/itinerary.mjs <trip.json> [--name <file>]` | The trip as one page in your `artifacts/` folder: a photo and a map link per stop, costs added up. Uses the browser only for a `"photo"` page url |
+| `node $S/itinerary.mjs <trip.json> [--name <file>]` | The trip as one page in your `artifacts/` folder: photos, hours and a map link per stop, places beside the plan, what to know and book before going, costs added up. Uses the browser only for a `"photo"` page url |
 
 **The search is yours.** Flights, stays and their prices are this skill's work, not a question to
 hand to another bot: a hand-off pays for a second bot's prompt, skills and browser, and for the
