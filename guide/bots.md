@@ -105,11 +105,11 @@ on a step right now.
 
 ## Handing a bot work without a call
 
-The **+** at the left end of the pill, or the `/` key, opens the line at the foot of the screen
-(`calls.md`, writing to her). It opens on Thursday; pick a bot with the chip at its left, or type
-`@` and a name at the start. That pick lasts for one message. Files can go with the words (at most
-8 at a time, 25 MB each). The bot cannot hear the call, so the message has to say the whole job.
-Enter sends it, and the room opens on the thread it started.
+The **@** at the left end of the pill, or the `@` key, opens the line at the foot of the screen
+(`calls.md`, writing to her) on the list of who to write to, Thursday first: pick a bot there, type
+its name after the `@`, or later with the chip at the line's left. That pick lasts for one message.
+Files can go with the words (at most 8 at a time, 25 MB each). The bot cannot hear the call, so the
+message has to say the whole job. Enter sends it, and the room opens on the thread it started.
 
 An open thread's own message box takes files the same way. Once more than one bot is in a thread,
 the box says who it is addressed to and can be changed. Only the bot the job went to brings other

@@ -147,7 +147,7 @@ function tone(level: number, out: [number, number, number]) {
 
 /**
  * `on` is the line being up. The orb outlives it by `FADE_MS` so it has time to draw back into
- * the button rather than vanishing: a swap with no going-away is what made `/` read as a cut.
+ * the button rather than vanishing: a swap with no going-away is what made the key read as a cut.
  */
 export function WriteOrb({
   on,

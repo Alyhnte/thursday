@@ -43,6 +43,14 @@ export const composing = (event: KeyboardEvent | ReactKeyboardEvent) => {
 };
 
 /**
+ * Whether `char` was typed, on whatever layout makes it. Some make `@` with Option (a German
+ * Mac, Option+L) or AltGr (a German PC, which arrives as Ctrl+Alt), so only Cmd and a Ctrl
+ * without Alt say the key was meant for something else.
+ */
+export const typed = (event: KeyboardEvent, char: string) =>
+  event.key === char && !event.metaKey && (event.altKey || !event.ctrlKey);
+
+/**
  * Whether a plain key (no modifier) is the window's to take: not typed into a field,
  * not inside a dialog a screen opened over everything, not already answered.
  */

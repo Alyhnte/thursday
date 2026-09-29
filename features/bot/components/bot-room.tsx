@@ -19,7 +19,7 @@ import {
 } from "@/features/bot/components/crew-motion";
 import { ThreadReply } from "@/features/bot/components/thread-reply";
 import { ThursdayMark } from "@/features/thursday/components/thursday-mark";
-import { useEscape, windowKey } from "@/hooks/use-hotkey";
+import { typed, useEscape, windowKey } from "@/hooks/use-hotkey";
 import { useWide } from "@/hooks/use-wide";
 import { toDate } from "@/lib/date-like";
 import { useServerPages } from "@/lib/protocol/use-server-pages";
@@ -343,19 +343,18 @@ export const BotRoom = memo(function BotRoom() {
   // list it was picked from, and the list folds away.
   useEscape(open && !closing, () => (reading ? setPicked(null) : close()));
 
-  // Asking for the write line folds the room, whoever asks: its own "+", `/`, a file put
-  // down elsewhere. The two never share the screen.
+  // Asking for the write line folds the room, whoever asks: its own "@", the `@` key, a file
+  // put down elsewhere. The two never share the screen.
   useEffect(() => writeLine.subscribe(() => foldRef.current()), []);
 
-  // With a thread open `/` is still the way to the message box, and the one on screen is
-  // this thread's. A thread with no box to write in (a bot on a step) leaves the key alone.
+  // With a thread open `@` is still the way to the message box, and the one on screen is
+  // this thread's: who is in it is picked in the box. A thread with no box to write in (a bot
+  // on a step) leaves the key alone.
   const panel = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!reading) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey)
-        return;
-      if (!windowKey(event)) return;
+      if (!typed(event, "@") || !windowKey(event)) return;
       const box = panel.current?.querySelector<HTMLTextAreaElement>(
         "textarea:not(:disabled)",
       );
@@ -479,7 +478,7 @@ export const BotRoom = memo(function BotRoom() {
                 playing={playing}
                 label="Fold the room away"
                 onClick={close}
-                onWrite={writeLine.open}
+                onWrite={writeLine.choose}
                 side={
                   bubble ? (
                     <Moment handoff={bubble} />

@@ -586,7 +586,7 @@ export function useOfficeCaption(): boolean {
   );
 }
 
-const writes = new Set<() => void>();
+const writes = new Set<(choose: boolean) => void>();
 const draws = new Set<() => void>();
 let writeLineUp = false;
 const writeLineListeners = new Set<() => void>();
@@ -594,15 +594,19 @@ let callWaits = false;
 const callWaitsListeners = new Set<() => void>();
 
 /**
- * Asks the screen for its write line: the pill's "+", `/`, a file put down. Whoever asks,
- * the room hears it too and folds, since the two never share the screen. The line says
- * when it is up (`shown`), since it stands where the pill's card would grow.
+ * Asks the screen for its write line: the pill's "@" and the `@` key (`choose`, which opens
+ * it on the list of who to write to), a file put down (`open`). Whoever asks, the room
+ * hears it too and folds, since the two never share the screen. The line says when it is
+ * up (`shown`), since it stands where the pill's card would grow.
  */
 export const writeLine = {
   open() {
-    for (const listener of writes) listener();
+    for (const listener of writes) listener(false);
   },
-  subscribe(listener: () => void) {
+  choose() {
+    for (const listener of writes) listener(true);
+  },
+  subscribe(listener: (choose: boolean) => void) {
     writes.add(listener);
     return () => {
       writes.delete(listener);

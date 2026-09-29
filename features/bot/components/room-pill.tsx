@@ -1,10 +1,10 @@
 "use client";
 import {
+  AtSign,
   Check,
   CirclePause,
   CircleQuestionMark,
   Loader2,
-  Plus,
   RotateCw,
   X,
 } from "lucide-react";
@@ -635,7 +635,7 @@ export function Chip({
         onClick={onOpen}
         playing={playing}
         side={<RoomState busy={busy} pending={pending} grown={grown} />}
-        onWrite={writeLine.open}
+        onWrite={writeLine.choose}
         writing={lineUp}
       />
     </div>
@@ -671,14 +671,14 @@ export function CrewRow({
   side: ReactNode;
   label: string;
   onClick: () => void;
-  /** Opens the write line: the pill's own "+", at its left end rather than loose beside it. */
+  /** Opens the write line on who to write to: the pill's own "@", at its left end rather than loose beside it. */
   onWrite: () => void;
   /** The line that button opens is up. */
   writing?: boolean;
 }) {
   return (
     <div className="flex shrink-0 items-center gap-2 py-1.5 pr-3 pl-1.5">
-      {/* The tip names the key too: `/` is the way in that nothing else on screen shows */}
+      {/* The tip names the key too: `@` is the way in that nothing else on screen shows */}
       <Tooltip>
         <TooltipTrigger
           render={
@@ -701,7 +701,7 @@ export function CrewRow({
           }
         >
           <WriteOrb on={Boolean(writing)} />
-          <Plus
+          <AtSign
             className={cn(
               "size-3.5 transition-opacity duration-200",
               writing ? "opacity-0" : "opacity-100",
@@ -714,7 +714,7 @@ export function CrewRow({
             data-slot="kbd"
             className="bg-background/20 px-1.5 font-mono text-[10px]"
           >
-            /
+            @
           </kbd>
         </TooltipContent>
       </Tooltip>

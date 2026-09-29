@@ -50,7 +50,7 @@ import {
   roomDrop,
   useGivenFiles,
 } from "@/features/workspace/components/given-files";
-import { composing, useEscape, windowKey } from "@/hooks/use-hotkey";
+import { composing, typed, useEscape, windowKey } from "@/hooks/use-hotkey";
 import { useServerAction } from "@/lib/protocol/use-server-action";
 import { revalidate, useServerRoute } from "@/lib/protocol/use-server-route";
 import { cn } from "@/lib/utils";
@@ -59,11 +59,11 @@ import { ThursdayMark } from "./thursday-mark";
 
 /**
  * The write line: one bar at the foot of the screen for whatever is typed or handed
- * over rather than said. It is not there until asked for — the pill's "+", the `/` key,
- * or a file dragged onto the window — and it holds who it is for, the words, and the
- * files. Files are kept in the workspace the moment they arrive (given-files), so they
- * wait here by path until words go with them. Sent to a bot, the room opens on the
- * thread it started. Sent to Thursday — who it opens on until someone else is picked —
+ * over rather than said. It is not there until asked for — the pill's "@" or the `@` key,
+ * which open it on the list of who to write to, or a file dragged onto the window — and it
+ * holds who it is for, the words, and the files. Files are kept in the workspace the moment
+ * they arrive (given-files), so they wait here by path until words go with them. Sent to a
+ * bot, the room opens on the thread it started. Sent to Thursday — who it opens on until someone else is picked —
  * it becomes a call in writing (use-text-call): the line stays up as that call's way
  * in, says what the call runs on, and Esc ends the call rather than closing the line. A
  * bot can still be picked during it, for one message; then the line is hers again. Its
@@ -126,6 +126,12 @@ export function WriteLine({
   const [drawing, setDrawing] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [draft, setDraft] = useState("");
+  /**
+   * The list a typed `@` opens: where the arrow keys stand in it, and whether Esc has left
+   * the typed word alone so it can be sent as words.
+   */
+  const [cursor, setCursor] = useState(0);
+  const [asWords, setAsWords] = useState(false);
   const spoken = useRef(onCall);
   spoken.current = onCall;
   const given = useGivenFiles({
@@ -155,11 +161,24 @@ export function WriteLine({
 
   // The first run is drawn over this screen: nothing opens behind it (call-signal)
   const held = useCallHeld();
-  const show = useCallback(() => {
-    if (held) return;
-    setOpen(true);
-    requestAnimationFrame(() => field.current?.focus());
-  }, [held]);
+  const show = useCallback(
+    (choose: boolean) => {
+      if (held) return;
+      setOpen(true);
+      // Opened to choose, the line starts on an `@`: the list a typed one opens, which a name
+      // typed after it narrows. Words kept from before stay behind it and survive the pick
+      if (choose) {
+        setDraft((text) => (mentionOf(text) ? text : text ? `@ ${text}` : "@"));
+        setAsWords(false);
+        setCursor(0);
+      }
+      requestAnimationFrame(() => {
+        field.current?.focus();
+        if (choose) field.current?.setSelectionRange(1, 1);
+      });
+    },
+    [held],
+  );
 
   // The three ways in all ask through the store, so the room hears it and folds: the line
   // and the open room never share the screen (thread.store roomOpen)
@@ -173,7 +192,7 @@ export function WriteLine({
     [keep],
   );
 
-  // `/` is the window's unless something is being typed into, and an open thread's:
+  // `@` is the window's unless something is being typed into, and an open thread's:
   // there the key goes to that thread's own message box (bot-room)
   useEffect(() => writeLine.subscribe(show), [show]);
   // Draw on the call's line: the pad is the line's, and its drawing lands here
@@ -181,11 +200,9 @@ export function WriteLine({
   useEffect(() => {
     if (room === "thread") return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey)
-        return;
-      if (!windowKey(event)) return;
+      if (!typed(event, "@") || !windowKey(event)) return;
       event.preventDefault();
-      writeLine.open();
+      writeLine.choose();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -233,13 +250,6 @@ export function WriteLine({
     },
   });
 
-  /**
-   * The list a typed `@` opens: where the arrow keys stand in it, and whether Esc has left
-   * the typed word alone so it can be sent as words.
-   */
-  const [cursor, setCursor] = useState(0);
-  const [asWords, setAsWords] = useState(false);
-
   const pick = (bot: BotRef) => {
     setPicking(false);
     // typed as a mention, the pick replaces it
@@ -250,6 +260,14 @@ export function WriteLine({
   };
 
   const mention = asWords ? null : mentionOf(draft);
+  /**
+   * What is left once a bare `@` goes, when the list is up on nothing typed after it: the `@`
+   * the line opened on is no word anyone sends, so Esc takes it away rather than keeping it.
+   */
+  const unchosen = mention && !mention[1] ? draft.replace(/^@\s?/, "") : null;
+  // With nothing else there, that Esc closes the line too, unless a call in writing holds it
+  const closes =
+    unchosen !== null && !unchosen.trim() && !given.files.length && !calling;
   const matches = mention
     ? roster.filter((bot) =>
         bot.name.toLowerCase().startsWith(mention[1].toLowerCase()),
@@ -514,6 +532,14 @@ export function WriteLine({
                   const midWord = composing(event);
                   if (event.key === "Escape" && !midWord) {
                     event.preventDefault();
+                    if (unchosen !== null) {
+                      setDraft(unchosen);
+                      if (!closes) return;
+                      // the one-message pick goes with the line, as two Escs would take it
+                      setBesides(null);
+                      setOpen(false);
+                      return;
+                    }
                     // a typed name is left alone first: the words and the line stay
                     if (mention) return setAsWords(true);
                     return leave();
@@ -658,7 +684,9 @@ export function WriteLine({
                 <Dot />
                 <Hint keys={["Tab", "Enter"]}>take</Hint>
                 <Dot />
-                <Hint keys={["Esc"]}>close the list</Hint>
+                <Hint keys={["Esc"]}>
+                  {closes ? "close" : "close the list"}
+                </Hint>
               </>
             ) : (
               <>

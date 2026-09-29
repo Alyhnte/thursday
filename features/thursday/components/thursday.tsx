@@ -1805,7 +1805,7 @@ function After({ at, children }: { at: number; children: React.ReactNode }) {
 }
 
 /**
- * The other way in, said after the ones to call: `/` opens the write line (write-line).
+ * The other way in, said after the ones to call: `@` opens the write line (write-line).
  * No cap of its own — two keys in caps on one short line read as a keyboard legend
  * rather than a sentence (the user's pick) — so it stands apart by space and ink.
  */
@@ -1813,7 +1813,7 @@ function ToWrite() {
   return (
     <>
       <span className="px-1.5 text-muted-foreground/30">·</span>
-      <span className="text-muted-foreground/70">/ to write</span>
+      <span className="text-muted-foreground/70">@ to write</span>
     </>
   );
 }

@@ -69,10 +69,11 @@ Work already handed to a bot carries on.
 
 ## Writing to her instead
 
-The **+** at the left end of the pill in the bottom right corner — or the `/` key — opens a line at
-the foot of the screen. Sending her a message there starts a call in writing: her answers show
-beside her face, and the line stays open for writing back. She has the same memory, tools and bots
-as on a spoken call, with no voice and no per-minute billing.
+The **@** at the left end of the pill in the bottom right corner — or the `@` key — opens a line at
+the foot of the screen with the list of who to write to up, her first: **Enter** takes her, a name
+typed after the `@` narrows the list, and **Esc** puts it away. Sending her a message there starts
+a call in writing: her answers show beside her face, and the line stays open for writing back. She
+has the same memory, tools and bots as on a spoken call, with no voice and no per-minute billing.
 
 - **Her answers** keep their shape (lists, tables), and what she names is a link: a file opens over
   the call, a web page in a new tab.
@@ -84,9 +85,9 @@ as on a spoken call, with no voice and no per-minute billing.
   looks at again by its name.
 - **A drawing**: the paperclip's **Draw something** opens a pad over the screen. **Add to the
   message** puts it on the line as a picture, sent with the words like any other.
-- **Who it goes to**: the chip at the left of the line, or `@` and a name at the start (**Tab** or
-  **Enter** takes the highlighted one). A bot picked there gets that one message, then the line goes
-  back to her; **Esc** with a bot picked also goes back to her.
+- **Who it goes to**: the list it opens on, the chip at the left of the line, or `@` and a name at
+  the start (**Tab** or **Enter** takes the highlighted one). A bot picked there gets that one
+  message, then the line goes back to her; **Esc** with a bot picked also goes back to her.
 - **What it runs on**: the GPT Subscription when one is signed in, else the OpenAI key. The small
   **runs on** button under the line shows which, and can pick another model, from any provider with
   a key, for writing only. With nothing to run on it says so; keys are in **Settings › API keys**.
