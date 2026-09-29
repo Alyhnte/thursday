@@ -192,7 +192,7 @@ const { BOT_RUN } = await import("../config.ts");
 BOT_RUN.retryMs = 1;
 const { eq } = await import("drizzle-orm");
 const { threadFromRow } = await import("../features/bot/thread.store.ts");
-const { briefOf, officeOf, plateOf, reportAt, sceneOf, seatAt, signOf, watch } =
+const { officeOf, plateOf, reportAt, sceneOf, seatAt, signOf, watch } =
   await import("../features/bot/office.ts");
 /** A thread as the office reads it at a first look, off the view the screen gets (features/bot/office.ts). */
 const officeNow = async (id: string) => {
@@ -747,21 +747,12 @@ test("the office holds a hand-off in its tray and walks it out with the answer w
       seatAt(held.scene, "Alpha").label,
       "Waiting on Beta and Gamma",
     );
-    // Each bot's plate: the one at work says its step and stays unfolded; the others fold to
-    // their names, their lines saying whom they wait for
-    const plate = (bot: string) => plateOf(held.scene, bot, 10, () => false);
-    assert.deepEqual(
-      [plate("Beta").line.kind, plate("Beta").folded],
-      ["step", false],
-    );
-    assert.deepEqual(
-      [plate("Gamma").line, plate("Gamma").folded],
-      [{ kind: "quiet", text: "after Beta" }, true],
-    );
-    assert.deepEqual(
-      [plate("Alpha").line, plate("Alpha").folded],
-      [{ kind: "quiet", text: "waiting on Beta and Gamma" }, true],
-    );
+    // Only the bot at work has a plate to show; the held one and the one waiting on others
+    // stand as they are, how they stand on their marks
+    const plate = (bot: string) => plateOf(held.scene, bot, 10);
+    assert.deepEqual(plate("Beta"), { tone: "work", words: "working" });
+    assert.equal(plate("Gamma"), null);
+    assert.equal(plate("Alpha"), null);
     assert.equal(signOf(held.scene), "work");
     assert.deepEqual(
       held.scene.events.find(
@@ -827,29 +818,15 @@ test("the office holds a hand-off in its tray and walks it out with the answer w
   assert.equal(seatAt(done.scene, "Gamma").label, "Answered");
   assert.equal(seatAt(done.scene, "Alpha").label, "Reported");
   assert.equal(reportAt(done.scene, 30)?.text, "Card made.");
-  // Done, a helper's plate says what it handed back and how long its part took, by when each was
-  // written; the report is the counter's, so the coordinator's plate only says it reported
-  const answered = plateOf(done.scene, "Gamma", 30, () => false);
-  assert.deepEqual(
-    [answered.line, answered.folded, answered.took !== null],
-    [{ kind: "quiet", text: "Card says $40" }, true, true],
-  );
-  assert.deepEqual(
-    plateOf(done.scene, "Beta", 30, (path) => path === "price.md").line,
-    { kind: "quiet", text: "Red chair: $40." },
-  );
-  assert.deepEqual(plateOf(done.scene, "Alpha", 30, () => false).line, {
-    kind: "quiet",
-    text: "Reported to you",
+  // Done, the helpers stand as they are and the coordinator's plate says its report is ready;
+  // the report reads in full in its tab
+  assert.equal(plateOf(done.scene, "Gamma", 30), null);
+  assert.equal(plateOf(done.scene, "Beta", 30), null);
+  assert.deepEqual(plateOf(done.scene, "Alpha", 30), {
+    tone: "report",
+    words: "report ready",
   });
   assert.equal(signOf(done.scene), "done");
-  // Pressed, a plate opens to what its bot was asked and what it answered
-  const brief = briefOf(done.scene, "Gamma", 30);
-  assert.deepEqual(
-    [brief.asked, brief.answer, brief.question],
-    ["Make a card with the red chair's price.", "Card says $40", ""],
-  );
-  assert.match(briefOf(done.scene, "Alpha", 30).sofar, /Reported to you$/);
   // Seen done: everyone leaps as the report reaches your counter, and Gamma hopped as the card it
   // held was let out to it; nothing leaps for what was there before the office opened
   const { momentOf, motionOf, restAt, stageOf, tricksOf, tripsOf } =
@@ -905,8 +882,7 @@ test("the office holds a hand-off in its tray and walks it out with the answer w
   // Each throws four sheets that fly with the plates stepped back, lie on the floor still, and fade
   const lateStage = stageOf(after, { w: 1200, h: 800 });
   const all = tricksOf(after, lateTrips, stood);
-  const sheetsAt = (t: number) =>
-    momentOf(after, lateStage, lateTrips, all, t, null);
+  const sheetsAt = (t: number) => momentOf(after, lateStage, lateTrips, all, t);
   const thrown = Math.max(...welcome.map((one) => one.at));
   const flying = sheetsAt(thrown + 0.5);
   assert.equal(flying.tossed.length, 12);
@@ -1184,6 +1160,7 @@ test("the turn limit parks the room, and the office says so seat by seat", async
   // Parked with no note: the rows say it
   const parked = await officeNow(id);
   assert.equal(seatAt(parked.scene, "Alpha").label, "Paused");
+  assert.equal(plateOf(parked.scene, "Alpha", 60)?.tone, "you");
   // Parked at the limit, the job is paused, waiting on Continue
   assert.equal(signOf(parked.scene), "paused");
   // and no bot leaps by itself while it waits, however long the office stays open on it
@@ -1304,7 +1281,7 @@ test("the office reads any bot name, whatever a plain object already holds by it
   const stage = stageOf(scene, { w: 1200, h: 800 });
   const trips = tripsOf(scene, stage.plan);
   const tricks = tricksOf(scene, trips, null);
-  const moment = momentOf(scene, stage, trips, tricks, 61, null);
+  const moment = momentOf(scene, stage, trips, tricks, 61);
   // The held one waits on the one at work: a line over the floor from it to the held bot
   assert.deepEqual(
     moment.links.map((link) => link.id),
@@ -2441,6 +2418,10 @@ test("a bot waiting on the user holds other messages until the answer", async ()
   assert.equal((inputs.get("Alpha")?.length ?? 0) - alphaCalls, 1);
   const asking = await officeNow(id);
   assert.equal(seatAt(asking.scene, "Alpha").label, "Waiting on you");
+  assert.deepEqual(plateOf(asking.scene, "Alpha", 60), {
+    tone: "you",
+    words: "needs you",
+  });
   assert.equal(seatAt(asking.scene, "Gamma").label, "Answered");
   const alpha = (await listRoomWork(id)).filter((row) => row.bot === "Alpha");
   assert.ok(

@@ -8,7 +8,6 @@ import {
   type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
-  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -18,16 +17,15 @@ import { queryKey } from "@/app/api/query-key";
 import { ShinyText } from "@/components/ui/shiny-text";
 import { BotMark, iconProps } from "@/features/bot/components/bot-mark";
 import {
-  briefOf,
   clockOf,
   filesOf,
-  type OfficeEvent,
   type OfficeScene,
   type Plate,
-  type PlateLine,
   plateOf,
   type SeatKey,
+  type SeatState,
   type Sign,
+  seatAt,
   signOf,
 } from "@/features/bot/office";
 import {
@@ -52,7 +50,7 @@ import { fileIcon } from "@/features/workspace/components/file-thumb";
 import { FileLink } from "@/features/workspace/components/file-view";
 import type { FileOnDisk } from "@/features/workspace/workspace.schema";
 import { useServerRoute } from "@/lib/protocol/use-server-route";
-import { cn, plainText } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 
 /**
  * The zooms the buttons step through, as a browser's do: from far enough out to see the ground
@@ -142,7 +140,7 @@ const ink = (percent: number) =>
  * tricksOf). Over each bot a plate says in one line what it is on, what it asks or what it handed
  * back; a bot that is not at work folds to the mark of how it stands until pointed at, and
  * pressing a plate opens it where it is to what the bot was asked and how far it has come. The
- * job's name heads it at the top left, how the job stands is stamped on the ground beside the
+ * job's name heads it at the top left, how the job stands is written on the ground beside the
  * building, and the wall clock says how long it has run.
  */
 export function OfficeStage({
@@ -151,8 +149,7 @@ export function OfficeStage({
   label,
   faces,
   from,
-  selected,
-  onSelect,
+  onBot,
   className,
 }: {
   scene: OfficeScene;
@@ -163,9 +160,8 @@ export function OfficeStage({
   faces: BotRef[];
   /** The thread it draws, where a note about one of its files goes (file-note). */
   from: string;
-  selected: string | null;
-  /** A plate pressed; null when a tap on the floor puts the opened one back. */
-  onSelect: (bot: string | null) => void;
+  /** A bot pressed: the room opens its tab, where what it did reads in full (bot-room). */
+  onBot?: (bot: string) => void;
   className?: string;
 }) {
   const box = useRef<HTMLDivElement>(null);
@@ -204,16 +200,12 @@ export function OfficeStage({
     [scene, stage, trips, tricks],
   );
   const t = useSceneClock(start, built ? spans : null);
-  const moment = stage
-    ? momentOf(scene, stage, trips, tricks, t, selected)
-    : null;
+  const moment = stage ? momentOf(scene, stage, trips, tricks, t) : null;
   const sign = signOf(scene);
   // What the job handed over, only what is on disk: the plates and the report name it
   const files = useMemo(() => filesOf(scene), [scene]);
   const { data: found } = useServerRoute<FileOnDisk[]>(
-    files.length
-      ? queryKey.workspaceFiles(files.map((file) => file.path))
-      : null,
+    files.length ? queryKey.workspaceFiles(files) : null,
   );
   const onDisk = useCallback(
     (path: string) => found?.some((one) => one.path === path) ?? false,
@@ -227,8 +219,6 @@ export function OfficeStage({
     y: number;
     from: View;
     moved: boolean;
-    /** Down on a plate or its bot, where a tap is theirs. */
-    onPlate: boolean;
   } | null>(null);
   const [dragging, setDragging] = useState(false);
 
@@ -267,7 +257,6 @@ export function OfficeStage({
       y: event.clientY,
       from: view,
       moved: false,
-      onPlate: !!(event.target as HTMLElement).closest("[data-plate]"),
     };
     event.currentTarget.setPointerCapture(event.pointerId);
   };
@@ -282,11 +271,8 @@ export function OfficeStage({
     setView({ ...was.from, x: was.from.x + dx, y: was.from.y + dy });
   };
   const up = () => {
-    const was = drag.current;
     drag.current = null;
     setDragging(false);
-    // A tap on the floor, not a drag, puts an opened plate back
-    if (was && !was.moved && !was.onPlate && selected) onSelect(null);
   };
 
   const world = `translate(${view.x}px, ${view.y}px) scale(${view.z})`;
@@ -298,7 +284,7 @@ export function OfficeStage({
   // Each bot's plate, read once: the crowding pass and the plates themselves read the same
   const plates = (moment?.tags ?? []).map((tag) => ({
     tag,
-    plate: plateOf(scene, tag.bot, t, onDisk),
+    plate: plateOf(scene, tag.bot, t),
   }));
   // Where each plate sits while its bot is at its desk: plates are judged for room there, so
   // one walking past another does not fold and unfold it as it goes
@@ -319,18 +305,13 @@ export function OfficeStage({
             {
               bot: tag.bot,
               home,
-              open: !plate.folded,
-              first:
-                plate.state.key === "asking" || plate.state.key === "paused",
-              words:
-                plate.line.kind === "files"
-                  ? plate.line.paths.join()
-                  : plate.line.text,
+              open: plate !== null,
+              first: plate?.tone === "you",
+              words: plate?.words ?? "",
             },
           ]
         : [];
     }),
-    selected,
   );
 
   return (
@@ -457,18 +438,6 @@ export function OfficeStage({
             className="office-fade pointer-events-none absolute inset-0"
             style={{ animationDelay: `${stage.popAt}ms` }}
           >
-            {moment.glasses.map((glass) => {
-              const spot = at(glass.x, glass.y);
-              return (
-                <span
-                  key={`${glass.x},${glass.y}`}
-                  className="absolute -translate-x-1/2 -translate-y-full"
-                  style={{ left: spot.x, top: spot.y, opacity: glass.opacity }}
-                >
-                  <Hourglass />
-                </span>
-              );
-            })}
             {moment.stamp && (
               <Refused
                 spot={at(moment.stamp.x, moment.stamp.y)}
@@ -479,41 +448,27 @@ export function OfficeStage({
             {plates.map(({ tag, plate }) => (
               <PlateAt
                 key={tag.bot}
-                scene={scene}
                 plate={plate}
+                state={seatAt(scene, tag.bot)}
                 crowded={crowded.includes(tag.bot)}
                 onRoom={onRoom}
-                t={t}
-                start={start}
                 bot={tag.bot}
                 head={at(tag.x, tag.head)}
                 foot={at(tag.x, tag.foot).y}
                 lift={tag.carrying ? 32 * view.z : 0}
                 size={stage.botSize * view.z}
                 width={size.w}
-                picked={selected === tag.bot}
                 hush={moment.hush}
-                onPick={() => onSelect(tag.bot)}
-                from={from}
+                onPick={() => onBot?.(tag.bot)}
               />
             ))}
           </div>
           <OfficeHead
             label={label}
             bots={scene.office.bots.length}
-            files={
-              scene.office.status === "done"
-                ? files.filter((file) => onDisk(file.path))
-                : []
-            }
+            files={scene.office.status === "done" ? files.filter(onDisk) : []}
             from={from}
           />
-          {moment.report && (
-            <ReportCard
-              report={moment.report}
-              face={faceOf(moment.report.from)}
-            />
-          )}
           <div className="absolute bottom-3.5 left-4 flex items-center gap-0.5 rounded-full bg-background p-0.75 shadow-sm ring-1 ring-border">
             <ZoomButton
               label="Zoom out"
@@ -571,42 +526,15 @@ function ZoomButton({
   );
 }
 
-/**
- * A time that runs by itself, a second at a time, so what shows it is all that draws again:
- * from `from` (ms) to `until`, or to now while `until` is null, as "4:40".
- */
-function Elapsed({
-  from,
-  until = null,
-  className,
-}: {
-  from: number;
-  until?: number | null;
-  className?: string;
-}) {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (until !== null) return;
-    const tick = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(tick);
-  }, [until]);
-  const seconds = ((until ?? now) - from) / 1000;
-  return (
-    <span className={cn("font-mono tabular-nums", className)}>
-      {clockOf(seconds)}
-    </span>
-  );
-}
-
 /** How many of the job's files the head shows before the rest fold under "+N more". */
 const HEAD_FILES = 3;
 
 /**
  * The office's head, at its top left: the job's name, and once the job is done how many bots
- * worked on it and the files it handed over, each with the bot whose words named it; pressing one
- * opens it. Past the first few the rest fold under "+N more", opened in place. How the job stands
- * and how long it took are stamped on the ground (GroundSign) and kept by the wall clock. During
- * a call her words stand above it (thursday), and it steps down under them.
+ * worked on it and the files it handed over; pressing one opens it. Past the first few the rest
+ * fold under "+N more", opened in place. How the job stands and how long it took are written on
+ * the ground (GroundSign) and kept by the wall clock. During a call her words stand above it
+ * (thursday), and it steps down under them.
  */
 function OfficeHead({
   label,
@@ -616,7 +544,7 @@ function OfficeHead({
 }: {
   label: string;
   bots: number;
-  files: { path: string; bot: string }[];
+  files: string[];
   from: string;
 }) {
   const captioned = useOfficeCaption();
@@ -632,7 +560,7 @@ function OfficeHead({
         captioned ? "top-24" : "top-5",
       )}
     >
-      <h2 className="line-clamp-2 max-w-[28rem] text-balance font-semibold text-[22px] leading-tight tracking-tight">
+      <h2 className="max-w-[28rem] text-balance font-semibold text-[22px] leading-tight tracking-tight">
         {label}
       </h2>
       {files.length > 0 && (
@@ -648,21 +576,18 @@ function OfficeHead({
                 "max-h-60 overflow-y-auto rounded-2xl bg-background/80 p-1.5 ring-1 ring-border scrollbar-none",
             )}
           >
-            {shown.map((file) => {
-              const Icon = fileIcon(file.path);
+            {shown.map((path) => {
+              const Icon = fileIcon(path);
               return (
                 <FileLink
-                  key={file.path}
-                  path={file.path}
+                  key={path}
+                  path={path}
                   from={from}
-                  className="flex h-7 max-w-64 items-center gap-1.5 rounded-full bg-background pr-3 pl-2.5 text-[12.5px] shadow-sm outline-none ring-1 ring-border transition-colors hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50"
+                  className="flex h-7 min-w-0 max-w-full items-center gap-1.5 rounded-full bg-background pr-3 pl-2.5 text-[12.5px] shadow-sm outline-none ring-1 ring-border transition-colors hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50"
                 >
                   <Icon className="size-3.5 shrink-0 text-muted-foreground" />
                   <span className="min-w-0 truncate">
-                    {file.path.split("/").pop()}
-                  </span>
-                  <span className="shrink-0 text-muted-foreground">
-                    {file.bot}
+                    {path.split("/").pop()}
                   </span>
                 </FileLink>
               );
@@ -800,7 +725,19 @@ function WallClock({
   );
 }
 
-/** The words stamped for each state of the job. */
+/**
+ * How large each state's words are written (px): 150 at most, and no wider than the plot's 640
+ * after its margin. Measured in the app's face at 150: DONE 445 across, PAUSED 629, STOPPED 725,
+ * YOUR TURN 902.
+ */
+const SIGN_SIZE: Record<Exclude<Sign, "work">, number> = {
+  done: 150,
+  paused: 150,
+  stopped: 132,
+  you: 106,
+};
+
+/** The words written on the ground for each state of the job. */
 const SIGN_WORDS: Record<Sign, string> = {
   work: "AT WORK",
   you: "YOUR TURN",
@@ -810,11 +747,11 @@ const SIGN_WORDS: Record<Sign, string> = {
 };
 
 /**
- * How the job stands, stamped on a plot of ground beside the building (office.scene SIGN_BOX,
- * fitted in view with it): a band of tape while it is at work, then a stamp that lands as the
- * state changes — ember when it is the user's turn or paused on Continue, the ink when it is
- * done, faint when stopped — with how long it took under a finished or stopped one. One that
- * stands as the office opens lands once the office stands (`land`), so it is seen landing.
+ * How the job stands, written large on a plot of ground beside the building (office.scene
+ * SIGN_BOX, fitted in view with it): a band of tape while it is at work, then plain capitals that
+ * come in as the state changes — ember when it is the user's turn or paused on Continue, the ink
+ * when it is done, faint when stopped — with how long it took under a finished or stopped one.
+ * Words that stand as the office opens come in once the office stands (`land`), so they are seen.
  */
 function GroundSign({
   stage,
@@ -826,7 +763,7 @@ function GroundSign({
   sign: Sign;
   /** When the job was seen to end, in scene seconds; null while it runs. */
   ended: number | null;
-  /** How long the stamp waits to land (ms): until the office stands, as it opens; at once after. */
+  /** How long the words wait to come in (ms): until the office stands, as it opens; at once after. */
   land: number;
 }) {
   return (
@@ -839,12 +776,12 @@ function GroundSign({
         animationDelay: `${stage.popAt}ms`,
       }}
     >
-      <Stamp key={sign} sign={sign} ended={ended} land={land} />
+      <SignWords key={sign} sign={sign} ended={ended} land={land} />
     </div>
   );
 }
 
-function Stamp({
+function SignWords({
   sign,
   ended,
   land,
@@ -853,7 +790,7 @@ function Stamp({
   ended: number | null;
   land: number;
 }) {
-  // Read as it mounts: a stamp that changes later lands at once
+  // Read as it mounts: words that change later come in at once
   const [wait] = useState(land);
   if (sign === "work")
     return (
@@ -868,26 +805,29 @@ function Stamp({
     );
   const took =
     ended !== null && (sign === "done" || sign === "stopped")
-      ? `${sign === "done" ? "IN" : "AFTER"} ${clockOf(ended)}`
+      ? clockOf(ended)
       : null;
   return (
-    <div className="absolute top-6 left-6 -rotate-8">
-      <div
-        className={cn(
-          "flex animate-office-stamp flex-col items-center whitespace-nowrap rounded-[18px] border-[7px] border-double px-6.5 pt-1.5 pb-2.5 font-extrabold text-[92px] leading-none tracking-[0.06em] opacity-80 motion-reduce:animate-none",
-          sign === "done" && "text-foreground",
-          (sign === "you" || sign === "paused") && "text-waiting",
-          sign === "stopped" && "text-foreground/40",
-        )}
-        style={{ animationDelay: `${wait}ms` }}
+    <div
+      className={cn(
+        "absolute top-4.5 left-6 flex animate-office-sign flex-col gap-2.5 whitespace-nowrap motion-reduce:animate-none",
+        sign === "done" && "text-foreground/82",
+        (sign === "you" || sign === "paused") && "text-waiting/85",
+        sign === "stopped" && "text-foreground/40",
+      )}
+      style={{ animationDelay: `${wait}ms` }}
+    >
+      <span
+        className="font-extrabold leading-[0.9] tracking-[0.02em]"
+        style={{ fontSize: SIGN_SIZE[sign] }}
       >
         {SIGN_WORDS[sign]}
-        {took && (
-          <span className="mt-2 border-current border-t-[3px] pt-2 font-bold font-mono text-[0.36em] tracking-[0.12em]">
-            {took}
-          </span>
-        )}
-      </div>
+      </span>
+      {took && (
+        <span className="font-mono font-semibold text-[48px] tracking-[0.08em] opacity-60">
+          {took}
+        </span>
+      )}
     </div>
   );
 }
@@ -1255,7 +1195,8 @@ function SheetShape({ sheet }: { sheet: Sheet }) {
 
 /**
  * A bot where it stands or walks, with the paper it carries; it pops in once the office stands.
- * A leap lifts it, squashes it about its feet and, in a flip, turns it over about its middle.
+ * A leap lifts it, squashes it about its feet and, in a flip, turns it over about its middle; at
+ * work at its desk it bobs, typing.
  */
 function BotSprite({
   walker,
@@ -1269,19 +1210,6 @@ function BotSprite({
   const { x, y, hop, tilt, spin, squash, scale, size, opacity } = walker;
   return (
     <g className="office-fade" style={{ animationDelay: `${popAt}ms` }}>
-      {walker.selected && (
-        <ellipse
-          cx={x}
-          cy={y}
-          rx={size * 0.42}
-          ry={size * 0.17}
-          style={{
-            fill: "color-mix(in oklab, var(--brand) 10%, transparent)",
-            stroke: "color-mix(in oklab, var(--brand) 55%, transparent)",
-            strokeWidth: 1.5,
-          }}
-        />
-      )}
       <ellipse
         cx={x}
         cy={y}
@@ -1295,14 +1223,23 @@ function BotSprite({
         opacity={opacity}
       >
         <g className="office-pop" style={{ animationDelay: `${popAt}ms` }}>
-          <BotMark
-            size={size}
-            seed={walker.bot}
-            {...iconProps(face?.icon)}
-            state={walker.working ? "thinking" : "idle"}
-            crossed={walker.crossed}
-            notify={false}
-          />
+          {/* At work, it bobs over its desk as one typing does */}
+          <g
+            className={cn(
+              "origin-bottom [transform-box:fill-box]",
+              walker.working &&
+                "animate-office-work motion-reduce:animate-none",
+            )}
+          >
+            <BotMark
+              size={size}
+              seed={walker.bot}
+              {...iconProps(face?.icon)}
+              state={walker.working ? "thinking" : "idle"}
+              crossed={walker.crossed}
+              notify={false}
+            />
+          </g>
         </g>
       </g>
       {walker.carry && (
@@ -1360,52 +1297,6 @@ function BotSprite({
   );
 }
 
-function Hourglass() {
-  return (
-    <svg
-      width={22}
-      height={29}
-      viewBox="0 0 18 24"
-      aria-hidden
-      className="block shrink-0"
-    >
-      <path
-        d="M2 1.5h14M2 22.5h14"
-        style={{
-          stroke: "var(--ink)",
-          strokeWidth: 1.8,
-          strokeLinecap: "round",
-        }}
-      />
-      <path
-        d="M3.5 1.5c0 5.5 5.5 7 5.5 10.5S3.5 17 3.5 22.5M14.5 1.5c0 5.5-5.5 7-5.5 10.5s5.5 5 5.5 10.5"
-        style={{
-          fill: "var(--gray-0)",
-          stroke: "var(--ink)",
-          strokeWidth: 1.4,
-        }}
-      />
-      <path
-        className="origin-bottom animate-office-sand-top [transform-box:fill-box]"
-        d="M5 4.5h8c-.6 2.6-2.6 4-4 5.4-1.4-1.4-3.4-2.8-4-5.4z"
-        style={{ fill: "var(--ink)" }}
-      />
-      <rect
-        x="8.4"
-        y="11"
-        width="1.2"
-        height="7"
-        style={{ fill: "var(--ink)" }}
-      />
-      <path
-        className="origin-bottom animate-office-sand-bottom [transform-box:fill-box]"
-        d="M4.6 21c.8-2.4 2.6-3.5 4.4-4.2 1.8.7 3.6 1.8 4.4 4.2z"
-        style={{ fill: "var(--ink)" }}
-      />
-    </svg>
-  );
-}
-
 /** A send the room turned down, stamped where it stopped, with the room's words for why. */
 function Refused({
   spot,
@@ -1437,37 +1328,6 @@ function Refused({
 }
 
 /**
- * The final report's words, once it lies at your counter; the files it handed over stand under
- * the job's name (OfficeHead). It stays in one place, at the office's foot above the zoom
- * buttons, whatever the office is panned or zoomed to, and goes when the thread goes on after it.
- */
-function ReportCard({ report, face }: { report: OfficeEvent; face?: BotRef }) {
-  return (
-    <section
-      aria-label={`Final report from ${report.from}`}
-      className="absolute bottom-15 left-4 flex max-h-[calc(100%-13rem)] w-75 animate-in flex-col gap-2 overflow-y-auto rounded-2xl bg-background px-3.5 pt-3 pb-3.5 shadow-lg ring-1 ring-border fade-in slide-in-from-bottom-1 duration-300 scrollbar-none"
-    >
-      <div className="flex items-center gap-1.5 text-[12px]">
-        <BotMark
-          size={16}
-          seed={report.from}
-          {...iconProps(face?.icon)}
-          notify={false}
-        />
-        <span className="font-semibold">Final report</span>
-        <span className="text-muted-foreground">· {report.from}</span>
-      </div>
-      <p className="line-clamp-6 text-[13px] leading-normal">
-        {plainText(report.text)}
-      </p>
-    </section>
-  );
-}
-
-/** How wide a pressed plate opens. */
-const PLATE_OPEN = 288;
-
-/**
  * A plate's measure: the pill's own padding about its mark (`pl-2`, `pr-2.25`), how tall it
  * stands (`h-6.5`), and the room kept between two plates.
  */
@@ -1481,11 +1341,10 @@ const PLATE_EDGE = 12;
 type Room = { mark: number; rest: number };
 
 /**
- * Which open plates would lie over another plate, as the bots stand at their desks: those fold
- * to their marks too, until pointed at. The pressed plate stays open, then any that wants the
- * user, then the rest in the office's order, so a crowded office still reads plate by plate
- * rather than as lines written over one another. Judged by the room each plate takes as drawn
- * (PlateAt), not by a guess at its letters.
+ * Which plates would lie over another, as the bots stand at their desks: those fold to their
+ * marks, until pointed at. Any that wants the user stays open first, then the rest in the
+ * office's order, so a crowded office still reads plate by plate rather than as words written over
+ * one another. Judged by the room each plate takes as drawn (PlateAt), not by a guess at its letters.
  */
 function useCrowding(
   entries: {
@@ -1495,17 +1354,15 @@ function useCrowding(
     first: boolean;
     words: string;
   }[],
-  picked: string | null,
 ) {
   const rooms = useRef(new Map<string, Room>());
   const onRoom = useCallback((bot: string, room: Room) => {
     rooms.current.set(bot, room);
   }, []);
   const [crowded, setCrowded] = useState<string[]>([]);
-  // Judged again when a plate's words, where it sits or which one is pressed changes; the
-  // plates measure themselves first, in their own layout effects
-  const key = JSON.stringify([
-    picked,
+  // Judged again when a plate's words or where it sits changes; the plates measure themselves
+  // first, in their own layout effects
+  const key = JSON.stringify(
     entries.map((one) => [
       one.bot,
       Math.round(one.home.x),
@@ -1513,7 +1370,7 @@ function useCrowding(
       one.open,
       one.words,
     ]),
-  ]);
+  );
   useLayoutEffect(() => {
     const box = (bot: string, x: number, y: number, wide: number) => ({
       bot,
@@ -1528,26 +1385,24 @@ function useCrowding(
       b.l < a.r + PLATE_GAP &&
       a.t < b.b + PLATE_GAP &&
       b.t < a.b + PLATE_GAP;
-    const folded = entries.flatMap((one) => {
+    const shown = entries.filter((one) => one.open);
+    // Folded, a plate still shows its mark
+    const marks = shown.flatMap((one) => {
       const room = rooms.current.get(one.bot);
       return room ? [box(one.bot, one.home.x, one.home.y, room.mark)] : [];
     });
-    const rank = (one: (typeof entries)[number]) =>
-      one.bot === picked ? 2 : one.first ? 1 : 0;
     const open: Box[] = [];
     const shut: string[] = [];
-    for (const one of entries
-      .filter((entry) => entry.open || entry.bot === picked)
-      .sort((a, b) => rank(b) - rank(a))) {
+    for (const one of shown.sort((a, b) => Number(b.first) - Number(a.first))) {
       const room = rooms.current.get(one.bot);
       if (!room) continue;
       const wide = box(one.bot, one.home.x, one.home.y, room.mark + room.rest);
-      const clash =
-        one.bot !== picked &&
-        [...folded, ...open].some(
+      if (
+        [...marks, ...open].some(
           (other) => other.bot !== one.bot && over(wide, other),
-        );
-      if (clash) shut.push(one.bot);
+        )
+      )
+        shut.push(one.bot);
       else open.push(wide);
     }
     setCrowded((was) =>
@@ -1560,61 +1415,48 @@ function useCrowding(
 }
 
 /**
- * A bot's plate over its head: the mark of how it stands and its name, then one line for where it
- * stands — the step it is on shining while it works, what it asks in ember, what it handed back
- * as files to open. A bot that is not at work and wants nothing of you folds to that mark alone,
- * and unfolds while it or its bot is pointed at or focused. Pressing it opens the plate itself,
- * where it stands, to what the bot was asked and how far it has come (office briefOf), until it
- * is pressed again; above the bot, or over it when the window's top is too near. While sheets
- * fly at the report the plates step back (`hush`).
+ * A bot's plate over its head, only while there is something to say (office plateOf): the bot at
+ * work, the one that wants the user in ember, the coordinator with its report. Every other bot
+ * stands as it is; pointed at or focused, its plate shows the mark of how it stands and its name.
+ * Pressing the bot or its plate opens its tab in the room (`onPick`), where what it did reads in
+ * full. By an edge a plate is held by its mark and unfolds inward; one that would lie over
+ * another folds to its mark (useCrowding). While sheets fly at the report the plates step back.
  */
 function PlateAt({
-  scene,
   plate,
+  state,
   crowded,
   onRoom,
-  t,
-  start,
   bot,
   head,
   foot,
   lift,
   size,
   width,
-  picked,
   hush,
   onPick,
-  from,
 }: {
-  scene: OfficeScene;
-  plate: Plate;
-  /** Its line would lie over another plate: folded too, until pointed at (useCrowding). */
+  plate: Plate | null;
+  state: SeatState;
+  /** It would lie over another plate: folded to its mark, until pointed at (useCrowding). */
   crowded: boolean;
   onRoom: (bot: string, room: Room) => void;
-  t: number;
-  start: number;
   bot: string;
   head: { x: number; y: number };
   foot: number;
   lift: number;
   size: number;
   width: number;
-  picked: boolean;
   hush: boolean;
   onPick: () => void;
-  from: string;
 }) {
-  const { state, line } = plate;
-  const described = useId();
   const top = head.y - 6 - lift;
-  const folded = (plate.folded || crowded) && !picked;
-  const you = state.key === "asking" || state.key === "paused";
+  const folded = plate === null || crowded;
   // How much room it takes, folded and open, as drawn: for the crowding pass, and so a plate
-  // near the office's edge unfolds away from it rather than past it; opened, how tall it stands
+  // near the office's edge unfolds away from it rather than past it
   const pill = useRef<HTMLDivElement>(null);
   const mark = useRef<HTMLSpanElement>(null);
   const [room, setRoom] = useState<Room | null>(null);
-  const [tall, setTall] = useState(0);
   useLayoutEffect(() => {
     if (!pill.current || !mark.current) return;
     let rest = 0;
@@ -1627,11 +1469,7 @@ function PlateAt({
     setRoom((was) =>
       was && was.mark === next.mark && was.rest === next.rest ? was : next,
     );
-    const height = picked ? pill.current.offsetHeight : 0;
-    setTall((was) => (was === height ? was : height));
   });
-  const brief = picked ? briefOf(scene, bot, t) : null;
-  const down = picked && tall > 0 && top - tall < 8;
   const open = room ? room.mark + room.rest : 0;
   const anchor = !room
     ? null
@@ -1640,33 +1478,20 @@ function PlateAt({
       : head.x - open / 2 < PLATE_EDGE
         ? { left: -room.mark / 2 }
         : null;
-  const time =
-    plate.since !== null ? (
-      <Elapsed
-        from={start + plate.since * 1000}
-        className="shrink-0 text-[10.5px] text-muted-foreground"
-      />
-    ) : plate.took !== null ? (
-      <span className="shrink-0 font-mono text-[10.5px] text-muted-foreground tabular-nums">
-        {clockOf(plate.took)}
-      </span>
-    ) : null;
   return (
     <div
       data-plate
       className={cn(
         "group/plate absolute size-0 transition-opacity duration-500",
-        picked
-          ? "z-30"
-          : folded
-            ? "z-10 hover:z-30 focus-within:z-30"
-            : "z-20 hover:z-30 focus-within:z-30",
-        hush && !picked && "opacity-15",
+        folded
+          ? "z-10 hover:z-30 has-[:focus-visible]:z-30"
+          : "z-20 hover:z-30 has-[:focus-visible]:z-30",
+        hush && "opacity-15",
       )}
       style={{ left: head.x, top }}
     >
-      {/* The bot's body answers to the pointer too: pointed at, its plate unfolds, and pressed,
-          it opens as the plate does; the plate's own button is the one keys and readers reach */}
+      {/* The bot's body answers to the pointer too; the plate's own button is the one keys and
+          readers reach */}
       <button
         type="button"
         tabIndex={-1}
@@ -1681,89 +1506,48 @@ function PlateAt({
       />
       <div
         ref={pill}
-        // Centred over its bot; by an edge, held there by its folded end and unfolding inward.
-        // Opened, as wide as its words need at most and kept inside the office
-        style={
-          picked
-            ? {
-                left: Math.min(
-                  Math.max(-PLATE_OPEN / 2, PLATE_EDGE - head.x),
-                  width - PLATE_EDGE - PLATE_OPEN - head.x,
-                ),
-                width: PLATE_OPEN,
-                ...(down ? { top: -PLATE_TALL } : { bottom: 0 }),
-              }
-            : (anchor ?? undefined)
-        }
+        style={anchor ?? undefined}
         className={cn(
-          "pointer-events-auto absolute flex text-[12px] transition-shadow",
-          picked
-            ? cn(
-                "animate-in flex-col rounded-2xl pb-2.5 shadow-lg fade-in zoom-in-95 duration-150",
-                down ? "origin-top" : "origin-bottom",
-              )
-            : "bottom-0 h-6.5 items-center whitespace-nowrap rounded-full pr-2.25 shadow-md",
-          !picked && !anchor && "left-0 -translate-x-1/2",
-          you
-            ? "bg-background ring-[1.5px] ring-waiting"
-            : picked
-              ? "bg-background ring-[1.5px] ring-brand/55"
-              : state.key === "held"
-                ? "border border-foreground/35 border-dashed bg-background/95"
-                : "bg-background/95 ring-1 ring-border",
+          "pointer-events-auto absolute bottom-0 flex h-6.5 items-center whitespace-nowrap rounded-full bg-background pr-2.25 text-[12px] shadow-md transition-opacity duration-200",
+          !anchor && "left-0 -translate-x-1/2",
+          plate?.tone === "you"
+            ? "ring-[1.5px] ring-waiting"
+            : "ring-1 ring-border",
+          // Nothing to say: seen only while it or its bot is pointed at or focused
+          plate === null &&
+            "opacity-0 group-hover/plate:opacity-100 group-has-[:focus-visible]/plate:opacity-100",
         )}
       >
-        {/* The plate's own line: its row as it stands, and the first row of it opened */}
-        <div
-          className={
-            picked
-              ? "flex h-8 min-w-0 items-center whitespace-nowrap pr-3"
-              : "contents"
-          }
+        <button
+          type="button"
+          onClick={onPick}
+          aria-label={`${bot} · ${state.label}`}
+          className="flex h-full items-center rounded-full pl-2 outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
         >
-          <button
-            type="button"
-            onClick={onPick}
-            aria-label={`${bot} · ${state.label}`}
-            aria-describedby={picked ? described : undefined}
-            aria-expanded={picked}
-            className={cn(
-              "flex h-full min-w-0 items-center rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
-              picked ? "pl-3" : "pl-2",
-            )}
-          >
-            <span ref={mark} className="flex shrink-0 items-center">
-              <StateGlyph state={state.key} />
-            </span>
+          <span ref={mark} className="flex shrink-0 items-center">
+            <StateGlyph state={state.key} />
+          </span>
+          <Unfold open={!folded}>
+            <span className="font-semibold">{bot}</span>
+          </Unfold>
+          {plate && (
             <Unfold open={!folded}>
-              <span className="font-semibold">{bot}</span>
-            </Unfold>
-            {line.kind !== "files" && (
-              <Unfold open={!folded} fit={picked}>
-                <LineWords line={line} />
-              </Unfold>
-            )}
-          </button>
-          {line.kind === "files" && (
-            <Unfold open={!folded} fit={picked}>
-              <FileChips paths={line.paths} from={from} />
-            </Unfold>
-          )}
-          {time && (
-            <Unfold open={!folded} fit={picked}>
-              {time}
+              {plate.tone === "work" ? (
+                <ShinyText text={plate.words} />
+              ) : (
+                <span
+                  className={
+                    plate.tone === "you"
+                      ? "text-waiting"
+                      : "text-muted-foreground"
+                  }
+                >
+                  {plate.words}
+                </span>
+              )}
             </Unfold>
           )}
-        </div>
-        {brief && (
-          <Brief
-            id={described}
-            brief={brief}
-            own={bot === scene.office.coord}
-            files={line.kind === "files" ? line.paths : []}
-            from={from}
-          />
-        )}
+        </button>
       </div>
     </div>
   );
@@ -1771,154 +1555,23 @@ function PlateAt({
 
 /**
  * What a folded plate keeps back: no room at all while folded, unfolding in place while the plate
- * is pointed at or focused, and always open on a plate that is not folded. On a plate opened to
- * its brief (`fit`) it gives way to the row's width, its words cut short.
+ * or its bot is pointed at or focused, and always open on a plate that is not folded.
  */
-function Unfold({
-  open,
-  fit = false,
-  children,
-}: {
-  open: boolean;
-  fit?: boolean;
-  children: ReactNode;
-}) {
+function Unfold({ open, children }: { open: boolean; children: ReactNode }) {
   return (
     <span
       className={cn(
         "flex overflow-hidden transition-[max-width,opacity] duration-200 ease-out motion-reduce:transition-none",
-        fit && "min-w-0",
         open
           ? "max-w-80 opacity-100"
-          : "max-w-0 opacity-0 group-focus-within/plate:max-w-80 group-focus-within/plate:opacity-100 group-hover/plate:max-w-80 group-hover/plate:opacity-100",
+          : "max-w-0 opacity-0 group-hover/plate:max-w-80 group-hover/plate:opacity-100 group-has-[:focus-visible]/plate:max-w-80 group-has-[:focus-visible]/plate:opacity-100",
       )}
     >
       {/* Its own width even while folded, so the plate knows how wide it opens (PlateAt) */}
-      <span
-        data-unfold
-        className={cn("flex items-center pl-1.5", fit ? "min-w-0" : "shrink-0")}
-      >
+      <span data-unfold className="flex shrink-0 items-center pl-1.5">
         {children}
       </span>
     </span>
-  );
-}
-
-/** A plate's words: a step shines while it runs, what wants you is in ember, the rest is quiet. */
-function LineWords({ line }: { line: Exclude<PlateLine, { kind: "files" }> }) {
-  // Cut on the words themselves: the shine lays its own layer over them (shiny-text)
-  if (line.kind === "step")
-    return <ShinyText text={line.text} className="min-w-0 max-w-56 truncate" />;
-  return (
-    <span
-      className={cn(
-        "min-w-0 max-w-56 truncate",
-        line.kind === "you" ? "text-waiting" : "text-muted-foreground",
-      )}
-    >
-      {line.text}
-    </span>
-  );
-}
-
-/** The files a bot handed back, on its plate: the first to open, and how many more its card lists. */
-function FileChips({ paths, from }: { paths: string[]; from: string }) {
-  const [first] = paths;
-  const Icon = fileIcon(first);
-  return (
-    <span className="flex min-w-0 items-center gap-1">
-      <FileLink
-        path={first}
-        from={from}
-        className="flex h-4.5 min-w-0 items-center gap-1 rounded-md bg-foreground/7 pr-1.5 pl-1 text-[11.5px] outline-none transition-colors hover:bg-foreground/13 focus-visible:ring-3 focus-visible:ring-ring/50"
-      >
-        <Icon className="size-3 shrink-0 text-muted-foreground" />
-        <span className="max-w-40 truncate">{first.split("/").pop()}</span>
-      </FileLink>
-      {paths.length > 1 && (
-        <span className="shrink-0 text-[11px] text-muted-foreground">
-          +{paths.length - 1}
-        </span>
-      )}
-    </span>
-  );
-}
-
-/**
- * What a pressed plate opens to under its line: what the bot was asked, the question it waits on
- * you with or the answer it gave, how far it has come, and every file it made when there is more
- * than the line's first. Its tab in the room, opened as it is pressed, holds the rest.
- */
-function Brief({
-  id,
-  brief,
-  own,
-  files,
-  from,
-}: {
-  id: string;
-  brief: ReturnType<typeof briefOf>;
-  /** The coordinator's: what it was asked is the job. */
-  own: boolean;
-  files: string[];
-  from: string;
-}) {
-  return (
-    <div
-      id={id}
-      className="flex min-w-0 flex-col gap-1.5 px-3 pt-0.5 text-[12px] leading-snug"
-    >
-      {brief.asked && (
-        <BriefRow label={own ? "The job" : "Asked"}>
-          <span className="line-clamp-3">
-            {brief.asked}
-            {brief.more ? ` · ${brief.more} more` : ""}
-          </span>
-        </BriefRow>
-      )}
-      {brief.question && (
-        <BriefRow label="Question">
-          <span className="line-clamp-4">{brief.question}</span>
-        </BriefRow>
-      )}
-      {brief.answer && (
-        <BriefRow label="Answer">
-          <span className="line-clamp-3">{brief.answer}</span>
-        </BriefRow>
-      )}
-      {brief.sofar && <BriefRow label="So far">{brief.sofar}</BriefRow>}
-      {files.length > 1 && (
-        <div className="flex min-w-0 flex-wrap gap-1 pl-14.5">
-          {files.map((path) => {
-            const Icon = fileIcon(path);
-            return (
-              <FileLink
-                key={path}
-                path={path}
-                from={from}
-                className="flex h-5.5 min-w-0 max-w-full items-center gap-1 rounded-md bg-foreground/7 pr-1.5 pl-1 text-[11.5px] outline-none transition-colors hover:bg-foreground/13 focus-visible:ring-3 focus-visible:ring-ring/50"
-              >
-                <Icon className="size-3 shrink-0 text-muted-foreground" />
-                <span className="min-w-0 truncate">
-                  {path.split("/").pop()}
-                </span>
-              </FileLink>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function BriefRow({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="flex items-baseline gap-2">
-      <span className="w-12.5 shrink-0 text-[11px] text-muted-foreground">
-        {label}
-      </span>
-      <span className="min-w-0 flex-1 text-foreground/85">{children}</span>
-    </div>
   );
 }
 

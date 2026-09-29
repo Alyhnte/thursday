@@ -59,29 +59,26 @@ arrow steps back one level, and the ✕ folds the room away.
 
 An open thread is also drawn as an office where her face stands, beside the room, when the window
 is wide enough: each bot at its desk, the work walked from desk to desk as it happens, a hand-off
-that waits for another bot's answer held in a tray under an hourglass, with a dashed line on the
-floor from the bot it waits for, and questions and the final report brought to your counter. A
-bot flips as it first comes in to its desk, hops when more work lands there, and now and then
-leaps on its own; when the report reaches your counter, every bot leaps and throws its papers in
-the air, and they flutter down and lie on the floor a moment. Opening a job that finished while
-you were away does the same once the office stands, the first time only. A computer set to reduce
-motion gets the walking without the leaps. A bot that was stopped, or paused waiting on
-**Continue**, has its eyes crossed out, in the office and on its tab in the room.
-Over each bot a plate says in one line where it stands: the step it is on while it works, what it
-asks while it waits on the user, or the file it handed back once it answered. A bot that is not
-working and wants nothing of the user folds its plate to a small mark of how it stands (a tick
-when done, an hourglass while held); pointing at the bot or its mark unfolds it. Pressing the
-bot or its plate opens the plate where it is, to what the bot was asked, the question it asks or
-the answer it gave, and how far it has come, and opens that bot's tab in the room; a tap on the
-floor closes it. The office's top left names the job, and once the job is done, says how many
-bots worked on it and lists the files it handed over, each with the bot that made it; pressing
-one opens it. Past three, the rest fold under **+N more**, which opens them in place. The clock on
-the wall says how long the job has run, and how it stands is stamped on the ground beside the
-building: at work, your turn, paused, stopped or done, with how long it took under a finished or
-stopped one. While the app has stopped the job and waits on
-**Continue**, the ground around the building goes faintly red. Once the job is done, the report
-is brought to your counter and its words stay in a card at the office's bottom left; writing on
-after it, the bot carries the report back to its desk. A file dropped on the office goes to the
+that waits for another bot's answer held in its tray, with a dashed line on the floor from the bot
+it waits for, and questions and the final report brought to your counter. A bot at work bobs over
+its desk as if typing. A bot flips as it first comes in to its desk, hops when more work lands
+there, and now and then leaps on its own; when the report reaches your counter, every bot leaps
+and throws its papers in the air, and they flutter down and lie on the floor a moment. Opening a
+job that finished while you were away does the same once the office stands, the first time only.
+A computer set to reduce motion gets the walking without the leaps. A bot that was stopped, or
+paused waiting on **Continue**, has its eyes crossed out, in the office and on its tab in the room.
+Only a bot with something to say has a plate over its head: the one at work (**working**), the one
+that wants you (**needs you**, in orange, for a question or **Continue**), and the thread's bot once
+its report is ready (**report ready**). Every other bot just stands there; pointing at it shows its
+name. Pressing a bot or its plate opens its tab in the room, where what it did reads in full. The
+office's top left names the job, and once the job is done, says how many bots worked on it and
+lists the files it handed over; pressing one opens it. Past three, the rest fold under **+N
+more**, which opens them in place. The clock on the wall says how long the job has run, and how it
+stands is written in large letters on the ground beside the building: at work, your turn, paused,
+stopped or done, with how long it took under a finished or stopped one. While the app has stopped
+the job and waits on **Continue**, the ground around the building goes faintly red. Once the job
+is done, the report is brought to your counter; writing on after it, the bot carries the report
+back to its desk. A file dropped on the office goes to the
 thread, as one dropped on the room does. The office opens a little zoomed out, pans by dragging
 and zooms with the wheel or the buttons at its bottom left, from 30% to 400%; the frame button
 brings it back. Her face fades out as the office comes and back in as it goes,

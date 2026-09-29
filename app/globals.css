@@ -597,11 +597,10 @@
   --animate-office-pop: office-pop 0.36s cubic-bezier(0.3, 0.7, 0.3, 1) both;
   --animate-office-fade: office-fade 0.4s ease both;
   --animate-office-blink: office-blink 1s steps(1, end) infinite;
-  --animate-office-stamp: office-stamp 0.42s cubic-bezier(0.2, 0.8, 0.3, 1)
+  --animate-office-sign: office-sign 0.5s cubic-bezier(0.2, 0.8, 0.3, 1)
     backwards;
   --animate-office-tape: office-tape 1.4s linear infinite;
-  --animate-office-sand-top: office-sand-top 2.4s linear infinite;
-  --animate-office-sand-bottom: office-sand-bottom 2.4s linear infinite;
+  --animate-office-work: office-work 0.8s ease-in-out infinite;
 
   @keyframes office-drop {
     0% {
@@ -656,14 +655,11 @@
     }
   }
 
-  /* A stamp landing on the ground as the job's state changes, and its own look after. */
-  @keyframes office-stamp {
+  /* The sign's words coming onto the ground as the job's state changes: up out of it, fading in. */
+  @keyframes office-sign {
     from {
-      transform: scale(1.45);
+      transform: translateY(16px);
       opacity: 0;
-    }
-    55% {
-      transform: scale(0.95);
     }
     to {
       transform: none;
@@ -683,22 +679,23 @@
     }
   }
 
-  /* The hourglass over a held hand-off. */
-  @keyframes office-sand-top {
-    from {
-      transform: scaleY(1);
+  /* A bot at work at its desk: bobbing from side to side over its keys, squashing as it lands. */
+  @keyframes office-work {
+    0%,
+    100% {
+      transform: none;
     }
-    to {
-      transform: scaleY(0.15);
+    20% {
+      transform: translateY(-16%) rotate(-5deg) scale(0.96, 1.04);
     }
-  }
-
-  @keyframes office-sand-bottom {
-    from {
-      transform: scaleY(0.15);
+    40% {
+      transform: scale(1.05, 0.95);
     }
-    to {
-      transform: scaleY(1);
+    60% {
+      transform: translateY(-12%) rotate(5deg) scale(0.97, 1.03);
+    }
+    80% {
+      transform: scale(1.04, 0.96);
     }
   }
 }
@@ -722,10 +719,9 @@
   [data-building] .office-pop,
   [data-building] .office-fade,
   .animate-office-blink,
-  .animate-office-stamp,
+  .animate-office-sign,
   .animate-office-tape,
-  .animate-office-sand-top,
-  .animate-office-sand-bottom {
+  .animate-office-work {
     animation: none !important;
   }
 }

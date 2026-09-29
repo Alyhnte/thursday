@@ -8,7 +8,6 @@
 import {
   type OfficeEvent,
   type OfficeScene,
-  reportAt,
   seatAt,
   signOf,
   YOU,
@@ -147,8 +146,8 @@ const MARGIN = { top: 96, side: 20, bottom: 16 };
 /** A ground unit is this many of the sign's own pixels, as it lies on the ground (office-stage GroundSign). */
 const SIGN_PX = 10;
 /**
- * The plot of ground the job's sign is stamped on, in its own pixels: room for its widest stamp
- * turned as it lands (YOUR TURN, 682 wide) and its tallest (STOPPED with the time under it, 271).
+ * The plot of ground the job's sign is written on, in its own pixels: room for its widest words
+ * (office-stage SIGN_SIZE keeps each within 640 after a 24 margin) and the time under them.
  */
 export const SIGN_BOX = { w: 700, h: 280 };
 
@@ -1345,7 +1344,6 @@ export type Walker = {
   working: boolean;
   /** Stopped, or paused on Continue: its eyes crossed out. */
   crossed: boolean;
-  selected: boolean;
 };
 
 export type Moment = {
@@ -1362,8 +1360,6 @@ export type Moment = {
   hush: boolean;
   trail: { id: string; x: number; y: number; opacity: number }[];
   shades: Stage["shades"];
-  /** Hourglasses over trays holding a hand-off until others answer. */
-  glasses: { x: number; y: number; opacity: number }[];
   /** From each bot a held hand-off waits on to the bot it is for, over the floor. */
   links: {
     id: string;
@@ -1373,8 +1369,6 @@ export type Moment = {
     y2: number;
     opacity: number;
   }[];
-  /** The final report, once it lies at your counter. */
-  report: OfficeEvent | null;
   /** A send turned down, and the room's words for why. */
   stamp: { x: number; y: number; scale: number; text: string } | null;
   /** Where each bot's tag goes: above its head. */
@@ -1405,7 +1399,6 @@ export function momentOf(
   trips: Trip[],
   tricks: Trick[],
   t: number,
-  selected: string | null,
 ): Moment {
   const { plan, fit } = stage;
   const coord = scene.office.coord;
@@ -1497,7 +1490,6 @@ export function momentOf(
         : null,
       working: state.key === "run" && !walking,
       crossed: state.key === "stopped" || state.key === "paused",
-      selected: selected === bot,
     });
     tags.push({
       bot,
@@ -1724,35 +1716,6 @@ export function momentOf(
     return draw !== undefined && draw >= 0.6;
   });
 
-  // hourglasses over trays still holding a hand-off
-  const glasses: Moment["glasses"] = [];
-  for (const desk of plan.desks) {
-    const hold = trips.findLast(
-      (trip) =>
-        trip.event.to === desk.bot && trip.out === "held" && trip.leave <= t,
-    );
-    const release = hold
-      ? trips.find(
-          (trip) =>
-            trip.out === "copy" && trip.event.exchange === hold.event.exchange,
-        )
-      : undefined;
-    if (!hold || t < hold.arrive || (release && t >= release.arrive + 0.4))
-      continue;
-    const [gx, gy] = fit.at(
-      (desk.tray[0] + desk.tray[2]) / 2,
-      (desk.tray[1] + desk.tray[3]) / 2,
-      8,
-    );
-    glasses.push({
-      x: gx,
-      y: gy,
-      opacity:
-        release && t >= release.arrive
-          ? r2(clamp((release.arrive + 0.4 - t) / 0.4, 0, 1))
-          : 1,
-    });
-  }
   // who a held hand-off waits on: a line over the floor from each of them to the bot it is for
   const links: Moment["links"] = [];
   const standing = new Map(walkers.map((walker) => [walker.bot, walker]));
@@ -1773,10 +1736,6 @@ export function momentOf(
         });
     }
   }
-  // the final report, once it lies at your counter; a question stays with its bot's plate and
-  // the room's box, where it is answered
-  const final = reportAt(scene, t);
-  const report = final && reported?.event.id === final.id ? final : null;
   const refused = scene.events.findLast(
     (event) =>
       event.kind === "refused" &&
@@ -1830,9 +1789,7 @@ export function momentOf(
     hush,
     trail,
     shades,
-    glasses,
     links,
-    report,
     stamp,
     tags,
   };

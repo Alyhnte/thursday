@@ -12,7 +12,6 @@
 import { TOOL_NAMES } from "@/features/ai/tools/tool-name";
 import { pathsIn } from "@/features/workspace/file-kind";
 import { toDate } from "@/lib/date-like";
-import { plainText } from "@/lib/utils";
 import { ROOM_THURSDAY, type RoomView, type WorkState } from "./room.schema";
 import { type Chatter, messageOf, type ThreadView } from "./thread.store";
 
@@ -63,14 +62,6 @@ export type OfficeEvent = {
   closed: number | null;
 };
 
-export type OfficeStep = {
-  bot: string;
-  at: number;
-  text: string;
-  /** The line it was read from. */
-  order: number;
-};
-
 export type SeatKey =
   | "run"
   | "asking"
@@ -95,7 +86,6 @@ export type OfficeThread = {
   /** The thread's bot first, then each bot in the order it was first handed work. */
   bots: string[];
   events: OfficeEvent[];
-  steps: OfficeStep[];
   seats: Map<string, Seat>;
   /** Exchanges still owed the answers they wait for, with those bots (room.query releaseWaiting). */
   owed: Map<string, string[]>;
@@ -111,12 +101,6 @@ export type OfficeThread = {
   /** Whether the user has had the ending (Thread `seen`). */
   seen: boolean;
 };
-
-/** What a step says, as the conversation's own rows say it (room-conversation stepOf). */
-const stepText = (line: Chatter) =>
-  line.tool
-    ? (line.tool.note ?? `${line.tool.name} · ${line.tool.input}`)
-    : line.text;
 
 /** What the room said when it turned a send down (thread.query keeps it as the tool's result). */
 const refusalOf = (line: Chatter) =>
@@ -195,7 +179,6 @@ export function officeOf(thread: ThreadView): OfficeThread {
       closed: null,
     },
   ];
-  const steps: OfficeStep[] = [];
   const bots = [coord];
   const seat = (bot: string) => {
     if (bot && bot !== ROOM_THURSDAY && !bots.includes(bot)) bots.push(bot);
@@ -231,7 +214,7 @@ export function officeOf(thread: ThreadView): OfficeThread {
           to: meant === ROOM_THURSDAY ? YOU : meant,
           text: refusalOf(line),
         });
-      } else steps.push({ bot: from, at, text: stepText(line), order });
+      }
       return;
     }
     if (line.kind === "ask") {
@@ -277,10 +260,8 @@ export function officeOf(thread: ThreadView): OfficeThread {
     }
     // A stop or a summary is the app's: the seat reads the stop, the floor neither
     if (line.kind !== "say" && line.kind !== "result") return;
-    if (!alone(line)) {
-      steps.push({ bot: from, at, text: line.text, order });
-      return;
-    }
+    // Words among a turn's steps are its working, not something carried across the floor
+    if (!alone(line)) return;
     // Several text blocks of one message are one thing said
     const message = messageOf(line);
     const last = said as { message: string; event: OfficeEvent } | null;
@@ -321,7 +302,6 @@ export function officeOf(thread: ThreadView): OfficeThread {
       };
       return;
     }
-    steps.push({ bot: from, at, text: line.text, order });
   };
 
   for (const [index, line] of lines.entries()) {
@@ -420,7 +400,6 @@ export function officeOf(thread: ThreadView): OfficeThread {
     coord,
     bots,
     events,
-    steps,
     seats: new Map(bots.map((bot) => [bot, seatOf(bot)])),
     owed: new Map(
       exchanges.filter(isOwed).map((row) => [row.id, row.waitsFor]),
@@ -517,7 +496,6 @@ export function watch(
 export type OfficeScene = {
   office: OfficeThread;
   events: OfficeEvent[];
-  steps: OfficeStep[];
   seats: Map<string, Seat>;
   /** When the thread was seen to end; null while it runs. */
   ended: number | null;
@@ -582,7 +560,6 @@ export function sceneOf(
   return {
     office,
     events,
-    steps: office.steps,
     seats,
     ended: memory.ended,
     opened: memory.opened,
@@ -596,8 +573,6 @@ export type SeatState = {
   key: SeatKey;
   /** The chip's words. */
   label: string;
-  /** Why it stands where it stands, for its card. */
-  why: string;
   since: number | null;
   /** Who it waits on: bots, or you. */
   waits: string[];
@@ -614,52 +589,17 @@ const NOBODY: Seat = { key: "none", waits: [], since: null };
 export function seatAt(scene: OfficeScene, bot: string): SeatState {
   const { key, waits, since } = scene.seats.get(bot) ?? NOBODY;
   const own = bot === scene.office.coord;
-  const words: Record<SeatKey, [string, string]> = {
-    run: ["Working", ""],
-    asking: ["Waiting on you", "Picks up when you answer"],
-    paused: ["Paused", "Picks up when you press Continue"],
-    held: [
-      `Held · after ${namesOf(waits)}`,
-      `Starts once ${namesOf(waits)} ${waits.length === 1 ? "answers" : "answer"}`,
-    ],
-    ended: [
-      waits.length ? `Waiting on ${namesOf(waits)}` : "Waiting",
-      waits.length ? `Turn over · waiting on ${namesOf(waits)}` : "Turn over",
-    ],
-    done: own
-      ? ["Reported", "Reported to you"]
-      : ["Answered", `Gave ${scene.office.coord} its answer`],
-    stopped: ["Stopped", "The job was stopped"],
-    none: ["Not called yet", "Not part of the job yet"],
+  const labels: Record<SeatKey, string> = {
+    run: "Working",
+    asking: "Waiting on you",
+    paused: "Paused",
+    held: `Held · after ${namesOf(waits)}`,
+    ended: waits.length ? `Waiting on ${namesOf(waits)}` : "Waiting",
+    done: own ? "Reported" : "Answered",
+    stopped: "Stopped",
+    none: "Not called yet",
   };
-  const [label, why] = words[key];
-  return { key, label, why, since, waits };
-}
-
-/** The step a seat is on while it runs, else why it stands. */
-export function nowOf(scene: OfficeScene, bot: string, t: number): string {
-  const state = seatAt(scene, bot);
-  if (state.key !== "run") return state.why;
-  // Lines keep whole seconds: one written in the second its turn was seen to start belongs to it
-  const from = (state.since ?? Number.NEGATIVE_INFINITY) - 1;
-  let step: OfficeStep | null = null;
-  for (const one of scene.steps)
-    if (one.bot === bot && one.at >= from && one.at <= t) step = one;
-  let sent: OfficeEvent | null = null;
-  for (const event of scene.events)
-    if (
-      event.from === bot &&
-      event.at >= from &&
-      event.at <= t &&
-      (event.kind === "give" || event.kind === "refused")
-    )
-      sent = event;
-  if (sent && (!step || sent.order >= step.order))
-    return sent.kind === "refused"
-      ? "A send turned down"
-      : `Handing ${sent.to} ${sent.extra ? "more" : "work"}`;
-  if (step) return plainText(step.text);
-  return bot === scene.office.coord ? "Reading the job" : "Reading the work";
+  return { key, label: labels[key], since, waits };
 }
 
 /** The final report standing at `t`: handed over, and not taken back since as the thread went on. */
@@ -672,141 +612,40 @@ export const reportAt = (scene: OfficeScene, t: number) =>
   ) ?? null;
 
 /**
- * What the job handed over: each file its answers and its report name, with the bot whose words
- * named it first, read as the room reads a file in a message (attachments, pathsIn).
+ * What the job handed over: each file its answers and its report name, in the order first named,
+ * read as the room reads a file in a message (attachments, pathsIn).
  */
 export function filesOf(scene: OfficeScene) {
-  const files = new Map<string, string>();
+  const files = new Set<string>();
   for (const event of scene.events)
     if (event.kind === "return" || event.kind === "report")
-      for (const path of pathsIn(event.text))
-        if (!files.has(path)) files.set(path, event.from);
-  return [...files].map(([path, bot]) => ({ path, bot }));
+      for (const path of pathsIn(event.text)) files.add(path);
+  return [...files];
 }
 
-/** What a bot's plate says on its one line. */
-export type PlateLine =
-  /** The step it is on; it shines while it runs. */
-  | { kind: "step"; text: string }
-  /** It waits on you: what it asks, or that it wants Continue. */
-  | { kind: "you"; text: string }
-  /** The files its answer named, those on disk. */
-  | { kind: "files"; paths: string[] }
-  /** Anything else, said quietly. */
-  | { kind: "quiet"; text: string };
-
-/** A bot's plate over its head: its state, one line, and the time beside it. */
-export type Plate = {
-  state: SeatState;
-  line: PlateLine;
-  /**
-   * Folded to the mark of how it stands until pointed at: it is not at work and waits on nobody
-   * but other bots, so a crowded office names first who is working and who wants the user.
-   */
-  folded: boolean;
-  /** Where the time beside it counts from (scene seconds), while it runs or waits on you. */
-  since: number | null;
-  /** How long its part took, once it answered (seconds). */
-  took: number | null;
-};
-
 /**
- * One line for each bot, chosen by where it stands: the step it is on, what it asks, what it
- * handed back, or what it waits for. `onDisk` says which named files are there to open.
+ * What a bot's plate says, when it says anything: the bot at work, the one that wants the user
+ * (a question, or Continue after the app stopped it), and the coordinator once its report stands.
+ * Every other bot stands as it is, its plate folded to its name until pointed at; how it stands
+ * is on its mark, and what it did is in its tab in the room.
  */
+export type Plate = { tone: "work" | "you" | "report"; words: string };
+
 export function plateOf(
   scene: OfficeScene,
   bot: string,
   t: number,
-  onDisk: (path: string) => boolean,
-): Plate {
-  const state = seatAt(scene, bot);
-  const own = bot === scene.office.coord;
-  const given = own
-    ? scene.events.find((event) => event.kind === "job")
-    : scene.events.findLast(
-        (event) =>
-          event.kind === "give" &&
-          event.to === bot &&
-          !event.extra &&
-          event.at <= t,
-      );
-  const quiet = (text: string, folded = true): Plate => ({
-    state,
-    line: { kind: "quiet", text },
-    folded,
-    since: null,
-    took: null,
-  });
-  switch (state.key) {
+): Plate | null {
+  switch (seatAt(scene, bot).key) {
     case "run":
-      return {
-        state,
-        line: { kind: "step", text: nowOf(scene, bot, t) },
-        folded: false,
-        since: state.since ?? given?.at ?? null,
-        took: null,
-      };
-    case "asking": {
-      const asked = scene.events.findLast(
-        (event) =>
-          event.kind === "question" && event.from === bot && event.at <= t,
-      );
-      return {
-        state,
-        line: { kind: "you", text: asked ? plainText(asked.text) : state.why },
-        folded: false,
-        since: state.since,
-        took: null,
-      };
-    }
+      return { tone: "work", words: "working" };
+    case "asking":
     case "paused":
-      return {
-        state,
-        line: { kind: "you", text: "Paused · press Continue" },
-        folded: false,
-        since: state.since,
-        took: null,
-      };
-    case "done": {
-      if (own) return quiet("Reported to you");
-      const gave = scene.events.findLast(
-        (event) => event.kind === "return" && event.from === bot,
-      );
-      if (!gave) return quiet(state.why);
-      // How long its part took, by when each was written rather than when the office saw it
-      const written = (id: string | undefined) =>
-        scene.office.events.find((event) => event.id === id)?.at;
-      const from = written(given?.id);
-      const to = written(gave.id);
-      const paths = pathsIn(gave.text).filter(onDisk);
-      return {
-        state,
-        line: paths.length
-          ? { kind: "files", paths }
-          : { kind: "quiet", text: plainText(gave.text) },
-        folded: true,
-        since: null,
-        took:
-          from !== undefined && to !== undefined
-            ? Math.max(0, to - from)
-            : null,
-      };
-    }
-    case "held":
-      return quiet(`after ${namesOf(state.waits)}`);
-    case "ended":
-      return quiet(
-        state.waits.length
-          ? `waiting on ${namesOf(state.waits)}`
-          : own
-            ? "idle until you write"
-            : "turn over",
-      );
-    case "stopped":
-      return quiet("stopped");
+      return { tone: "you", words: "needs you" };
     default:
-      return quiet("not called yet");
+      return bot === scene.office.coord && reportAt(scene, t)
+        ? { tone: "report", words: "report ready" }
+        : null;
   }
 }
 
@@ -841,65 +680,3 @@ export const clockOf = (seconds: number) => {
     ? `${hours}:${two(Math.floor(whole / 60) % 60)}:${two(whole % 60)}`
     : `${Math.floor(whole / 60)}:${two(whole % 60)}`;
 };
-
-/**
- * What a pressed plate opens to under its line (office-stage PlateAt): what the bot was asked, the
- * question it waits on you with, the answer it gave, and how far it has come. Its tab in the room
- * holds the rest.
- */
-export function briefOf(scene: OfficeScene, bot: string, t: number) {
-  const state = seatAt(scene, bot);
-  const own = bot === scene.office.coord;
-  // The work it is on: the last exchange handed to it by now, and the words that joined it since
-  const given = own
-    ? (scene.events.find((event) => event.kind === "job") ?? null)
-    : (scene.events.findLast(
-        (event) =>
-          event.kind === "give" &&
-          event.to === bot &&
-          !event.extra &&
-          event.at <= t,
-      ) ?? null);
-  const more = own
-    ? 0
-    : scene.events.filter(
-        (event) =>
-          event.kind === "give" &&
-          event.to === bot &&
-          event.extra &&
-          event.at >= (given?.at ?? 0) &&
-          event.at <= t,
-      ).length;
-  // Lines keep whole seconds: a step written in the second the work was handed over is on it
-  const from = (given?.at ?? Number.NEGATIVE_INFINITY) - 1;
-  const steps = scene.steps.filter(
-    (step) => step.bot === bot && step.at >= from && step.at <= t,
-  ).length;
-  const asked =
-    state.key === "asking"
-      ? scene.events.findLast(
-          (event) =>
-            event.kind === "question" && event.from === bot && event.at <= t,
-        )
-      : undefined;
-  const gave =
-    state.key === "done" && !own
-      ? scene.events.findLast(
-          (event) =>
-            event.kind === "return" && event.from === bot && event.at <= t,
-        )
-      : undefined;
-  return {
-    asked: given ? plainText(given.text) : "",
-    more,
-    question: asked ? plainText(asked.text) : "",
-    answer: gave ? plainText(gave.text) : "",
-    /** "6 steps · Picks up when you press Continue": what it has done, and why it stands so. */
-    sofar: [
-      steps ? `${steps} ${steps === 1 ? "step" : "steps"}` : "",
-      gave ? "" : state.why,
-    ]
-      .filter(Boolean)
-      .join(" · "),
-  };
-}

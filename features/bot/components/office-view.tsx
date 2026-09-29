@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { OfficeStage } from "@/features/bot/components/office-stage";
 import {
   type OfficeThread,
@@ -56,20 +56,10 @@ function Office({
   thread: ThreadView;
   onBot?: (bot: string) => void;
 }) {
-  const [selected, setSelected] = useState<string | null>(null);
   const start = toDate(thread.createdAt).getTime();
   const office = useMemo(() => officeOf(thread), [thread]);
   const memory = useWatched(office, start);
   const scene = useMemo(() => sceneOf(office, memory), [office, memory]);
-  // Pressing a bot opens its plate here and its tab in the room, where its work reads in full; a
-  // tap on the floor puts the plate back and leaves the room as it is
-  const pick = useCallback(
-    (bot: string | null) => {
-      setSelected((was) => (bot === null || was === bot ? null : bot));
-      if (bot !== null) onBot?.(bot);
-    },
-    [onBot],
-  );
   return (
     // what the counter holds opens as the room's files do; what is dropped here is the thread's,
     // as on the room (given-files roomDrop)
@@ -80,8 +70,7 @@ function Office({
         label={thread.label}
         faces={thread.roster}
         from={thread.id}
-        selected={selected}
-        onSelect={pick}
+        onBot={onBot}
         className="min-h-0 min-w-0 flex-1"
       />
     </FileViewer>
