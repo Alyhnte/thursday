@@ -13,7 +13,7 @@ call. `S=<this skill's dir>/scripts`, `D=$THURSDAY_SKILLS/data-report/scripts`.
 |---|---|
 | `node $D/weather.mjs "<place>[, <CC>]" <from> [<to>] [--f]` | The forecast a line a day, or past the 16 days it reaches, what the same days were like the last five years. `--f` prints °F |
 | `node $D/fx.mjs <amount> <FROM> <TO[,TO…]>` | The amount at today's rate, with the rate's date and where it came from |
-| `node $S/itinerary.mjs <trip.json> [--name <file>]` | The trip as one page in your `artifacts/` folder: photos, hours and a map link per stop, places beside the plan, what to know and book before going, costs added up. Uses the browser only for a `"photo"` page url |
+| `node $S/itinerary.mjs <trip.json> [--name <file>]` | The trip as one page in your `artifacts/` folder: a gallery of each place, what to do and watch for there, the money and what is left to book in view, the way, the days, costs added up. Uses the browser only for a `"photo"` page url |
 | `node $THURSDAY_SKILLS/artifact/scripts/document.mjs pdf <page path>` | The page as a PDF beside it, when they ask for one; a page sent to their phone goes with its PDF already |
 
 **The search is yours.** Flights, stays and their prices are this skill's work, not a question to
