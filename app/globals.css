@@ -589,34 +589,67 @@
   }
 }
 
-/* The office (features/bot/components/office-stage.tsx) builds itself as it opens: each piece
-   falls into place and settles, one after another, then the bots pop up and the rest fades in.
-   Each piece sets its own delay; the classes act only while the stage carries `data-building`. */
+/* A laptop in the office (features/bot/office.scene.ts laptopFor): its lid, and its screen lit
+   while its bot works, dim while it waits, dark when stopped. The lit screen is the brightest
+   thing on a desk in either theme. */
+:root,
+.dark .inverse {
+  --office-lid: var(--gray-750);
+  --office-lid-side: var(--gray-700);
+  --office-lid-top: var(--gray-650);
+  --office-screen-lit: var(--gray-0);
+  --office-screen-dim: var(--gray-450);
+  --office-screen-dark: var(--gray-750);
+  --office-screen-line: color-mix(in oklab, var(--ink) 55%, transparent);
+}
+
+.dark,
+:root:not(.dark) .inverse {
+  --office-lid: var(--gray-200);
+  --office-lid-side: var(--gray-150);
+  --office-lid-top: var(--gray-250);
+  --office-screen-lit: var(--gray-1000);
+  --office-screen-dim: var(--gray-450);
+  --office-screen-dark: var(--gray-100);
+  --office-screen-line: color-mix(in oklab, var(--gray-0) 60%, transparent);
+}
+
+/* The office (features/bot/components/office-stage.tsx) builds itself as it opens, in one wave
+   from the ground up and from its back to its front: each piece drops a little and settles, then
+   the bots pop up and the rest fades in. Each piece sets its own delay; the classes act only while
+   the stage carries `data-building`. */
 @theme {
-  --animate-office-drop: office-drop 0.34s both;
+  --animate-office-drop: office-drop 0.3s cubic-bezier(0.2, 0.7, 0.3, 1) both;
   --animate-office-pop: office-pop 0.36s cubic-bezier(0.3, 0.7, 0.3, 1) both;
   --animate-office-fade: office-fade 0.4s ease both;
-  --animate-office-blink: office-blink 1s steps(1, end) infinite;
   --animate-office-sign: office-sign 0.5s cubic-bezier(0.2, 0.8, 0.3, 1)
     backwards;
   --animate-office-tape: office-tape 1.4s linear infinite;
-  --animate-office-work: office-work 0.8s ease-in-out infinite;
+  --animate-office-work: office-work 1.6s ease-in-out infinite;
+  --animate-office-screen: office-screen 0.9s steps(4, end) infinite;
+  --animate-office-plate: office-plate 160ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
+  --animate-office-ask:
+    office-plate 160ms cubic-bezier(0.2, 0.7, 0.3, 1) both,
+    office-ask 700ms 160ms ease-out both;
+  --animate-office-card-up: office-card-up 220ms cubic-bezier(0.2, 0.7, 0.3, 1)
+    both;
+  --animate-office-card-down: office-card-down 220ms
+    cubic-bezier(0.2, 0.7, 0.3, 1) both;
+  --animate-office-sign-out: office-sign-out 200ms ease-in both;
+  --animate-office-tape-out: office-tape-out 380ms
+    cubic-bezier(0.5, 0, 0.7, 0.4) both;
+  --animate-office-paint: office-paint 600ms 180ms
+    cubic-bezier(0.3, 0.6, 0.3, 1) both;
+  --animate-office-sink: office-sink 220ms ease-in both;
+  --animate-office-rise: office-rise 300ms 120ms cubic-bezier(0.2, 0.7, 0.3, 1)
+    both;
 
   @keyframes office-drop {
-    0% {
-      transform: translateY(-64px);
+    from {
+      transform: translateY(-22px);
       opacity: 0;
-      animation-timing-function: cubic-bezier(0.55, 0, 0.9, 0.45);
     }
-    56% {
-      transform: translateY(3px);
-      opacity: 1;
-      animation-timing-function: cubic-bezier(0.2, 0.6, 0.4, 1);
-    }
-    78% {
-      transform: translateY(-1.5px);
-    }
-    100% {
+    to {
       transform: none;
       opacity: 1;
     }
@@ -640,18 +673,6 @@
   @keyframes office-fade {
     from {
       opacity: 0;
-    }
-  }
-
-  /* The wall clock's colon while the job runs. */
-  @keyframes office-blink {
-    0%,
-    49.9% {
-      opacity: 1;
-    }
-    50%,
-    100% {
-      opacity: 0.12;
     }
   }
 
@@ -679,23 +700,100 @@
     }
   }
 
-  /* A bot at work at its desk: bobbing from side to side over its keys, squashing as it lands. */
+  /* A bot at work at its desk: rocking a little over its keys; its screen says the rest. */
   @keyframes office-work {
     0%,
     100% {
       transform: none;
     }
-    20% {
-      transform: translateY(-16%) rotate(-5deg) scale(0.96, 1.04);
+    30% {
+      transform: translateY(-5%) rotate(-2deg);
     }
-    40% {
-      transform: scale(1.05, 0.95);
+    65% {
+      transform: translateY(-3%) rotate(2deg);
     }
-    60% {
-      transform: translateY(-12%) rotate(5deg) scale(0.97, 1.03);
+  }
+
+  /* The lines on a working laptop's screen running up, a line at a time (office-stage ScreenShape). */
+  @keyframes office-screen {
+    to {
+      transform: translateY(-0.9px);
     }
-    80% {
-      transform: scale(1.04, 0.96);
+  }
+
+  /* A plate coming up out of its bot's head. */
+  @keyframes office-plate {
+    from {
+      transform: scale(0.92);
+      opacity: 0;
+    }
+  }
+
+  /* A plate that has just come to want the user rings once, not on and on. */
+  @keyframes office-ask {
+    from {
+      box-shadow: 0 0 0 0 color-mix(in oklab, var(--waiting) 45%, transparent);
+    }
+    to {
+      box-shadow: 0 0 0 9px color-mix(in oklab, var(--waiting) 0%, transparent);
+    }
+  }
+
+  /* A bot's words opening out of its plate: above it, or below it for the report at your counter. */
+  @keyframes office-card-up {
+    from {
+      clip-path: inset(
+        calc(100% - 26px) calc(50% - 60px) 0 calc(50% - 60px) round 13px
+      );
+      opacity: 0.6;
+    }
+    to {
+      clip-path: inset(0 round 16px);
+    }
+  }
+  @keyframes office-card-down {
+    from {
+      clip-path: inset(0 0 calc(100% - 26px) calc(100% - 120px) round 13px);
+      opacity: 0.6;
+    }
+    to {
+      clip-path: inset(0 round 16px);
+    }
+  }
+
+  /* The ground's words going as the job's state changes: capitals sink, the tape rolls up, and
+     DONE is painted on from its left. */
+  @keyframes office-sign-out {
+    to {
+      transform: translateY(14px);
+      opacity: 0;
+    }
+  }
+  @keyframes office-tape-out {
+    to {
+      transform: scaleX(0);
+    }
+  }
+  @keyframes office-paint {
+    from {
+      clip-path: inset(0 100% 0 0);
+    }
+    to {
+      clip-path: inset(0 0 0 0);
+    }
+  }
+
+  /* Another thread's office taking this one's place: the old sinks and goes, the new rises. */
+  @keyframes office-sink {
+    to {
+      transform: translateY(10px);
+      opacity: 0;
+    }
+  }
+  @keyframes office-rise {
+    from {
+      transform: translateY(8px);
+      opacity: 0;
     }
   }
 }
@@ -712,16 +810,37 @@
   animation: var(--animate-office-fade);
 }
 
+/* A seat's tick drawn in as it turns done (office-stage StateGlyph). */
+@keyframes office-check {
+  from {
+    stroke-dashoffset: 14;
+  }
+}
+.office-check path {
+  stroke-dasharray: 14;
+  animation: office-check 240ms ease-out both;
+}
+
 /* Every one of them is a courtesy, so a machine asked to hold still keeps the faces where they are. */
 @media (prefers-reduced-motion: reduce) {
   [data-crew-motion],
   [data-building] .office-drop,
   [data-building] .office-pop,
   [data-building] .office-fade,
-  .animate-office-blink,
   .animate-office-sign,
   .animate-office-tape,
-  .animate-office-work {
+  .animate-office-work,
+  .animate-office-screen,
+  .animate-office-plate,
+  .animate-office-ask,
+  .animate-office-card-up,
+  .animate-office-card-down,
+  .animate-office-sign-out,
+  .animate-office-tape-out,
+  .animate-office-paint,
+  .animate-office-sink,
+  .animate-office-rise,
+  .office-check path {
     animation: none !important;
   }
 }

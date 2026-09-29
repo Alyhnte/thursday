@@ -600,6 +600,12 @@ type BotMarkProps = {
   /** Eyes crossed out: a stopped thread, or a call that failed. */
   crossed?: boolean;
   state?: MarkState;
+  /**
+   * Where the eyes rest, in the 240-unit box, on top of everything else that moves them: a bot
+   * walking in the office looks where it goes. Plain numbers, so the mark stays memoised.
+   */
+  gazeX?: number;
+  gazeY?: number;
   /** SPECTRUM_BANDS values in 0..1, low frequencies first, read once per frame. Where the energy sits sets the shape, how much sets the size. */
   getSpectrum?: () => ArrayLike<number>;
   /** Per-instance overrides; omitted keys fall back to MARK_DEFAULTS. Pass a stable object, a new literal each render re-derives the silhouette. */
@@ -639,6 +645,8 @@ export const BotMark = memo(function BotMark({
   notify,
   crossed,
   state = "idle",
+  gazeX = 0,
+  gazeY = 0,
   getSpectrum,
   options,
   className,
@@ -735,6 +743,8 @@ export const BotMark = memo(function BotMark({
     look,
     crossed: eyesOut,
     grow,
+    gazeX,
+    gazeY,
   });
   live.current = {
     cfg,
@@ -745,6 +755,8 @@ export const BotMark = memo(function BotMark({
     look,
     crossed: eyesOut,
     grow,
+    gazeX,
+    gazeY,
   };
 
   useEffect(() => {
@@ -1025,7 +1037,7 @@ export const BotMark = memo(function BotMark({
             sy = 1 - Math.sin(Math.PI * p) * 0.94;
           }
         }
-        const eyesAt = `translate(${f(gx + act.eyeX + shape.gazeX)} ${f(gy + drift + act.eyeY + shape.gazeY)}) translate(${CENTER} ${c.eyeY}) scale(1 ${sy.toFixed(3)}) translate(${-CENTER} ${-c.eyeY})`;
+        const eyesAt = `translate(${f(gx + act.eyeX + shape.gazeX + live.current.gazeX)} ${f(gy + drift + act.eyeY + shape.gazeY + live.current.gazeY)}) translate(${CENTER} ${c.eyeY}) scale(1 ${sy.toFixed(3)}) translate(${-CENTER} ${-c.eyeY})`;
         eyesRef.current.setAttribute("transform", eyesAt);
         inkEyesRef.current?.setAttribute("transform", eyesAt);
 

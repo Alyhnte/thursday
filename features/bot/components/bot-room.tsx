@@ -393,6 +393,12 @@ export const BotRoom = memo(function BotRoom() {
               [drawn.value.id]: bot === drawn.value.bot.name ? null : bot,
             }))
           }
+          // Its ember line takes the user to what they are asked here, as `@` does
+          onAnswer={() =>
+            panel.current
+              ?.querySelector<HTMLTextAreaElement>("textarea:not(:disabled)")
+              ?.focus()
+          }
           className="pointer-events-auto mr-4 min-h-0 min-w-0 flex-1 self-stretch"
         />
       )}
@@ -419,6 +425,8 @@ export const BotRoom = memo(function BotRoom() {
                 thread={current}
                 onBack={() => setPicked(null)}
                 onClose={close}
+                // beside its office the job's name heads the office, not this header too
+                titled={!office}
               >
                 {/* Offered only where the office can be drawn */}
                 {roomy && <ReadAsSwitch />}

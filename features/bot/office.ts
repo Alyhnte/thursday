@@ -97,6 +97,8 @@ export type OfficeThread = {
   asking: Set<string>;
   /** Seconds from the handover to the last line. */
   span: number;
+  /** The steps each bot has taken so far: its tool calls, a hand-off or a question among them. */
+  steps: Map<string, number>;
   status: ThreadView["status"];
   /** Whether the user has had the ending (Thread `seen`). */
   seen: boolean;
@@ -409,6 +411,12 @@ export function officeOf(thread: ThreadView): OfficeThread {
     asking: new Set(thread.room.questions.map((one) => one.id)),
     // Folded rather than spread: a long job's lines outnumber what a call takes as arguments
     span: lines.reduce((most, line) => Math.max(most, sec(line)), 0),
+    steps: lines.reduce((count, line) => {
+      if (line.kind !== "tool" && line.kind !== "ask") return count;
+      const bot = canon(line.bot.name);
+      count.set(bot, (count.get(bot) ?? 0) + 1);
+      return count;
+    }, new Map<string, number>()),
     status: thread.status,
     seen: thread.seen,
   };
@@ -600,6 +608,17 @@ export function seatAt(scene: OfficeScene, bot: string): SeatState {
     none: "Not called yet",
   };
   return { key, label: labels[key], since, waits };
+}
+
+/** The helpers handed work so far, and how many of them have handed their answer back. */
+export function backOf(scene: OfficeScene) {
+  const called = scene.office.bots.filter(
+    (bot) => bot !== scene.office.coord && seatAt(scene, bot).key !== "none",
+  );
+  return {
+    called: called.length,
+    back: called.filter((bot) => seatAt(scene, bot).key === "done").length,
+  };
 }
 
 /** The final report standing at `t`: handed over, and not taken back since as the thread went on. */

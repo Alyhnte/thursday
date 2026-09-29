@@ -63,33 +63,41 @@ arrow steps back one level, and the ✕ folds the room away.
 An open thread is also drawn as an office where her face stands, beside the room, when the window
 is wide enough: each bot at its desk, the work walked from desk to desk as it happens, a hand-off
 that waits for another bot's answer held in its tray, with a dashed line on the floor from the bot
-it waits for, and questions and the final report brought to your counter. A bot at work bobs over
-its desk as if typing. A bot flips as it first comes in to its desk, hops when more work lands
-there, and now and then leaps on its own; when the report reaches your counter, every bot leaps
-and throws its papers in the air, and they flutter down and lie on the floor a moment. Opening a
-job that finished while you were away does the same once the office stands, the first time only.
-A computer set to reduce motion gets the walking without the leaps. A bot that was stopped, or
-paused waiting on **Continue**, has its eyes crossed out, in the office and on its tab in the room.
+it waits for, and questions and the final report brought to your counter. A bot walks at a steady
+pace and looks where it goes, and a paper it puts down lands in the tray. Each desk's laptop says
+how its bot stands: its screen lit with lines running while the bot works, with a soft light on
+the floor under the desk; dim while it waits; shut, with a tick on its tray, once it has handed its
+answer back; dark once stopped, with an orange pause mark while the app waits on **Continue**. A
+bot flips as it first comes in to its desk, hops when more work lands there, and now and then
+leaps on its own; when the report reaches your counter, every bot leaps and throws its papers in
+the air, and they flutter down and lie on the floor a moment. Opening a job that finished while you
+were away does the same once the office stands, the first time only. A computer set to reduce
+motion gets the walking without the leaps. A bot that was stopped, or paused waiting on
+**Continue**, has its eyes crossed out, in the office and on its tab in the room.
 Only a bot with something to say has a plate over its head: the one at work (**working**), the one
 that wants you (**needs you**, in orange, for a question or **Continue**), and the thread's bot once
-its report is ready (**report ready**). Every other bot just stands there; pointing at it shows its
-name. Once the report is ready its words stand open over the thread's bot, scrolling when they are
-long. Pressing another bot opens its last answer there instead, or the question it asks, and its
-tab in the room; pressing it again, or tapping the floor, puts it away. The office's top left
-names the job, and once the job is done, says how many bots worked on it and
-lists the files it handed over; pressing one opens it. Past three, the rest fold under **+N
-more**, which opens them in place. The clock on the wall says how long the job has run, and how it
-stands is written in large letters on the ground beside the building: at work, your turn, paused,
-stopped or done, with how long it took under a finished or stopped one. While the app has stopped
-the job and waits on **Continue**, the ground around the building goes faintly red. Once the job
-is done, the report is brought to your counter; writing on after it, the bot carries the report
-back to its desk. A file dropped on the office goes to the
-thread, as one dropped on the room does. The office opens a little zoomed out, pans by dragging
-and zooms with the wheel or the buttons at its bottom left, from 30% to 400%; the frame button
-brings it back. Her face fades out as the office comes and back in as it goes,
-and a call that is on shows her last words at the top; the corner of finished jobs stays quiet
-while a thread is open. **Office** and **Chat**, beside the ✕ of an open thread, pick how every
-thread is shown: beside its office, or as the conversation alone with her face kept. The choice
+its report is ready (**report ready**). Every other bot just stands there; pointing at it, or at
+its tab in the room, shows its name, and lights the tab. Pressing a bot opens its words over it —
+the report for the thread's bot, below it at your counter; otherwise the question it asks or its
+last answer — and its tab in the room; pressing it again, or tapping the floor, puts them away.
+The office's top left names the job and says how it stands: at work and how many helpers are back,
+your turn and who asks (in orange; pressing it takes you to the question in the room), paused,
+stopped or done. Once the job is done, it also says how many bots worked on it and lists the files
+it handed over; pressing one opens it. Past three, the rest fold under **+N more**, which opens
+them in place. Behind the building, at its top left, a scoreboard keeps how long the job has run
+and lists its bots with the steps each has taken, most first. How the job stands is also written in
+large letters on the ground beside the building: at work, your turn, paused, stopped or done. While
+the app has stopped the job and waits on **Continue**, the ground around the building goes faintly
+red. Once the job is done, the report is brought to your counter; writing on after it, the bot
+carries the report back to its desk. A file dropped on the office goes to the
+thread, as one dropped on the room does. The office opens at 50%, pans by dragging and zooms with
+the wheel or the buttons at its bottom left, from 30% to 400%; the frame button brings it back.
+Her face fades out as the office comes and back in as it goes; opening another thread while one is
+open, the office before sinks away as the new one builds. A call that is on shows her last words at
+the top; the corner of finished jobs stays quiet while a thread is open. Beside its office, the
+room's header leaves the job's name to the office. **Office** and **Chat**, beside the ✕ of an open
+thread, pick how every thread is shown: beside its office, or as the conversation alone with her
+face kept. The choice
 is kept on this computer. In the conversation, what you wrote yourself — a job from the write
 line, a step-in — is under **You**; what she handed over or passed on from a call is under her name.
 

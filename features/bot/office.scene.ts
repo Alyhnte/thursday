@@ -25,6 +25,8 @@ const WALL = 16;
 const ROWS = 3;
 const LANES = [26, 55, 84];
 const AISLE = LW + 5;
+/** A laptop's half width, its depth from its hinge, and its lid's top: large enough that its screen reads. */
+const LAP = { w: 3.4, d: 4.4, h: 10.2 };
 
 type Point = [number, number];
 
@@ -123,9 +125,31 @@ function planOf(coord: string, helpers: string[]): Plan {
 
 // ---- the projection
 
-const UX = 0.894;
-const UY = 0.447;
-const UZ = 0.94;
+/**
+ * Where the office is seen from: `yaw` turns the view about the upright (45 looks down the
+ * building's diagonal), `pitch` is how far above the ground it looks from; CAMERA is the 2:1
+ * sketch. Kept near it, the faces drawn stay the ones turned to the viewer and what is nearer
+ * still stands in front (the depth each piece is sorted by assumes that).
+ */
+export type Camera = { yaw: number; pitch: number };
+export const CAMERA: Camera = { yaw: 45, pitch: 30 };
+
+/** Screen units per plan unit along x, y and z, before the fit's scale. */
+type Axes = { x: Point; y: Point; z: Point };
+
+/** Across per plan unit at CAMERA: the 2:1 sketch's 0.894 and 0.447. */
+const K = 0.894 / Math.SQRT1_2;
+
+function axesOf({ yaw, pitch }: Camera): Axes {
+  const p = (yaw * Math.PI) / 180;
+  const e = (pitch * Math.PI) / 180;
+  return {
+    x: [K * Math.cos(p), K * Math.sin(p) * Math.sin(e)],
+    y: [-K * Math.sin(p), K * Math.cos(p) * Math.sin(e)],
+    // the upright drawn a little short, as the sketch always has it (0.94 at 30)
+    z: [0, (-0.94 * Math.cos(e)) / Math.cos(Math.PI / 6)],
+  };
+}
 const r1 = (n: number) => Math.round(n * 10) / 10;
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const clamp = (x: number, lo: number, hi: number) =>
@@ -136,6 +160,7 @@ const easeInOut = (x: number) =>
 
 type Fit = {
   s: number;
+  axes: Axes;
   at: (x: number, y: number, z?: number) => Point;
   points: (list: [number, number, number][]) => string;
 };
@@ -147,7 +172,7 @@ const MARGIN = { top: 96, side: 20, bottom: 16 };
 const SIGN_PX = 10;
 /**
  * The plot of ground the job's sign is written on, in its own pixels: room for its widest words
- * (office-stage SIGN_SIZE keeps each within 640 after a 24 margin) and the time under them.
+ * (office-stage SIGN_SIZE keeps each within 640 after a 24 margin).
  */
 export const SIGN_BOX = { w: 700, h: 280 };
 
@@ -156,14 +181,16 @@ function fitOf(
   width: number,
   box: { w: number; h: number },
   sign: { x0: number; x1: number; y0: number; y1: number },
+  camera: Camera,
 ): Fit {
+  const axes = axesOf(camera);
   let a0 = Number.POSITIVE_INFINITY;
   let a1 = Number.NEGATIVE_INFINITY;
   let b0 = Number.POSITIVE_INFINITY;
   let b1 = Number.NEGATIVE_INFINITY;
   const reach = (x: number, y: number, z: number) => {
-    const a = (x - y) * UX;
-    const b = (x + y) * UY - z * UZ;
+    const a = x * axes.x[0] + y * axes.y[0] + z * axes.z[0];
+    const b = x * axes.x[1] + y * axes.y[1] + z * axes.z[1];
     a0 = Math.min(a0, a);
     a1 = Math.max(a1, a);
     b0 = Math.min(b0, b);
@@ -180,11 +207,12 @@ function fitOf(
   const ox = MARGIN.side + (w - (a1 - a0) * s) / 2 - a0 * s;
   const oy = MARGIN.top + (h - (b1 - b0) * s) / 2 - b0 * s;
   const at = (x: number, y: number, z = 0): Point => [
-    r1(ox + (x - y) * UX * s),
-    r1(oy + ((x + y) * UY - z * UZ) * s),
+    r1(ox + (x * axes.x[0] + y * axes.y[0] + z * axes.z[0]) * s),
+    r1(oy + (x * axes.x[1] + y * axes.y[1] + z * axes.z[1]) * s),
   ];
   return {
     s,
+    axes,
     at,
     points: (list) => list.map(([x, y, z]) => at(x, y, z).join(",")).join(" "),
   };
@@ -192,9 +220,15 @@ function fitOf(
 
 // ---- the sketch
 
-/** Ink for a piece's edges, and the faint ink of the lines it is built on. */
-export const INK_LINE = "color-mix(in oklab, var(--ink) 62%, transparent)";
-const INK_FAINT = "color-mix(in oklab, var(--ink) 20%, transparent)";
+/**
+ * Ink by what a line draws: the building's shell heaviest, its furniture lighter, and faintest
+ * the lines it is built on — so the shape reads first and the construction last.
+ */
+const INK_SHELL = "color-mix(in oklab, var(--ink) 72%, transparent)";
+export const INK_LINE = "color-mix(in oklab, var(--ink) 56%, transparent)";
+const INK_FAINT = "color-mix(in oklab, var(--ink) 30%, transparent)";
+/** How wide each of those is drawn (px at the fit). */
+const WEIGHT = { shell: 1.3, furniture: 1, faint: 0.75 };
 
 export type Stroke = {
   /** Stable, for the drawing's keys. */
@@ -206,6 +240,8 @@ export type Stroke = {
   /** Length, for drawing it in. */
   length: number;
   color: string;
+  /** How wide it is drawn (WEIGHT). */
+  width: number;
   delay: number;
 };
 
@@ -225,6 +261,7 @@ function stroke(
   over = 4.5,
   color = INK_LINE,
   delay = 0,
+  width = WEIGHT.furniture,
 ): Stroke {
   const [x1, y1] = fit.at(a[0], a[1], a[2]);
   const [x2, y2] = fit.at(b[0], b[1], b[2]);
@@ -239,6 +276,7 @@ function stroke(
     y2: r1(y2 + dy),
     length: r1(length + 2 * over),
     color,
+    width,
     delay,
   };
 }
@@ -324,6 +362,20 @@ export type Mug = {
   ry: number;
 };
 
+/**
+ * A laptop's screen, on its lid's face toward the viewer, by how its bot stands: lit with lines
+ * running while it works, dim while it waits, dark once stopped, dark with an ember pause mark when
+ * the app paused it, dim with an ember dot while it asks the user. `matrix` lays its own units
+ * (across the lid, down it) on screen.
+ */
+export type Screen = {
+  id: string;
+  matrix: string;
+  w: number;
+  h: number;
+  mode: "lit" | "dim" | "dark" | "paused" | "asking";
+};
+
 /** Something standing on the floor, drawn in depth order with the bots walking past it. */
 export type Piece = {
   id: string;
@@ -336,6 +388,10 @@ export type Piece = {
   delay: number;
   /** A helper's desk: drawn in when its bot is first handed work, at this scene time. */
   appear: number | null;
+  /** The screen on this laptop, as its bot stands. */
+  screen?: Screen;
+  /** A tick lying on this tray once its bot has handed its answer back (points on screen). */
+  check?: string;
 };
 
 export type Stage = {
@@ -346,11 +402,17 @@ export type Stage = {
   faces: Face[];
   lines: Stroke[];
   /** Shadows under the furniture; `of` names the piece that casts one. */
-  shades: { points: string; delay: number; of: string | null }[];
+  shades: { points: string; delay: number; of: string | null; depth: number }[];
   pieces: Piece[];
-  /** The clock on the coordinator's wall, and the plot the job's sign is stamped on at four o'clock (SIGN_BOX). */
-  clock: { matrix: string; w: number; h: number };
+  /** The plot the job's sign is stamped on at four o'clock (SIGN_BOX). */
   sign: { matrix: string };
+  /** The scoreboard standing behind the building at ten o'clock, turned as its left wall is (office-stage Scoreboard). */
+  board: { matrix: string; w: number; h: number };
+  /** The floor's plane (plan x and y at the floor's height) on screen, for what lies on it. */
+  floor: string;
+  /** A soft pool of light on the floor under each desk whose bot is at work, in plan units. */
+  pools: { id: string; cx: number; cy: number; r: number }[];
+
   /** The ground under the building, `w` by `d` in the plan's own units, laid on screen by `matrix`. */
   ground: { matrix: string; w: number; d: number };
   /** Size a bot is drawn at. */
@@ -359,6 +421,17 @@ export type Stage = {
   popAt: number;
   built: number;
 };
+
+/** When the bots pop in as the office builds itself (ms): the last piece of furniture has landed. */
+const BUILT_BY = 700;
+
+/**
+ * The scoreboard behind the building at ten o'clock: standing on the plane beyond its left wall
+ * (plan x), from its front (y) back, its top at z, in its own pixels (`px` a plan unit) and size.
+ * Its foot is behind the wall, so the wall stands in front of it; it is not fitted in view, so a
+ * small box may cut it — it is the office's clock, but it can go unseen.
+ */
+const BOARD = { x: -18, y: 99, z: 50, px: 10, w: 1000, h: 500 };
 
 /** Helpers in the order they joined, and when each was first handed work (scene seconds). */
 export function joinsOf(scene: OfficeScene) {
@@ -383,6 +456,7 @@ export function joinsOf(scene: OfficeScene) {
 export function stageOf(
   scene: OfficeScene,
   size: { w: number; h: number },
+  camera: Camera = CAMERA,
 ): Stage {
   const { helpers, at: joinAt } = joinsOf(scene);
   const plan = planOf(scene.office.coord, helpers);
@@ -393,12 +467,17 @@ export function stageOf(
   // where the view has room, and is fitted in view with the building
   const span = SIGN_BOX.w / SIGN_PX;
   const signAt = D * 0.45 + span / 2;
-  const fit = fitOf(plan.width, size, {
-    x0: W + 9,
-    x1: W + 9 + SIGN_BOX.h / SIGN_PX,
-    y0: signAt,
-    y1: signAt - span,
-  });
+  const fit = fitOf(
+    plan.width,
+    size,
+    {
+      x0: W + 9,
+      x1: W + 9 + SIGN_BOX.h / SIGN_PX,
+      y0: signAt,
+      y1: signAt - span,
+    },
+    camera,
+  );
   const faces: Face[] = [];
   const lines: Stroke[] = [];
   const shades: Stage["shades"] = [];
@@ -417,14 +496,23 @@ export function stageOf(
       hatch,
       delay: cue,
     });
+  // the building's own lines: its shell, unless they are what it is built on
   const line = (
     a: [number, number, number],
     b: [number, number, number],
     over?: number,
-    color?: string,
+    color = INK_SHELL,
   ) =>
     lines.push({
-      ...stroke(fit, a, b, over, color),
+      ...stroke(
+        fit,
+        a,
+        b,
+        over,
+        color,
+        0,
+        color === INK_FAINT ? WEIGHT.faint : WEIGHT.shell,
+      ),
       id: `l${lines.length}`,
       delay: cue,
     });
@@ -432,11 +520,27 @@ export function stageOf(
   // the footprint, run far out along the ground: the longest lines of the sketch
   const guides = [
     ...[0, W].map((x) => ({
-      ...stroke(fit, [x, -2, Z0], [x, D + 2, Z0], 340, "url(#office-fade-y)"),
+      ...stroke(
+        fit,
+        [x, -2, Z0],
+        [x, D + 2, Z0],
+        340,
+        "url(#office-fade-y)",
+        0,
+        WEIGHT.faint,
+      ),
       id: `gx${x}`,
     })),
     ...[0, D].map((y) => ({
-      ...stroke(fit, [-2, y, Z0], [W + 2, y, Z0], 340, "url(#office-fade-x)"),
+      ...stroke(
+        fit,
+        [-2, y, Z0],
+        [W + 2, y, Z0],
+        340,
+        "url(#office-fade-x)",
+        0,
+        WEIGHT.faint,
+      ),
       id: `gy${y}`,
     })),
   ];
@@ -628,6 +732,7 @@ export function stageOf(
       ]),
       delay: cue,
       of,
+      depth: (x0 + x1) / 2 + (y0 + y1) / 2,
     });
 
   // low inner walls in short lengths, so a bot walking past sorts against them, door gaps open
@@ -703,19 +808,67 @@ export function stageOf(
     };
     return merge(back, ...legs, top);
   };
-  const laptop = ([x, y]: Point) =>
-    merge(
-      box(fit, [x - 3.2, y + 0.4, x + 3.2, y + 4.2, 6.1, 6.45], {
-        fills: ["var(--gray-100)", "var(--gray-150)", "var(--gray-200)"],
-        over: 2,
-      }),
-      box(fit, [x - 3.2, y, x + 3.2, y + 0.45, 6.1, 9.5], {
-        fills: ["var(--gray-650)", "var(--gray-750)", "var(--gray-700)"],
-        hatch: false,
-        over: 2,
-        color: "color-mix(in oklab, var(--ink) 80%, transparent)",
-      }),
-    );
+  const LID = [
+    "var(--office-lid-top)",
+    "var(--office-lid)",
+    "var(--office-lid-side)",
+  ];
+  const LID_EDGE = "color-mix(in oklab, var(--ink) 80%, transparent)";
+  const base = ([x, y]: Point) =>
+    box(fit, [x - LAP.w, y + 0.4, x + LAP.w, y + LAP.d, 6.1, 6.45], {
+      fills: ["var(--gray-100)", "var(--gray-150)", "var(--gray-200)"],
+      over: 2,
+    });
+  /**
+   * A laptop as its bot stands: shut once it is done or before it is called, a thin slab on its
+   * base; open otherwise, its screen on the lid's face toward the viewer (Screen).
+   */
+  const laptop = (at: Point, bot: string): { part: Part; screen?: Screen } => {
+    const key = seatAt(scene, bot).key;
+    const [x, y] = at;
+    if (key === "done" || key === "none")
+      return {
+        part: merge(
+          base(at),
+          box(fit, [x - LAP.w, y + 0.4, x + LAP.w, y + LAP.d, 6.45, 6.85], {
+            fills: ["var(--gray-200)", "var(--gray-300)", "var(--gray-250)"],
+            hatch: false,
+            over: 2,
+            color: LID_EDGE,
+          }),
+        ),
+      };
+    const [tx, ty] = fit.at(x - LAP.w + 0.45, y + 0.46, LAP.h - 0.4);
+    const { axes, s } = fit;
+    return {
+      part: merge(
+        base(at),
+        box(fit, [x - LAP.w, y, x + LAP.w, y + 0.45, 6.1, LAP.h], {
+          fills: LID,
+          hatch: false,
+          over: 2,
+          color: LID_EDGE,
+        }),
+      ),
+      screen: {
+        id: `screen-${bot}`,
+        matrix: `matrix(${[axes.x[0] * s, axes.x[1] * s, -axes.z[0] * s, -axes.z[1] * s, tx, ty].map(r2).join(",")})`,
+        w: 2 * LAP.w - 0.9,
+        h: LAP.h - 6.1 - 0.75,
+        mode:
+          key === "run"
+            ? "lit"
+            : key === "paused"
+              ? "paused"
+              : key === "asking"
+                ? "asking"
+                : key === "stopped"
+                  ? "dark"
+                  : "dim",
+      },
+    };
+  };
+  const pools: Stage["pools"] = [];
   const mug = (x: number, y: number, z: number): Mug => {
     const rim = fit.s * 1.05;
     const [cx, cy] = fit.at(x, y, z + 2.1);
@@ -729,13 +882,24 @@ export function stageOf(
     shade(desk.x0, desk.y0, desk.x1, desk.y1, 2.6, appear === null ? null : id);
     add(depth, deskParts(desk), { appear });
     cue += 40;
-    add(desk.laptop[0] + desk.laptop[1] + 3.3, laptop(desk.laptop), { appear });
+    const lid = laptop(desk.laptop, desk.bot);
+    add(desk.laptop[0] + desk.laptop[1] + 3.3, lid.part, {
+      appear,
+      screen: lid.screen,
+    });
+    if (seatAt(scene, desk.bot).key === "run")
+      pools.push({
+        id: `pool-${desk.bot}`,
+        cx: (desk.x0 + desk.x1) / 2 + 1,
+        cy: (desk.y0 + desk.y1) / 2 - 1,
+        r: 15,
+      });
     cue += 40;
     add(
       depth + 5.2,
       { faces: [], edges: [] },
       {
-        mugs: [mug(own ? 31 : desk.x0 + 12, own ? 20.5 : desk.y1 - 2, 6.1)],
+        mugs: [mug(own ? 31 : desk.x0 + 11, own ? 20.5 : desk.y1 - 1.5, 6.1)],
         appear,
       },
     );
@@ -785,7 +949,18 @@ export function stageOf(
             edges: [],
           },
         ),
-        { appear },
+        {
+          appear,
+          // answered: a tick lying on its tray
+          check:
+            seatAt(scene, desk.bot).key === "done"
+              ? fit.points([
+                  [(a + c) / 2 - 1.6, (b + e) / 2 - 0.2, 7.45],
+                  [(a + c) / 2 - 0.4, (b + e) / 2 + 1.1, 7.45],
+                  [(a + c) / 2 + 1.9, (b + e) / 2 - 1.6, 7.45],
+                ])
+              : undefined,
+        },
       );
     }
   };
@@ -800,22 +975,48 @@ export function stageOf(
     ),
   );
   deskAt(plan.own, null, true);
-  const built = cue;
   for (const desk of plan.desks) deskAt(desk, joinAt.get(desk.bot) ?? 0, false);
 
-  // a box on the back wall (x along it, z down it), and one lying on the ground reading rightward
-  const onWall = (x: number, y: number, z: number, px: number) => {
+  // A flat box laid on screen from its corner at x, y, z, `across` and `down` being where its own
+  // two sides run: on the ground reading along the building's right side, or upright on the plane
+  // of its left wall reading along it
+  const { axes } = fit;
+  const plane = (
+    [x, y, z]: [number, number, number],
+    px: number,
+    across: Point,
+    down: Point,
+  ) => {
     const [tx, ty] = fit.at(x, y, z);
     const k = fit.s / px;
-    return `matrix(${[UX * k, UY * k, 0, UZ * k, tx, ty].map(r2).join(",")})`;
+    return `matrix(${[across[0] * k, across[1] * k, down[0] * k, down[1] * k, tx, ty].map(r2).join(",")})`;
   };
-  const onGround = (x: number, y: number, z: number, px: number) => {
-    const [tx, ty] = fit.at(x, y, z);
-    const k = fit.s / px;
-    return `matrix(${[UX * k, -UY * k, UX * k, UY * k, tx, ty].map(r2).join(",")})`;
+  const back: Point = [-axes.y[0], -axes.y[1]];
+  const up: Point = [-axes.z[0], -axes.z[1]];
+  const onPlan = ([x, y, z]: [number, number, number]) => {
+    const [px, py] = fit.at(x, y, z);
+    return `matrix(${[axes.x[0] * fit.s, axes.x[1] * fit.s, axes.y[0] * fit.s, axes.y[1] * fit.s, px, py].map(r2).join(",")})`;
   };
-  const [gx, gy] = fit.at(0, 0, Z0);
-  const popAt = built + 90;
+
+  // One wave rather than one piece at a time: the ground and floors by 200 ms, the walls by 350,
+  // every piece of furniture in one sweep from the back to the front over 300–600, then the bots
+  // and the rest — standing within a second. Nothing lies on a surface before it has landed.
+  const settle = (delay: number) =>
+    delay <= 150 ? Math.round(delay * 1.2) : delay <= 210 ? 170 : 250;
+  for (const one of faces) one.delay = settle(one.delay);
+  for (const one of lines) one.delay = settle(one.delay);
+  const depths = pieces
+    .filter((one) => one.appear === null)
+    .map((one) => one.depth);
+  const near = Math.min(...depths);
+  const far = Math.max(...depths);
+  const sweep = (depth: number) =>
+    Math.round(
+      300 + 300 * clamp((depth - near) / Math.max(1, far - near), 0, 1),
+    );
+  for (const one of pieces) one.delay = sweep(one.depth);
+  for (const one of shades) one.delay = sweep(one.depth);
+  const popAt = BUILT_BY;
   return {
     plan,
     fit,
@@ -824,16 +1025,18 @@ export function stageOf(
     lines,
     shades,
     pieces,
-    clock: { matrix: onWall(23.8, 0.2, 14.6, 6.4), w: 150, h: 64 },
-    sign: { matrix: onGround(W + 9, signAt, Z0, SIGN_PX) },
-    ground: {
-      matrix: `matrix(${[UX * fit.s, UY * fit.s, -UX * fit.s, UY * fit.s, gx, gy].map(r2).join(",")})`,
-      w: W,
-      d: D,
+    sign: { matrix: plane([W + 9, signAt, Z0], SIGN_PX, back, axes.x) },
+    board: {
+      matrix: plane([BOARD.x, BOARD.y, BOARD.z], BOARD.px, back, up),
+      w: BOARD.w,
+      h: BOARD.h,
     },
-    botSize: Math.round(clamp(fit.s * 10.8, 36, 64)),
+    floor: onPlan([0, 0, 0]),
+    pools,
+    ground: { matrix: onPlan([0, 0, Z0]), w: W, d: D },
+    botSize: Math.round(clamp(fit.s * 13.5, 28, 96)),
     popAt,
-    built: popAt + 420,
+    built: popAt + 300,
   };
 }
 
@@ -892,12 +1095,61 @@ type Trip = {
   answer?: OfficeEvent;
 };
 
+/**
+ * How a bot walks: a steady pace (plan units a second; desk to your counter takes about two and
+ * a half seconds), easing only as it sets off and as it stops (s), its square corners taken round
+ * (units). A longer walk moves what the scene times after it along with it.
+ */
+const PACE = 46;
+const EASE_IN = 0.15;
+const EASE_OUT = 0.2;
+const FILLET = 3.5;
+
+/** A route with its square corners rounded, as a walker takes them. */
+function rounded(route: Point[]): Point[] {
+  if (route.length < 3) return route;
+  const out: Point[] = [route[0]];
+  for (let i = 1; i < route.length - 1; i++) {
+    const [ax, ay] = route[i - 1];
+    const [bx, by] = route[i];
+    const [cx, cy] = route[i + 1];
+    const l1 = Math.hypot(bx - ax, by - ay);
+    const l2 = Math.hypot(cx - bx, cy - by);
+    const r = Math.min(FILLET, l1 / 2, l2 / 2);
+    if (r < 0.3) {
+      out.push(route[i]);
+      continue;
+    }
+    const p0: Point = [bx - ((bx - ax) / l1) * r, by - ((by - ay) / l1) * r];
+    const p2: Point = [bx + ((cx - bx) / l2) * r, by + ((cy - by) / l2) * r];
+    for (let k = 0; k <= 6; k++) {
+      const q = k / 6;
+      out.push([
+        (1 - q) ** 2 * p0[0] + 2 * (1 - q) * q * bx + q * q * p2[0],
+        (1 - q) ** 2 * p0[1] + 2 * (1 - q) * q * by + q * q * p2[1],
+      ]);
+    }
+  }
+  out.push(route[route.length - 1]);
+  return out;
+}
+
+/** How far along a walk of `time` seconds a walker is at `p` of it: at a steady pace, eased at its ends. */
+function paced(p: number, time: number) {
+  const t = clamp(p, 0, 1) * time;
+  const v = 1 / (time - (EASE_IN + EASE_OUT) / 2);
+  if (t < EASE_IN) return (v * t * t) / (2 * EASE_IN);
+  if (t > time - EASE_OUT) return 1 - (v * (time - t) ** 2) / (2 * EASE_OUT);
+  return (v * EASE_IN) / 2 + v * (t - EASE_IN);
+}
+
 /** Every walk: a message carried across the floor. One walker at a time, so a busy one sets off late. */
 export function tripsOf(scene: OfficeScene, plan: Plan): Trip[] {
   const trips: Trip[] = [];
   const free = new Map<string, number>();
   const coord = scene.office.coord;
-  const travel = (route: Point[]) => clamp(routeLength(route) / 80, 0.5, 1.1);
+  const travel = (route: Point[]) =>
+    routeLength(route) / PACE + (EASE_IN + EASE_OUT) / 2;
   const plot = (
     who: string,
     key: string,
@@ -912,13 +1164,14 @@ export function tripsOf(scene: OfficeScene, plan: Plan): Trip[] {
       answer?: OfficeEvent;
     } = {},
   ) => {
-    const route = plan.routes[key];
-    if (!route) return;
+    const found = plan.routes[key];
+    if (!found) return;
+    const route = rounded(found);
     // One standing at your counter for good (an open question, the report) walks back for this
     const standing = trips.findLast((trip) => trip.who === who);
     if (standing && standing.back === Number.POSITIVE_INFINITY) {
       standing.stay = Math.max(standing.arrive + 0.35, at);
-      standing.back = standing.stay + travel(standing.route) * 0.9;
+      standing.back = standing.stay + travel(standing.route);
       free.set(who, standing.back);
     }
     const leave = Math.max(at, free.get(who) ?? Number.NEGATIVE_INFINITY);
@@ -928,26 +1181,26 @@ export function tripsOf(scene: OfficeScene, plan: Plan): Trip[] {
       options.until !== undefined
         ? Math.max(arrive + 0.35, options.until)
         : arrive + (options.hold ?? 0.35);
-    const back = options.forever ? Number.POSITIVE_INFINITY : stay + time * 0.9;
+    const home = options.forever ? Number.POSITIVE_INFINITY : stay + time;
     trips.push({
       who,
       route,
       leave,
       arrive,
       stay,
-      back,
+      back: home,
       out,
       home: options.home ?? null,
       event,
       answer: options.answer,
     });
-    free.set(who, back);
+    free.set(who, home);
   };
   for (const event of scene.events) {
     switch (event.kind) {
       case "job": {
         // The coordinator comes back from your counter with the job as the office opens
-        const route = plan.routes.lobby;
+        const route = rounded(plan.routes.lobby);
         const time = travel(route);
         trips.push({
           who: coord,
@@ -1042,7 +1295,7 @@ function walkOf(trips: Trip[], who: string, t: number) {
       return {
         trip,
         phase: "out" as const,
-        u: easeInOut(p),
+        u: paced(p, trip.arrive - trip.leave),
         p,
         carry: trip.out,
       };
@@ -1053,7 +1306,8 @@ function walkOf(trips: Trip[], who: string, t: number) {
     return {
       trip,
       phase: "back" as const,
-      u: 1 - easeInOut(p),
+      // staying where it went for good: still there
+      u: Number.isFinite(trip.back) ? 1 - paced(p, trip.back - trip.stay) : 1,
       p,
       carry: trip.home,
     };
@@ -1072,14 +1326,18 @@ function walkOf(trips: Trip[], who: string, t: number) {
  */
 export type Trick = { bot: string; kind: "hop" | "flip" | "cheer"; at: number };
 
+/** How long a paper put down flies from the hands to where it lands (s); an answer to the board takes longer. */
+const FLY = 0.22;
+const FLY_BOARD = 0.31;
+
 /** How long each leap takes, crouch to landing (s), and how high it goes in the bot's heights. */
 const LEAP = { hop: 0.58, flip: 0.92, cheer: 0.76 };
 const RISE = { hop: 0.3, flip: 0.8, cheer: 0.58 };
 /** The crouch before a leap and the give on landing (s). */
 const CROUCH = 0.1;
 const LAND = 0.13;
-/** A bot standing about leaps by itself about once in this many seconds, give or take. */
-const IDLE = 30;
+/** A bot standing about leaps by itself about once in this many seconds, give or take: rarely. */
+const IDLE = 150;
 /** How long after the office opens its bots still leap by themselves (s): one left open goes still. */
 const IDLE_FOR = 3600;
 /** How long a sheet thrown at the report lies where it landed, and then takes to fade (s). */
@@ -1124,13 +1382,13 @@ export function tricksOf(
     if (to === YOU || trip.event.kind === "job") continue;
     if (!come.has(to)) {
       come.set(to, trip.arrive);
-      add(to, "flip", trip.arrive + 0.35);
+      add(to, "flip", trip.arrive + FLY / 2);
     } else if (
       trip.out === "order" ||
       trip.out === "extra" ||
       trip.out === "copy"
     )
-      add(to, "hop", trip.arrive + 0.05);
+      add(to, "hop", trip.arrive + FLY / 2);
   }
   // The report reaching your counter, seen as it happens or first seen as the office stands:
   // everyone leaps, throwing sheets up, then hops once more
@@ -1293,7 +1551,7 @@ function sheetAt(
     u < rise
       ? HANDS + (top - HANDS) * (1 - (1 - u / rise) ** 2)
       : top - sink * (f < RAMP ? (f * f) / (2 * RAMP) : f - RAMP / 2);
-  const [sx, sy] = fit.at(x, y, (Math.max(0, high) * unit) / UZ);
+  const [sx, sy] = fit.at(x, y, (Math.max(0, high) * unit) / -fit.axes.z[1]);
   // over and over on the way up; on the way down rocking about the side it will land on
   const rock =
     u < rise
@@ -1304,7 +1562,7 @@ function sheetAt(
   const opacity = clamp((rise + fall + LIE + FADE - u) / FADE, 0, 1);
   return {
     id: `${bot}-sheet${index}`,
-    plane: `matrix(${[UX * k, UY * k, -UX * k, UY * k, sx, sy].map(r2).join(",")})`,
+    plane: `matrix(${[fit.axes.x[0] * k, fit.axes.x[1] * k, fit.axes.y[0] * k, fit.axes.y[1] * k, sx, sy].map(r2).join(",")})`,
     turn: r1(r(8) * 360 + (u < rise ? 160 * (u / rise) : 160 + spin * f)),
     face: r2(Math.cos(rock)),
     landed: u >= rise + fall,
@@ -1341,6 +1599,10 @@ export type Walker = {
   opacity: number;
   size: number;
   carry: { dark: boolean; ember: boolean; stamp: boolean } | null;
+  /** How far the carried paper trails the hands (screen px) and how far it swings (degrees). */
+  lag: [number, number, number] | null;
+  /** Where its eyes look while it walks, in its mark's box: where it goes. */
+  gaze: [number, number];
   working: boolean;
   /** Stopped, or paused on Continue: its eyes crossed out. */
   crossed: boolean;
@@ -1358,6 +1620,16 @@ export type Moment = {
   tossed: Sheet[];
   /** Sheets are in the air: the plates step back so they are seen. */
   hush: boolean;
+  /** Papers in their short flight from the hands to where they land. */
+  flying: {
+    id: string;
+    x: number;
+    y: number;
+    turn: number;
+    scale: number;
+    dark: boolean;
+    ember: boolean;
+  }[];
   trail: { id: string; x: number; y: number; opacity: number }[];
   shades: Stage["shades"];
   /** From each bot a held hand-off waits on to the bot it is for, over the floor. */
@@ -1378,6 +1650,8 @@ export type Moment = {
     head: number;
     foot: number;
     carrying: boolean;
+    /** On its way somewhere: its plate is judged for room at its desk, not as it passes. */
+    walking: boolean;
   }[];
 };
 
@@ -1432,16 +1706,47 @@ export function momentOf(
     let y = seat[1];
     let hop = 0;
     let tilt = 0;
-    const walking = !!walk && walk.phase !== "at";
+    let stepped = 0;
+    let gaze: [number, number] = [0, 0];
+    let lag: [number, number, number] | null = null;
+    // standing where it went for good (a question, the report) is standing, not walking
+    const walking =
+      !!walk &&
+      walk.phase !== "at" &&
+      !(walk.phase === "back" && !Number.isFinite(walk.trip.back));
     if (walk) {
       const spot = along(walk.trip.route, walk.u);
       x = spot.x;
       y = spot.y;
       if (walking) {
-        const steps = Math.max(3, Math.round(spot.total / 8));
-        const swing = Math.sin(walk.p * Math.PI * steps);
-        hop = Math.abs(swing) * 6;
-        tilt = swing * 6;
+        // a step about every 0.3 s: a small bounce, a squash as a foot lands; leaning into a
+        // turn, and looking where it goes
+        const swing = Math.abs(
+          Math.sin((Math.PI * walk.u * spot.total) / (PACE * 0.3)),
+        );
+        hop = swing * 3.5;
+        stepped = 0.03 * (1 - swing) ** 4;
+        const ahead = along(walk.trip.route, Math.min(1, walk.u + 0.02));
+        const behind = along(walk.trip.route, Math.max(0, walk.u - 0.02));
+        const [ax, ay] = fit.at(ahead.x, ahead.y, 0);
+        const [bx, by] = fit.at(behind.x, behind.y, 0);
+        const [cx, cy] = fit.at(x, y, 0);
+        const bend =
+          Math.atan2(ay - cy, ax - cx) - Math.atan2(cy - by, cx - bx);
+        const turn = Math.atan2(Math.sin(bend), Math.cos(bend));
+        const going = walk.phase === "back" ? -1 : 1;
+        tilt = clamp((turn * 180) / Math.PI, -5, 5) * going;
+        const hx = (ax - bx) * going;
+        const hy = (ay - by) * going;
+        const k = 18 / (Math.hypot(hx, hy) || 1);
+        gaze = [Math.round(hx * k), Math.round(hy * k * 0.7)];
+        // the paper in its hands trails 60 ms behind them
+        const was = walkOf(trips, bot, t - 0.06);
+        if (was && was.phase === walk.phase) {
+          const then = along(walk.trip.route, was.u);
+          const [px, py] = fit.at(then.x, then.y, 0);
+          lag = [r1(px - cx), r1(py - cy), r1(clamp((cx - px) * 1.2, -12, 12))];
+        }
         for (let i = 1; i <= 6; i++) {
           const u =
             walk.phase === "back" ? walk.u + i * 0.045 : walk.u - i * 0.045;
@@ -1477,7 +1782,7 @@ export function momentOf(
       hop: r1(hop),
       tilt: r1(tilt),
       spin: r1(leap.spin),
-      squash: r2(leap.squash),
+      squash: r2(leap.squash + stepped),
       scale: r2(0.6 + 0.4 * easeOut(pop)),
       opacity: r2(pop),
       size,
@@ -1488,6 +1793,8 @@ export function momentOf(
             stamp: carry === "noted",
           }
         : null,
+      lag: carry ? lag : null,
+      gaze,
       working: state.key === "run" && !walking,
       crossed: state.key === "stopped" || state.key === "paused",
     });
@@ -1497,6 +1804,7 @@ export function momentOf(
       head: r1(fy - hop - size),
       foot: fy,
       carrying: !!carry,
+      walking,
     });
   }
 
@@ -1577,7 +1885,8 @@ export function momentOf(
   let slot = 1;
   for (const trip of trips)
     if (trip.out === "result") {
-      if (t >= trip.arrive) pin(slot, true, fade(trip.arrive));
+      if (t >= trip.arrive + FLY_BOARD)
+        pin(slot, true, fade(trip.arrive + FLY_BOARD, 0.2));
       slot += 1;
     }
   for (const desk of plan.desks) {
@@ -1597,7 +1906,11 @@ export function momentOf(
     const more = mine.filter((trip) => trip.out === "extra").slice(-MORE);
     const cx = (desk.tray[0] + desk.tray[2]) / 2;
     const cy = (desk.tray[1] + desk.tray[3]) / 2;
-    if (hold && t >= hold.arrive && (!release || t < release.arrive + 0.4))
+    if (
+      hold &&
+      t >= hold.arrive + FLY &&
+      (!release || t < release.arrive + 0.4)
+    )
       flat(`hold-${desk.bot}`, cx, cy, 7.5, 3.6, 4.2, false, -0.12);
     if (release && t >= release.arrive && t < release.arrive + 0.4)
       flat(`copy-${desk.bot}`, cx + 0.5, cy - 0.5, 7.8, 2.8, 2.8, true, 0.2);
@@ -1605,7 +1918,7 @@ export function momentOf(
       release && (!order || release.leave > order.leave)
         ? release.arrive + 0.4
         : order
-          ? order.arrive
+          ? order.arrive + FLY
           : null;
     if (onDesk !== null && t >= onDesk)
       flat(
@@ -1656,7 +1969,8 @@ export function momentOf(
           trip.event.closed ?? Number.POSITIVE_INFINITY,
         ),
   );
-  if (asked) flat("question", 29, 77, 8.2, 4.4, 3.4, false, -0.2, 1, true);
+  if (asked && t >= asked.arrive + FLY)
+    flat("question", 29, 77, 8.2, 4.4, 3.4, false, -0.2, 1, true);
   // The report on your counter while it stands there; taken back, it leaves in its bot's hands
   const reported = trips.findLast(
     (trip) =>
@@ -1664,8 +1978,18 @@ export function momentOf(
       t >= trip.arrive &&
       (!Number.isFinite(trip.back) || t < trip.stay),
   );
-  if (reported)
-    flat("report", 29, 77, 8.2, 4.4, 3.4, true, -0.2, fade(reported.arrive));
+  if (reported && t >= reported.arrive + FLY)
+    flat(
+      "report",
+      29,
+      77,
+      8.2,
+      4.4,
+      3.4,
+      true,
+      -0.2,
+      fade(reported.arrive + FLY, 0.15),
+    );
   const answered = trips.find(
     (trip) => trip.home === "answer" && t >= trip.back,
   );
@@ -1684,6 +2008,42 @@ export function momentOf(
   const noting = trips.find(
     (trip) => trip.out === "note" && t >= trip.arrive && t < trip.stay,
   );
+
+  // a paper put down arcs from its carrier's hands to where it lands, turning a little as it drops
+  const flying: Moment["flying"] = [];
+  for (const trip of trips) {
+    const going = trip.out;
+    if (!going) continue;
+    const span = going === "result" ? FLY_BOARD : FLY;
+    if (t < trip.arrive || t >= trip.arrive + span) continue;
+    const p = easeOut((t - trip.arrive) / span);
+    const end = trip.route[trip.route.length - 1];
+    const [sx, sy] = fit.at(end[0], end[1], 0);
+    const from = { x: sx + size * 0.1, y: sy - size - 16 };
+    const desk = plan.byBot.get(trip.event.to);
+    const onto: [number, number, number] =
+      going === "question" || going === "report" || going === "note"
+        ? [29, 77, 8.2]
+        : going === "result"
+          ? [12, 0.3, 9.5]
+          : desk
+            ? [
+                (desk.tray[0] + desk.tray[2]) / 2,
+                (desk.tray[1] + desk.tray[3]) / 2,
+                7.6,
+              ]
+            : [end[0], end[1], 6];
+    const [tx, ty] = fit.at(onto[0], onto[1], onto[2]);
+    flying.push({
+      id: `fly-${trip.event.id}`,
+      x: r1(from.x + (tx - from.x) * p),
+      y: r1(from.y + (ty - from.y) * p - 72 * p * (1 - p)),
+      turn: r1(-4 + 16 * p),
+      scale: r2(1 - 0.45 * p),
+      dark: going === "result" || going === "report" || going === "copy",
+      ember: going === "question",
+    });
+  }
 
   // a helper's desk is drawn in as its bot joins: the pen runs along each line, then the faces settle
   const shown: Moment["sprites"] = [];
@@ -1787,6 +2147,7 @@ export function momentOf(
     pins,
     tossed,
     hush,
+    flying,
     trail,
     shades,
     links,

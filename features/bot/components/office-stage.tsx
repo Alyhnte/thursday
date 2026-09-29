@@ -8,6 +8,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -17,7 +18,9 @@ import { queryKey } from "@/app/api/query-key";
 import { Markdown } from "@/components/ui/markdown";
 import { ShinyText } from "@/components/ui/shiny-text";
 import { BotMark, iconProps } from "@/features/bot/components/bot-mark";
+import { markStill } from "@/features/bot/mark.geometry";
 import {
+  backOf,
   clockOf,
   filesOf,
   type OfficeScene,
@@ -32,6 +35,8 @@ import {
   wordsOf,
 } from "@/features/bot/office";
 import {
+  CAMERA,
+  type Camera,
   type Moment,
   type Mug,
   momentOf,
@@ -39,6 +44,7 @@ import {
   type Paper,
   type Piece,
   restAt,
+  type Screen,
   type Sheet,
   SIGN_BOX,
   type Stage,
@@ -48,7 +54,12 @@ import {
   tripsOf,
   type Walker,
 } from "@/features/bot/office.scene";
-import { type BotRef, useOfficeCaption } from "@/features/bot/thread.store";
+import {
+  type BotRef,
+  officePointed,
+  useOfficeCaption,
+  useOfficePointed,
+} from "@/features/bot/thread.store";
 import { fileIcon } from "@/features/workspace/components/file-thumb";
 import { FileLink } from "@/features/workspace/components/file-view";
 import type { FileOnDisk } from "@/features/workspace/workspace.schema";
@@ -63,10 +74,14 @@ const ZOOMS = [
   0.3, 0.4, 0.5, 0.7, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4,
 ];
 /**
- * The zoom the office opens at, and comes back to, of the fit to its box: well under it, so the
- * building has room around it for the plates and the words opened over its bots.
+ * The zoom the office opens at, and comes back to, of the fit to its box: half of it, so the
+ * building has room around it for the plates, the words opened over its bots and the scoreboard
+ * standing behind it.
  */
-const ZOOM_START = 0.7;
+const ZOOM_START = 0.5;
+
+/** How long the zoom buttons and the frame button take to get where they go (ms). */
+const GLIDE_MS = 300;
 
 type View = { z: number; x: number; y: number };
 
@@ -144,10 +159,10 @@ const ink = (percent: number) =>
  * The office: a sketch of the thread's rooms, its bots at their desks and on the move, pan and
  * zoom like a canvas. It builds itself as it opens, and its bots leap now and then (office.scene
  * tricksOf). A plate stands over a bot only with something to say — at work, wanting the user,
- * its report ready — and the coordinator's report stands open over it; pressing a bot opens its
- * own words there instead (Reads) and its tab in the room. The job's name heads it at the top
- * left, how the job stands is written on the ground beside the building, and the wall clock says
- * how long it has run.
+ * its report ready — and pressing a bot opens its words over it (Reads) and its tab in the room;
+ * nothing opens by itself. The job's name heads it at the top
+ * left with how it stands, how the job stands is written on the ground beside the building too,
+ * and the scoreboard behind the building keeps its time and its crew.
  */
 export function OfficeStage({
   scene,
@@ -156,9 +171,15 @@ export function OfficeStage({
   faces,
   from,
   onBot,
+  onAnswer,
+  camera = CAMERA,
   className,
 }: {
   scene: OfficeScene;
+  /** Where it is seen from (office.scene Camera); a film holds its own. */
+  camera?: Camera;
+  /** Takes the user to what wants them in the room: the question, or Continue (bot-room). */
+  onAnswer?: () => void;
   /** When the job was handed over (ms): the scene's clock counts from here. */
   start: number;
   label: string;
@@ -177,8 +198,9 @@ export function OfficeStage({
     () => window.matchMedia("(prefers-reduced-motion: reduce)").matches,
   );
   const stage = useMemo(
-    () => (size && size.w > 0 && size.h > 0 ? stageOf(scene, size) : null),
-    [scene, size],
+    () =>
+      size && size.w > 0 && size.h > 0 ? stageOf(scene, size, camera) : null,
+    [scene, size, camera],
   );
   const trips = useMemo(
     () => (stage ? tripsOf(scene, stage.plan) : []),
@@ -219,7 +241,10 @@ export function OfficeStage({
   );
   // Null until panned or zoomed: the view it opens at, kept about the middle as the box changes
   const [panned, setView] = useState<View | null>(null);
-  const view = panned ?? (size ? startOf(size) : { z: ZOOM_START, x: 0, y: 0 });
+  const opening = size ? startOf(size) : { z: ZOOM_START, x: 0, y: 0 };
+  const view = panned ?? opening;
+  const openingRef = useRef(opening);
+  openingRef.current = opening;
   const drag = useRef<{
     x: number;
     y: number;
@@ -229,18 +254,18 @@ export function OfficeStage({
     onPlate: boolean;
   } | null>(null);
   const [dragging, setDragging] = useState(false);
-  // Whose words stand open over it (office wordsOf): the coordinator's report while it stands,
-  // unless put away (null); a bot pressed; or none once put away (false). A new report opens again
-  const coord = scene.office.coord;
+  // Whose words stand open over it (office wordsOf): a bot pressed, until it is pressed again or
+  // the floor is tapped. Nothing opens by itself: once the report stands, the thread's bot wears
+  // its plate unfolded (report ready) and its words open when it is pressed. A new report closes
+  // whatever stood open
   const report = reportAt(scene, t)?.id ?? null;
   const [opened, setOpened] = useState<{
-    bot: string | null | false;
+    bot: string | null;
     report: string | null;
   }>({ bot: null, report });
-  const shown = opened.report === report ? opened.bot : null;
-  const reading = shown === null ? (report ? coord : null) : shown || null;
+  const reading = opened.report === report ? opened.bot : null;
   const pick = (bot: string) => {
-    setOpened({ bot: reading === bot ? false : bot, report });
+    setOpened({ bot: reading === bot ? null : bot, report });
     onBot?.(bot);
   };
 
@@ -256,8 +281,7 @@ export function OfficeStage({
       const fx = event.clientX - rect.left;
       const fy = event.clientY - rect.top;
       setView((was) => {
-        const from =
-          was ?? startOf({ w: node.clientWidth, h: node.clientHeight });
+        const from = was ?? openingRef.current;
         return zoomAt(
           from,
           fx,
@@ -298,15 +322,44 @@ export function OfficeStage({
     setDragging(false);
     // A tap on the floor, not a drag, puts the open words away
     if (was && !was.moved && !was.onPlate && reading)
-      setOpened({ bot: false, report });
+      setOpened({ bot: null, report });
   };
 
+  // The zoom buttons and the frame button glide there rather than jump; the wheel and a drag
+  // move it as they go
+  const glide = useRef(0);
+  const glideTo = (target: View | null) => {
+    cancelAnimationFrame(glide.current);
+    const from = view;
+    const to = target ?? openingRef.current;
+    const began = performance.now();
+    const step = () => {
+      const p = Math.min(1, (performance.now() - began) / GLIDE_MS);
+      const k = 1 - (1 - p) ** 3;
+      setView(
+        p >= 1
+          ? target
+          : {
+              z: from.z + (to.z - from.z) * k,
+              x: from.x + (to.x - from.x) * k,
+              y: from.y + (to.y - from.y) * k,
+            },
+      );
+      if (p < 1) glide.current = requestAnimationFrame(step);
+    };
+    glide.current = requestAnimationFrame(step);
+  };
+  useEffect(() => () => cancelAnimationFrame(glide.current), []);
   const world = `translate(${view.x}px, ${view.y}px) scale(${view.z})`;
   const at = (x: number, y: number) => ({
     x: view.x + view.z * x,
     y: view.y + view.z * y,
   });
   const faceOf = (bot: string) => faces.find((one) => one.name === bot);
+  // A bot pointed at here or at its tab in the room: its plate unfolds
+  const pointed = useOfficePointed();
+  // A plate stands 20 px tall at the opening zoom and its full 26 from the fit up
+  const plateScale = Math.min(1, Math.max(20 / 26, view.z / 0.9));
   // Each bot's plate, read once: the crowding pass and the plates themselves read the same
   const plates = (moment?.tags ?? []).map((tag) => ({
     tag,
@@ -325,7 +378,9 @@ export function OfficeStage({
   };
   const { crowded, onRoom } = useCrowding(
     plates.flatMap(({ tag, plate }) => {
-      const home = homeOf(tag.bot);
+      // Judged where the bot stands, unless it is on its way: one walking past another does not
+      // fold and unfold it as it goes
+      const home = tag.walking ? homeOf(tag.bot) : at(tag.x, tag.head - 6);
       return home
         ? [
             {
@@ -338,6 +393,7 @@ export function OfficeStage({
           ]
         : [];
     }),
+    plateScale,
   );
 
   return (
@@ -381,7 +437,7 @@ export function OfficeStage({
                     y2={line.y2}
                     style={{
                       stroke: line.color,
-                      strokeWidth: 1,
+                      strokeWidth: line.width,
                       strokeLinecap: "round",
                     }}
                   />
@@ -393,6 +449,14 @@ export function OfficeStage({
             className="absolute top-0 left-0 origin-top-left"
             style={{ width: size.w, height: size.h, transform: world }}
           >
+            <Scoreboard
+              stage={stage}
+              scene={scene}
+              sign={sign}
+              start={start}
+              label={label}
+              faces={faces}
+            />
             <svg
               width={size.w}
               height={size.h}
@@ -402,6 +466,7 @@ export function OfficeStage({
             >
               <Patterns />
               <Built stage={stage} />
+              <Pools stage={stage} />
               {moment.shades.map((shade) => (
                 <polygon
                   key={shade.points}
@@ -411,10 +476,16 @@ export function OfficeStage({
                   style={{ animationDelay: `${shade.delay}ms` }}
                 />
               ))}
-              <Links links={moment.links} />
-              {moment.pins.map((paper) => (
-                <PaperShape key={paper.id} paper={paper} />
-              ))}
+              {/* What lies on the floor and the board comes once they have landed */}
+              <g
+                className="office-fade"
+                style={{ animationDelay: `${stage.popAt}ms` }}
+              >
+                <Links links={moment.links} />
+                {moment.pins.map((paper) => (
+                  <PaperShape key={paper.id} paper={paper} />
+                ))}
+              </g>
               {moment.tossed.map(
                 (sheet) =>
                   sheet.landed && <SheetShape key={sheet.id} sheet={sheet} />,
@@ -444,19 +515,29 @@ export function OfficeStage({
                     popAt={stage.popAt}
                   />
                 ) : (
-                  <PaperShape key={sprite.paper.id} paper={sprite.paper} />
+                  <PaperShape
+                    key={sprite.paper.id}
+                    paper={sprite.paper}
+                    land={stage.popAt}
+                  />
                 ),
               )}
               {moment.tossed.map(
                 (sheet) =>
                   !sheet.landed && <SheetShape key={sheet.id} sheet={sheet} />,
               )}
+              {moment.flying.map((paper) => (
+                <g
+                  key={paper.id}
+                  transform={`translate(${paper.x} ${paper.y}) rotate(${paper.turn}) scale(${paper.scale})`}
+                >
+                  <HeldPaper dark={paper.dark} ember={paper.ember} />
+                </g>
+              ))}
             </svg>
-            <WallClock stage={stage} start={start} ended={scene.ended} />
             <GroundSign
               stage={stage}
               sign={sign}
-              ended={scene.ended}
               land={built ? 0 : stage.popAt + 250}
             />
           </div>
@@ -485,6 +566,8 @@ export function OfficeStage({
                 size={stage.botSize * view.z}
                 width={size.w}
                 hush={moment.hush}
+                pointed={pointed === tag.bot}
+                scale={plateScale}
                 words={
                   reading === tag.bot ? wordsOf(scene, tag.bot, t) : undefined
                 }
@@ -497,12 +580,15 @@ export function OfficeStage({
             bots={scene.office.bots.length}
             files={scene.office.status === "done" ? files.filter(onDisk) : []}
             from={from}
+            scene={scene}
+            sign={sign}
+            onAnswer={onAnswer}
           />
           <div className="absolute bottom-3.5 left-4 flex items-center gap-0.5 rounded-full bg-background p-0.75 shadow-sm ring-1 ring-border">
             <ZoomButton
               label="Zoom out"
               onClick={() =>
-                setView(
+                glideTo(
                   zoomAt(view, size.w / 2, size.h / 2, stepFrom(view.z, false)),
                 )
               }
@@ -515,7 +601,7 @@ export function OfficeStage({
             <ZoomButton
               label="Zoom in"
               onClick={() =>
-                setView(
+                glideTo(
                   zoomAt(view, size.w / 2, size.h / 2, stepFrom(view.z, true)),
                 )
               }
@@ -523,7 +609,7 @@ export function OfficeStage({
               <Plus className="size-3.5" />
             </ZoomButton>
             <span className="mx-0.5 h-4 w-px bg-border" />
-            <ZoomButton label="Fit the office" onClick={() => setView(null)}>
+            <ZoomButton label="Fit the office" onClick={() => glideTo(null)}>
               <Maximize className="size-3.5" />
             </ZoomButton>
           </div>
@@ -559,22 +645,28 @@ function ZoomButton({
 const HEAD_FILES = 3;
 
 /**
- * The office's head, at its top left: the job's name, and once the job is done how many bots
- * worked on it and the files it handed over; pressing one opens it. Past the first few the rest
- * fold under "+N more", opened in place. How the job stands and how long it took are written on
- * the ground (GroundSign) and kept by the wall clock. During a call her words stand above it
- * (thursday), and it steps down under them.
+ * The office's head, at its top left: the job's name and, on its line, how the job stands; once
+ * it is done, how many bots worked on it and the files it handed over, pressing one opening it.
+ * Past the first few the rest fold under "+N more", opened in place. How long it has run is the
+ * scoreboard's (Scoreboard). During a call her words stand above it (thursday), and it steps
+ * down under them.
  */
 function OfficeHead({
   label,
   bots,
   files,
   from,
+  scene,
+  sign,
+  onAnswer,
 }: {
   label: string;
   bots: number;
   files: string[];
   from: string;
+  scene: OfficeScene;
+  sign: Sign;
+  onAnswer?: () => void;
 }) {
   const captioned = useOfficeCaption();
   const [unfolded, setUnfolded] = useState(false);
@@ -589,9 +681,12 @@ function OfficeHead({
         captioned ? "top-24" : "top-5",
       )}
     >
-      <h2 className="max-w-[28rem] text-balance font-semibold text-[22px] leading-tight tracking-tight">
-        {label}
-      </h2>
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <h2 className="max-w-[28rem] text-balance font-semibold text-[22px] leading-tight tracking-tight">
+          {label}
+        </h2>
+        <StateLine scene={scene} sign={sign} onAnswer={onAnswer} />
+      </div>
       {files.length > 0 && (
         <div className="flex animate-in flex-col gap-2 fade-in slide-in-from-top-1 duration-300">
           <span className="font-mono text-[11.5px] text-muted-foreground tabular-nums">
@@ -661,11 +756,22 @@ const DIGITS = [
   "abcdfg",
 ];
 
-function Digit({ value }: { value: number }) {
+/** A digit in seven segments, `tall` px high; the segments not lit show faintly. */
+function Digit({
+  value,
+  tall = 41,
+  lit = "var(--ink)",
+  unlit = ink(5.5),
+}: {
+  value: number;
+  tall?: number;
+  lit?: string;
+  unlit?: string;
+}) {
   return (
     <svg
-      width={23}
-      height={41}
+      width={(23 * tall) / 41}
+      height={tall}
       viewBox="-0.5 -0.5 21 37"
       className="-skew-x-[7deg] overflow-visible"
       aria-hidden
@@ -675,7 +781,7 @@ function Digit({ value }: { value: number }) {
           key={segment}
           points={SEGMENTS[segment]}
           style={{
-            fill: DIGITS[value].includes(segment) ? "var(--ink)" : ink(5.5),
+            fill: DIGITS[value].includes(segment) ? lit : unlit,
           }}
         />
       ))}
@@ -683,76 +789,9 @@ function Digit({ value }: { value: number }) {
   );
 }
 
-/** The most the wall clock shows, 99:59:59, and a key for each of its groups. */
+/** The most the scoreboard's clock shows, 99:59:59, and a key for each of its groups. */
 const CLOCK_MAX = 99 * 3600 + 59 * 60 + 59;
 const CLOCK_GROUPS = ["first", "second", "third"];
-
-/**
- * The clock on the coordinator's wall: how long the job has been going, the colon ticking while
- * it runs and still where it was seen to end. It moves on by itself a second at a time, so it is
- * all that draws again for it.
- */
-function WallClock({
-  stage,
-  start,
-  ended,
-}: {
-  stage: Stage;
-  start: number;
-  /** When the job was seen to end, in scene seconds; null while it runs. */
-  ended: number | null;
-}) {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (ended !== null) return;
-    const tick = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(tick);
-  }, [ended]);
-  const seconds = ended ?? (now - start) / 1000;
-  // Minutes and seconds, then hours and minutes and seconds, up to the clock's last digit
-  const whole = Math.min(CLOCK_MAX, Math.max(0, Math.floor(seconds)));
-  const hours = Math.floor(whole / 3600);
-  const groups = [
-    ...(hours ? [hours] : []),
-    Math.floor(whole / 60) % (hours ? 60 : 100),
-    whole % 60,
-  ];
-  return (
-    <div
-      className="office-fade absolute top-0 left-0 flex origin-top-left items-center justify-center"
-      style={{
-        width: stage.clock.w,
-        height: stage.clock.h,
-        transform: stage.clock.matrix,
-        animationDelay: `${stage.popAt}ms`,
-      }}
-    >
-      <div
-        role="img"
-        aria-label={`Running for ${clockOf(seconds)}`}
-        className={cn("flex items-center gap-1.25", hours && "scale-72")}
-      >
-        {groups.map((group, index) => (
-          <Fragment key={CLOCK_GROUPS[index]}>
-            {index > 0 && (
-              <span
-                className={cn(
-                  "flex flex-col gap-2.75 px-px",
-                  ended === null && "animate-office-blink",
-                )}
-              >
-                <span className="size-1 rounded-[1px] bg-foreground" />
-                <span className="size-1 rounded-[1px] bg-foreground" />
-              </span>
-            )}
-            <Digit value={Math.floor(group / 10)} />
-            <Digit value={group % 10} />
-          </Fragment>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 /**
  * How large each state's words are written (px): 150 at most, and no wider than the plot's 640
@@ -777,21 +816,19 @@ const SIGN_WORDS: Record<Sign, string> = {
 
 /**
  * How the job stands, written large on a plot of ground beside the building (office.scene
- * SIGN_BOX, fitted in view with it): a band of tape while it is at work, then plain capitals that
- * come in as the state changes — ember when it is the user's turn or paused on Continue, the ink
- * when it is done, faint when stopped — with how long it took under a finished or stopped one.
- * Words that stand as the office opens come in once the office stands (`land`), so they are seen.
+ * SIGN_BOX, fitted in view with it): a band of tape while it is at work, then plain capitals —
+ * ember when it is the user's turn or paused on Continue, the ink when it is done, faint when
+ * stopped. The words standing go first as the state changes (the tape rolls up, capitals sink),
+ * then the new ones come; DONE is painted on. Words that stand as the office opens come in once
+ * the office stands (`land`), so they are seen.
  */
 function GroundSign({
   stage,
   sign,
-  ended,
   land,
 }: {
   stage: Stage;
   sign: Sign;
-  /** When the job was seen to end, in scene seconds; null while it runs. */
-  ended: number | null;
   /** How long the words wait to come in (ms): until the office stands, as it opens; at once after. */
   land: number;
 }) {
@@ -805,25 +842,60 @@ function GroundSign({
         animationDelay: `${stage.popAt}ms`,
       }}
     >
-      <SignWords key={sign} sign={sign} ended={ended} land={land} />
+      <SignSwap sign={sign} land={land} />
     </div>
   );
 }
 
-function SignWords({
-  sign,
-  ended,
-  land,
-}: {
-  sign: Sign;
-  ended: number | null;
-  land: number;
-}) {
+/** The words standing, then, once they have gone, the new ones. */
+function SignSwap({ sign, land }: { sign: Sign; land: number }) {
+  const [was, setWas] = useState<Sign | null>(null);
+  const [last, setLast] = useState(sign);
+  if (last !== sign) {
+    setWas(last);
+    setLast(sign);
+  }
+  useEffect(() => {
+    if (was === null) return;
+    const out = window.setTimeout(() => setWas(null), 420);
+    return () => window.clearTimeout(out);
+  }, [was]);
+  return (
+    <>
+      {was !== null && (
+        <div
+          className={cn(
+            "absolute inset-0",
+            was === "work"
+              ? "origin-right animate-office-tape-out"
+              : "animate-office-sign-out",
+          )}
+        >
+          <SignWords sign={was} land={0} />
+        </div>
+      )}
+      <div
+        key={sign}
+        className={cn(
+          "absolute inset-0",
+          was !== null &&
+            (sign === "done"
+              ? "animate-office-paint"
+              : "animate-in fade-in delay-200 duration-300 fill-mode-backwards"),
+        )}
+      >
+        <SignWords sign={sign} land={was !== null ? 0 : land} />
+      </div>
+    </>
+  );
+}
+
+function SignWords({ sign, land }: { sign: Sign; land: number }) {
   // Read as it mounts: words that change later come in at once
   const [wait] = useState(land);
   if (sign === "work")
     return (
-      <div className="absolute inset-x-0 top-5 flex h-13.5 items-center overflow-hidden pl-7 font-bold text-[26px] text-foreground/45 tracking-[0.2em]">
+      <div className="absolute inset-x-0 top-5 flex h-27 items-center overflow-hidden pl-7 font-bold text-[64px] text-foreground/45 tracking-[0.2em]">
         {/* One repeat wider than the tape, slid along by a repeat and round again (office-tape) */}
         <span
           aria-hidden
@@ -832,10 +904,6 @@ function SignWords({
         <span className="relative">{SIGN_WORDS.work}</span>
       </div>
     );
-  const took =
-    ended !== null && (sign === "done" || sign === "stopped")
-      ? clockOf(ended)
-      : null;
   return (
     <div
       className={cn(
@@ -852,11 +920,6 @@ function SignWords({
       >
         {SIGN_WORDS[sign]}
       </span>
-      {took && (
-        <span className="font-mono font-semibold text-[48px] tracking-[0.08em] opacity-60">
-          {took}
-        </span>
-      )}
     </div>
   );
 }
@@ -1016,7 +1079,7 @@ function Edge({
       y2={line.y2}
       style={{
         stroke: line.color,
-        strokeWidth: 1,
+        strokeWidth: line.width,
         strokeLinecap: "round",
         ...style,
       }}
@@ -1098,13 +1161,166 @@ const PieceShape = memo(function PieceShape({
           }
         />
       ))}
-      {(!drawing || draw > 0.7) &&
-        piece.mugs.map((mug) => (
-          <MugShape key={`${mug.cx},${mug.cy}`} mug={mug} />
-        ))}
+      {(!drawing || draw > 0.7) && (
+        <>
+          {piece.mugs.map((mug) => (
+            <MugShape key={`${mug.cx},${mug.cy}`} mug={mug} />
+          ))}
+          {piece.screen && <ScreenShape screen={piece.screen} />}
+          {piece.check && (
+            <polyline
+              points={piece.check}
+              style={{
+                fill: "none",
+                stroke: "var(--ink)",
+                strokeWidth: 1.6,
+                strokeLinecap: "round",
+                strokeLinejoin: "round",
+              }}
+            />
+          )}
+        </>
+      )}
     </g>
   );
 });
+
+/** How far apart the lines on a working screen run, in its own units (office.scene Screen). */
+const SCREEN_LINES = [0.5, 0.95, 1.4, 1.85, 2.3, 2.75, 3.2, 3.65, 4.1, 4.55];
+
+/**
+ * A laptop's screen as its bot stands (office.scene Screen): lit, its lines running up a line at
+ * a time while the bot works; dim with two still lines while it waits; dark once stopped; an ember
+ * pause mark when the app paused it, an ember dot while it asks the user.
+ */
+function ScreenShape({ screen }: { screen: Screen }) {
+  const { w, h, mode } = screen;
+  const clip = useId();
+  return (
+    <g transform={screen.matrix}>
+      <defs>
+        <clipPath id={clip} clipPathUnits="userSpaceOnUse">
+          <rect x={0} y={0} width={w} height={h} />
+        </clipPath>
+      </defs>
+      <rect
+        x={0}
+        y={0}
+        width={w}
+        height={h}
+        rx={0.15}
+        style={{
+          fill:
+            mode === "lit"
+              ? "var(--office-screen-lit)"
+              : mode === "dim" || mode === "asking"
+                ? "var(--office-screen-dim)"
+                : "var(--office-screen-dark)",
+        }}
+      />
+      {mode === "lit" && (
+        <g clipPath={`url(#${clip})`}>
+          <g className="animate-office-screen">
+            {SCREEN_LINES.map((y, index) => (
+              <line
+                key={y}
+                x1={0.55}
+                y1={y}
+                x2={w * (index % 3 === 2 ? 0.45 : index % 2 ? 0.7 : 0.85)}
+                y2={y}
+                style={{
+                  stroke: "var(--office-screen-line)",
+                  strokeWidth: 0.26,
+                  strokeLinecap: "round",
+                }}
+              />
+            ))}
+          </g>
+        </g>
+      )}
+      {mode === "dim" &&
+        [0.7, 1.2].map((y, index) => (
+          <line
+            key={y}
+            x1={0.55}
+            y1={y}
+            x2={w * (index ? 0.4 : 0.65)}
+            y2={y}
+            style={{
+              stroke:
+                "color-mix(in oklab, var(--office-screen-lit) 35%, transparent)",
+              strokeWidth: 0.2,
+              strokeLinecap: "round",
+            }}
+          />
+        ))}
+      {mode === "paused" && (
+        <g style={{ fill: "var(--waiting)" }}>
+          <rect
+            x={w / 2 - 0.55}
+            y={h / 2 - 0.7}
+            width={0.36}
+            height={1.4}
+            rx={0.12}
+          />
+          <rect
+            x={w / 2 + 0.19}
+            y={h / 2 - 0.7}
+            width={0.36}
+            height={1.4}
+            rx={0.12}
+          />
+        </g>
+      )}
+      {mode === "asking" && (
+        <circle
+          cx={w / 2}
+          cy={h / 2}
+          r={0.55}
+          style={{ fill: "var(--waiting)" }}
+        />
+      )}
+    </g>
+  );
+}
+
+/** A soft pool of light on the floor under each desk at work, laid on the floor's plane. */
+function Pools({ stage }: { stage: Stage }) {
+  const glow = useId();
+  if (!stage.pools.length) return null;
+  return (
+    <g transform={stage.floor}>
+      <defs>
+        <radialGradient id={glow}>
+          <stop
+            offset="0"
+            style={{ stopColor: "var(--ink)", stopOpacity: 0.16 }}
+          />
+          <stop
+            offset="0.6"
+            style={{ stopColor: "var(--ink)", stopOpacity: 0.08 }}
+          />
+          <stop
+            offset="1"
+            style={{ stopColor: "var(--ink)", stopOpacity: 0 }}
+          />
+        </radialGradient>
+      </defs>
+      {stage.pools.map((pool) => (
+        <ellipse
+          key={pool.id}
+          className="office-fade"
+          cx={pool.cx}
+          cy={pool.cy}
+          rx={pool.r}
+          ry={pool.r}
+          fill={`url(#${glow})`}
+          style={{ animationDelay: `${stage.popAt}ms` }}
+        />
+      ))}
+    </g>
+  );
+}
 
 function MugShape({ mug }: { mug: Mug }) {
   const line = { stroke: ink(60), strokeWidth: 1 };
@@ -1149,10 +1365,17 @@ function MugShape({ mug }: { mug: Mug }) {
   );
 }
 
-/** A paper lying on a surface or pinned on the board: an order, or an answer in ink. */
-function PaperShape({ paper }: { paper: Paper }) {
+/**
+ * A paper lying on a surface or pinned on the board: an order, or an answer in ink. As the office
+ * builds itself, one on a desk comes once the desk has landed (`land`, ms).
+ */
+function PaperShape({ paper, land }: { paper: Paper; land?: number }) {
   return (
-    <g opacity={paper.opacity}>
+    <g
+      opacity={paper.opacity}
+      className={land === undefined ? undefined : "office-fade"}
+      style={land === undefined ? undefined : { animationDelay: `${land}ms` }}
+    >
       <polygon
         points={paper.points}
         style={{
@@ -1223,9 +1446,9 @@ function SheetShape({ sheet }: { sheet: Sheet }) {
 }
 
 /**
- * A bot where it stands or walks, with the paper it carries; it pops in once the office stands.
- * A leap lifts it, squashes it about its feet and, in a flip, turns it over about its middle; at
- * work at its desk it bobs, typing.
+ * A bot where it stands or walks, with the paper it carries trailing its hands; it pops in once
+ * the office stands. Walking, it looks where it goes. A leap lifts it, squashes it about its feet
+ * and, in a flip, turns it over about its middle; at work at its desk it rocks a little, typing.
  */
 function BotSprite({
   walker,
@@ -1265,6 +1488,8 @@ function BotSprite({
               seed={walker.bot}
               {...iconProps(face?.icon)}
               state={walker.working ? "thinking" : "idle"}
+              gazeX={walker.gaze[0]}
+              gazeY={walker.gaze[1]}
               crossed={walker.crossed}
               notify={false}
             />
@@ -1273,56 +1498,73 @@ function BotSprite({
       </g>
       {walker.carry && (
         <g
-          transform={`translate(${x + size * 0.1} ${y - hop - size - 16}) rotate(${-tilt * 1.4 - 4})`}
+          transform={
+            walker.lag
+              ? `translate(${x + size * 0.1 + walker.lag[0] * 0.8} ${y - hop * 0.6 - size - 16 + walker.lag[1] * 0.4}) rotate(${walker.lag[2] - 4})`
+              : `translate(${x + size * 0.1} ${y - hop - size - 16}) rotate(${-tilt * 1.4 - 4})`
+          }
         >
-          <rect
-            x={-11}
-            y={-14}
-            width={22}
-            height={28}
-            rx={2.5}
-            style={{
-              fill: walker.carry.dark ? "var(--ink)" : "var(--gray-0)",
-              stroke: walker.carry.ember
-                ? "var(--waiting)"
-                : walker.carry.dark
-                  ? "var(--ink)"
-                  : ink(45),
-              strokeWidth: 1.3,
-            }}
-          />
-          {[-8, -3.5, 1].map((top, index) => (
-            <rect
-              key={top}
-              x={-6.5}
-              y={top}
-              width={index === 2 ? 7.5 : 13}
-              height={2}
-              style={{
-                fill: walker.carry?.dark
-                  ? "color-mix(in oklab, var(--gray-0) 55%, transparent)"
-                  : ink(32),
-              }}
-            />
-          ))}
-          {walker.carry.stamp && (
-            <rect
-              x={-8.5}
-              y={3.5}
-              width={15}
-              height={7}
-              rx={1.5}
-              transform="rotate(-14)"
-              style={{
-                fill: "none",
-                stroke: "var(--destructive)",
-                strokeWidth: 1.5,
-              }}
-            />
-          )}
+          <HeldPaper {...walker.carry} />
         </g>
       )}
     </g>
+  );
+}
+
+/** A paper in a bot's hands or in its short flight to where it lands: an order, or an answer in ink. */
+function HeldPaper({
+  dark,
+  ember,
+  stamp = false,
+}: {
+  dark: boolean;
+  ember: boolean;
+  stamp?: boolean;
+}) {
+  return (
+    <>
+      <rect
+        x={-11}
+        y={-14}
+        width={22}
+        height={28}
+        rx={2.5}
+        style={{
+          fill: dark ? "var(--ink)" : "var(--gray-0)",
+          stroke: ember ? "var(--waiting)" : dark ? "var(--ink)" : ink(45),
+          strokeWidth: 1.3,
+        }}
+      />
+      {[-8, -3.5, 1].map((top, index) => (
+        <rect
+          key={top}
+          x={-6.5}
+          y={top}
+          width={index === 2 ? 7.5 : 13}
+          height={2}
+          style={{
+            fill: dark
+              ? "color-mix(in oklab, var(--gray-0) 55%, transparent)"
+              : ink(32),
+          }}
+        />
+      ))}
+      {stamp && (
+        <rect
+          x={-8.5}
+          y={3.5}
+          width={15}
+          height={7}
+          rx={1.5}
+          transform="rotate(-14)"
+          style={{
+            fill: "none",
+            stroke: "var(--destructive)",
+            strokeWidth: 1.5,
+          }}
+        />
+      )}
+    </>
   );
 }
 
@@ -1370,10 +1612,11 @@ const PLATE_EDGE = 12;
 type Room = { mark: number; rest: number };
 
 /**
- * Which plates would lie over another, as the bots stand at their desks: those fold to their
- * marks, until pointed at. Any that wants the user stays open first, then the rest in the
- * office's order, so a crowded office still reads plate by plate rather than as words written over
- * one another. Judged by the room each plate takes as drawn (PlateAt), not by a guess at its letters.
+ * Which plates would lie over another, as the bots stand (at their desks while walking): those
+ * fold to their marks, until pointed at. One that wants the user is never the one folded, and is
+ * drawn over the rest; the others fold in the office's order, so a crowded office still reads
+ * plate by plate rather than as words written over one another. Judged by the room each plate
+ * takes as drawn (PlateAt) at the size it is drawn (`scale`), not by a guess at its letters.
  */
 function useCrowding(
   entries: {
@@ -1383,6 +1626,7 @@ function useCrowding(
     first: boolean;
     words: string;
   }[],
+  scale: number,
 ) {
   const rooms = useRef(new Map<string, Room>());
   const onRoom = useCallback((bot: string, room: Room) => {
@@ -1391,21 +1635,22 @@ function useCrowding(
   const [crowded, setCrowded] = useState<string[]>([]);
   // Judged again when a plate's words or where it sits changes; the plates measure themselves
   // first, in their own layout effects
-  const key = JSON.stringify(
-    entries.map((one) => [
+  const key = JSON.stringify([
+    scale,
+    ...entries.map((one) => [
       one.bot,
       Math.round(one.home.x),
       Math.round(one.home.y),
       one.open,
       one.words,
     ]),
-  );
+  ]);
   useLayoutEffect(() => {
     const box = (bot: string, x: number, y: number, wide: number) => ({
       bot,
-      l: x - wide / 2,
-      r: x + wide / 2,
-      t: y - PLATE_TALL,
+      l: x - (wide * scale) / 2,
+      r: x + (wide * scale) / 2,
+      t: y - PLATE_TALL * scale,
       b: y,
     });
     type Box = ReturnType<typeof box>;
@@ -1426,6 +1671,10 @@ function useCrowding(
       const room = rooms.current.get(one.bot);
       if (!room) continue;
       const wide = box(one.bot, one.home.x, one.home.y, room.mark + room.rest);
+      if (one.first) {
+        open.push(wide);
+        continue;
+      }
       if (
         [...marks, ...open].some(
           (other) => other.bot !== one.bot && over(wide, other),
@@ -1446,11 +1695,13 @@ function useCrowding(
 /**
  * A bot's plate over its head, only while there is something to say (office plateOf): the bot at
  * work, the one that wants the user in ember, the coordinator with its report. Every other bot
- * stands as it is; pointed at or focused, its plate shows the mark of how it stands and its name.
- * Opened (`words`), its words stand over it in place of the plate (Reads). Pressing the bot or its
- * plate opens or puts them away (`onPick`) and opens its tab in the room. By an edge a plate is
- * held by its mark and unfolds inward; one that would lie over another folds to its mark
- * (useCrowding). While sheets fly at the report the plates step back.
+ * stands as it is; pointed at or focused, here or at its tab in the room (`pointed`), its plate
+ * shows the mark of how it stands and its name. A plate comes up out of its bot's head, and one
+ * that has just come to want the user rings once. Opened (`words`), its words stand over it in
+ * place of the plate (Reads). Pressing the bot or its plate opens or puts them away (`onPick`)
+ * and opens its tab in the room. By an edge a plate is held by its mark and unfolds inward; one
+ * that would lie over another folds to its mark (useCrowding). While sheets fly at the report
+ * the plates step back.
  */
 function PlateAt({
   plate,
@@ -1465,8 +1716,14 @@ function PlateAt({
   width,
   hush,
   words,
+  pointed,
+  scale,
   onPick,
 }: {
+  /** Pointed at here or at its tab in the room: unfolded as a hovered plate is. */
+  pointed: boolean;
+  /** Drawn at this share of its size (20 of its 26 px at the opening zoom). */
+  scale: number;
   plate: Plate | null;
   state: SeatState;
   /** It would lie over another plate: folded to its mark, until pointed at (useCrowding). */
@@ -1484,7 +1741,7 @@ function PlateAt({
   onPick: () => void;
 }) {
   const top = head.y - 6 - lift;
-  const folded = plate === null || crowded;
+  const folded = (plate === null || crowded) && !pointed;
   // How much room it takes, folded and open, as drawn: for the crowding pass, and so a plate
   // near the office's edge unfolds away from it rather than past it
   const pill = useRef<HTMLDivElement>(null);
@@ -1519,16 +1776,30 @@ function PlateAt({
   return (
     <div
       data-plate
+      onPointerEnter={() => officePointed.set(bot)}
+      onPointerLeave={() => officePointed.set(null)}
       className={cn(
         "group/plate absolute size-0 transition-opacity duration-500",
         words !== undefined
           ? "z-40"
-          : folded
-            ? "z-10 hover:z-30 has-[:focus-visible]:z-30"
-            : "z-20 hover:z-30 has-[:focus-visible]:z-30",
+          : // the plate that wants the user is never under another, one pointed at included
+            plate?.tone === "you"
+            ? "z-31"
+            : pointed
+              ? "z-30"
+              : folded
+                ? "z-10 hover:z-30 has-[:focus-visible]:z-30"
+                : "z-20 hover:z-30 has-[:focus-visible]:z-30",
         hush && "opacity-15",
       )}
-      style={{ left: head.x, top }}
+      style={{
+        left: head.x,
+        top,
+        // the plate, not the words opened in its place, scales about the bot's head
+        ...(words === undefined && scale !== 1
+          ? { transform: `scale(${scale})`, transformOrigin: "0 0" }
+          : {}),
+      }}
     >
       {/* The bot's body answers to the pointer too; the plate's own button is the one keys and
           readers reach */}
@@ -1552,21 +1823,27 @@ function PlateAt({
           top={top}
           x={head.x}
           width={width}
+          below={foot - top}
+          size={size}
           onPick={onPick}
         />
       )}
       <div
         ref={pill}
+        // a plate that comes to say something comes up anew
+        key={plate?.tone ?? "none"}
         hidden={hidden}
         style={anchor ?? undefined}
         className={cn(
-          "pointer-events-auto absolute bottom-0 flex h-6.5 items-center whitespace-nowrap rounded-full bg-background pr-2.25 text-[12px] shadow-md transition-opacity duration-200",
+          "pointer-events-auto absolute bottom-0 flex h-6.5 items-center whitespace-nowrap rounded-full bg-background pr-2.25 text-[12px] transition-opacity duration-120",
           !anchor && "left-0 -translate-x-1/2",
           plate?.tone === "you"
-            ? "ring-[1.5px] ring-waiting"
-            : "ring-1 ring-border",
+            ? "animate-office-ask ring-[1.5px] ring-waiting"
+            : "ring-[0.75px] ring-foreground/25",
+          plate && plate.tone !== "you" && "animate-office-plate",
           // Nothing to say: seen only while it or its bot is pointed at or focused
           plate === null &&
+            !pointed &&
             "opacity-0 group-hover/plate:opacity-100 group-has-[:focus-visible]/plate:opacity-100",
         )}
       >
@@ -1614,9 +1891,12 @@ const READS_KIND = { report: "Report", question: "Asks you", answer: "Answer" };
 /**
  * A bot's words opened over it, in place of its plate (office wordsOf): the coordinator's report,
  * a question it waits on you with, or the last answer it handed back, as the room writes them;
- * a bot that has said none of these shows how it stands. Kept inside the office, above the bot or
- * below its plate when the window's top is too near; long words scroll within it, and the wheel
- * there scrolls them rather than zooming the office. Its head puts it away, as pressing the bot does.
+ * a bot that has said none of these shows how it stands. They open out of its plate. The report
+ * opens under its bot at your counter, down and to the left over the empty ground before the
+ * building, rather than up over the coordinator's room. Other words stand above the bot, or below
+ * its plate when the window's top is too near. Kept inside the office; long words scroll within
+ * it, and the wheel there scrolls them rather than zooming the office. Its head puts it away, as
+ * pressing the bot does.
  */
 function Reads({
   words,
@@ -1625,6 +1905,8 @@ function Reads({
   top,
   x,
   width,
+  below,
+  size,
   onPick,
 }: {
   words: ReturnType<typeof wordsOf>;
@@ -1633,6 +1915,9 @@ function Reads({
   top: number;
   x: number;
   width: number;
+  /** From the plate's foot down to the bot's feet, and the bot's size (px). */
+  below: number;
+  size: number;
   onPick: () => void;
 }) {
   const card = useRef<HTMLDivElement>(null);
@@ -1643,23 +1928,35 @@ function Reads({
     const height = card.current?.offsetHeight ?? 0;
     setTall((was) => (was === height ? was : height));
   }, [says]);
-  const down = tall > 0 && top - tall < 8;
+  const report = words?.kind === "report";
+  const down = report || (tall > 0 && top - tall < 8);
   const asks = words?.kind === "question";
   return (
     <div
       ref={card}
       data-reads
-      style={{
-        left: Math.min(
-          Math.max(-READS_WIDE / 2, PLATE_EDGE - x),
-          width - PLATE_EDGE - READS_WIDE - x,
-        ),
-        width: READS_WIDE,
-        ...(down ? { top: -PLATE_TALL } : { bottom: 0 }),
-      }}
+      style={
+        report
+          ? {
+              left: Math.min(
+                Math.max(-READS_WIDE + size * 0.35, PLATE_EDGE - x),
+                width - PLATE_EDGE - READS_WIDE - x,
+              ),
+              top: below + 10,
+              width: READS_WIDE,
+            }
+          : {
+              left: Math.min(
+                Math.max(-READS_WIDE / 2, PLATE_EDGE - x),
+                width - PLATE_EDGE - READS_WIDE - x,
+              ),
+              width: READS_WIDE,
+              ...(down ? { top: -PLATE_TALL } : { bottom: 0 }),
+            }
+      }
       className={cn(
-        "pointer-events-auto absolute flex animate-in cursor-auto select-text flex-col rounded-2xl bg-background shadow-lg fade-in zoom-in-95 duration-150",
-        down ? "origin-top" : "origin-bottom",
+        "pointer-events-auto absolute flex cursor-auto select-text flex-col rounded-2xl bg-background shadow-lg",
+        down ? "animate-office-card-down" : "animate-office-card-up",
         asks ? "ring-[1.5px] ring-waiting" : "ring-1 ring-border",
       )}
     >
@@ -1760,7 +2057,7 @@ function StateGlyph({ state }: { state: SeatKey }) {
           height={8}
           viewBox="0 0 11 9"
           aria-hidden
-          className="shrink-0"
+          className="office-check shrink-0"
         >
           <path
             d="M1 4.5l3 3L10 1.5"
@@ -1783,4 +2080,262 @@ function StateGlyph({ state }: { state: SeatKey }) {
         <span className="size-1.5 shrink-0 rounded-full bg-muted-foreground" />
       );
   }
+}
+
+/** The mark each state of the job wears on the head's line. */
+const SIGN_GLYPH: Record<Sign, SeatKey> = {
+  work: "run",
+  you: "asking",
+  paused: "paused",
+  stopped: "stopped",
+  done: "done",
+};
+
+/**
+ * How the job stands, in words on the title's line: at work and how many are back, the user's
+ * turn and who asks, paused on Continue, stopped, done. Ember only when it wants the user, and
+ * then it takes them to what they are asked in the room (`onAnswer`). How long it has run is the
+ * scoreboard's.
+ */
+function StateLine({
+  scene,
+  sign,
+  onAnswer,
+}: {
+  scene: OfficeScene;
+  sign: Sign;
+  onAnswer?: () => void;
+}) {
+  const { called, back } = backOf(scene);
+  const asker = scene.office.bots.find(
+    (bot) => seatAt(scene, bot).key === "asking",
+  );
+  const words = {
+    work: `At work · ${back} of ${called} back`,
+    you: `Your turn — ${asker ?? "a bot"} asks`,
+    paused: "Paused — waiting on Continue",
+    stopped: "Stopped",
+    done: "Done",
+  }[sign];
+  const wants = sign === "you" || sign === "paused";
+  const body = (
+    <>
+      <span
+        className={cn(
+          "flex w-3 justify-center",
+          !wants && "text-muted-foreground",
+        )}
+      >
+        <StateGlyph state={SIGN_GLYPH[sign]} />
+      </span>
+      {words}
+    </>
+  );
+  return wants && onAnswer ? (
+    <button
+      type="button"
+      onClick={onAnswer}
+      className="pointer-events-auto flex items-center gap-1.5 text-[15px] text-waiting underline-offset-4 outline-none hover:underline focus-visible:underline"
+    >
+      {body}
+    </button>
+  ) : (
+    <span
+      className={cn(
+        "flex items-center gap-1.5 text-[15px]",
+        wants
+          ? "text-waiting"
+          : sign === "stopped"
+            ? "text-muted-foreground"
+            : "text-foreground/70",
+      )}
+    >
+      {body}
+    </span>
+  );
+}
+
+/** Seconds since the handover, moving on a second at a time while the job runs; where it was seen to end after. */
+function useRunFor(start: number, ended: number | null) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (ended !== null) return;
+    const tick = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(tick);
+  }, [ended]);
+  return ended ?? (now - start) / 1000;
+}
+
+/**
+ * A time in seven segments, `tall` px high, in the colour around it: minutes and seconds, then
+ * hours as well, the first group without its leading zero as a scoreboard writes 4:16.
+ */
+function SegmentTime({ seconds, tall }: { seconds: number; tall: number }) {
+  const whole = Math.min(CLOCK_MAX, Math.max(0, Math.floor(seconds)));
+  const hours = Math.floor(whole / 3600);
+  const groups = [
+    ...(hours ? [hours] : []),
+    Math.floor(whole / 60) % (hours ? 60 : 100),
+    whole % 60,
+  ];
+  const dot = Math.max(3, Math.round(tall / 10));
+  return (
+    <div
+      role="img"
+      aria-label={`Running for ${clockOf(seconds)}`}
+      className="flex items-center"
+      style={{ gap: tall / 8 }}
+    >
+      {groups.map((group, index) => (
+        <Fragment key={CLOCK_GROUPS[index]}>
+          {index > 0 && (
+            <span className="flex flex-col" style={{ gap: tall / 3.2 }}>
+              <span
+                className="rounded-[1px] bg-current"
+                style={{ width: dot, height: dot }}
+              />
+              <span
+                className="rounded-[1px] bg-current"
+                style={{ width: dot, height: dot }}
+              />
+            </span>
+          )}
+          {(index > 0 || group >= 10) && (
+            <Digit
+              value={Math.floor(group / 10)}
+              tall={tall}
+              lit="currentColor"
+              unlit={ink(4)}
+            />
+          )}
+          <Digit
+            value={group % 10}
+            tall={tall}
+            lit="currentColor"
+            unlit={ink(4)}
+          />
+        </Fragment>
+      ))}
+    </div>
+  );
+}
+
+/** A bot's face held still (mark.geometry markStill): the scoreboard's, with no loop of its own. */
+function StillMark({
+  bot,
+  icon,
+  size,
+}: {
+  bot: string;
+  icon?: BotRef["icon"];
+  size: number;
+}) {
+  const still = useMemo(() => markStill(bot, icon ?? null), [bot, icon]);
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 240 240"
+      aria-hidden
+      className="shrink-0"
+    >
+      <path
+        d={still.head}
+        style={{ fill: still.paint ? still.paint[0] : still.ink }}
+      />
+      {still.eyes.map((eye) => (
+        <path key={eye} d={eye} style={{ fill: "var(--background)" }} />
+      ))}
+    </svg>
+  );
+}
+
+/** How tall the scoreboard's time stands, in its own pixels (office.scene BOARD). */
+const BOARD_TIME = 170;
+
+/** The most bots the scoreboard's crew lists: all a thread holds (config BOT_RUN.participants). */
+const BOARD_CREW = 8;
+
+/**
+ * The job as a scoreboard standing behind the building at ten o'clock, turned as its left wall is
+ * (office.scene BOARD), its foot behind the wall: faint, but for the time, which is the office's
+ * only clock. At its right the crew as a table: each bot with how it stands and the steps it has
+ * taken, most first.
+ */
+function Scoreboard({
+  stage,
+  scene,
+  sign,
+  start,
+  label,
+  faces,
+}: {
+  stage: Stage;
+  scene: OfficeScene;
+  sign: Sign;
+  start: number;
+  label: string;
+  faces: BotRef[];
+}) {
+  const seconds = useRunFor(start, scene.ended);
+  const crew = scene.office.bots
+    .map((bot, order) => ({
+      bot,
+      order,
+      steps: scene.office.steps.get(bot) ?? 0,
+    }))
+    .sort((a, b) => b.steps - a.steps || a.order - b.order)
+    .slice(0, BOARD_CREW);
+  return (
+    <div
+      aria-hidden
+      className="office-fade pointer-events-none absolute top-0 left-0 origin-top-left"
+      style={{
+        width: stage.board.w,
+        height: stage.board.h,
+        transform: stage.board.matrix,
+        animationDelay: `${stage.popAt}ms`,
+      }}
+    >
+      <div className="absolute inset-x-0 top-0 flex h-85 border-2 border-foreground/30 bg-background/70 text-foreground/40">
+        <div className="flex min-w-0 flex-1 flex-col justify-between px-9 pt-7 pb-8">
+          <div className="flex items-baseline justify-between gap-6 font-semibold text-[26px] uppercase tracking-[0.18em]">
+            <span className="truncate">{label}</span>
+            <span className="shrink-0">{SIGN_WORDS[sign]}</span>
+          </div>
+          <div className="text-foreground/85">
+            <SegmentTime seconds={seconds} tall={BOARD_TIME} />
+          </div>
+        </div>
+        <div className="flex w-105 shrink-0 flex-col gap-1.5 border-foreground/30 border-l-2 px-7 pt-6">
+          <span className="mb-1 flex justify-between font-mono text-[19px] uppercase tracking-[0.2em]">
+            <span>Crew</span>
+            <span>Steps</span>
+          </span>
+          {crew.map(({ bot, steps }, rank) => (
+            <div key={bot} className="flex h-8 items-center gap-3 text-[24px]">
+              <span className="w-5 font-mono text-[18px]">{rank + 1}</span>
+              <StillMark
+                bot={bot}
+                icon={faces.find((one) => one.name === bot)?.icon}
+                size={26}
+              />
+              <span className="min-w-0 flex-1 truncate font-medium text-foreground/65">
+                {bot}
+              </span>
+              <span className="flex w-3 justify-center">
+                <StateGlyph state={seatAt(scene, bot).key} />
+              </span>
+              <span className="w-10 text-right font-mono text-foreground/65 tabular-nums">
+                {steps}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+      {/* its two posts, down behind the wall to the ground */}
+      <span className="absolute top-85 left-24 h-40 w-0.5 bg-foreground/30" />
+      <span className="absolute top-85 right-24 h-40 w-0.5 bg-foreground/30" />
+    </div>
+  );
 }

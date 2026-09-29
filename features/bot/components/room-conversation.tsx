@@ -41,10 +41,12 @@ import {
   type BotRef,
   type Chatter,
   heardBy,
+  officePointed,
   type ThreadItem,
   type ThreadView,
   type ThreadViewStatus,
   threadItems,
+  useOfficePointed,
 } from "../thread.store";
 import { BotTool, StepTile } from "./bot-tool";
 
@@ -73,14 +75,35 @@ export function ThreadHeader({
   thread,
   onBack,
   onClose,
+  titled = true,
   children,
 }: {
   thread: ThreadView;
   onBack: () => void;
   onClose: () => void;
+  /** Heads itself with the thread's bot and name; beside its office, the office's head does (bot-room). */
+  titled?: boolean;
   /** Beside the fold button: how the thread is shown (bot-room). */
   children?: ReactNode;
 }) {
+  if (!titled)
+    return (
+      <div className="flex items-center gap-2 px-3 pt-3 pb-1">
+        <button
+          type="button"
+          onClick={onBack}
+          aria-label="Back to the list"
+          className="flex shrink-0 items-center gap-1 rounded-md p-1 pr-2 text-[12.5px] text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
+        >
+          <ChevronLeft className="size-4" />
+          Threads
+        </button>
+        <span className="flex-1" />
+        <ThreadFacts thread={thread} />
+        {children}
+        <FoldButton onClick={onClose} />
+      </div>
+    );
   return (
     <div className="flex items-center gap-2 px-3 pt-3 pb-1">
       <button
@@ -377,6 +400,9 @@ function ThreadTabs({
   onPick: (bot: string | null) => void;
   className?: string;
 }) {
+  // A bot pointed at in the office lights its tab as if hovered; pointing at a tab unfolds its
+  // plate there (thread.store officePointed)
+  const pointed = useOfficePointed();
   return (
     <Tabs
       value={side ?? thread.bot.name}
@@ -394,7 +420,13 @@ function ThreadTabs({
             <TabsTrigger
               key={bot.name}
               value={bot.name}
-              className={cn(TAB, "pl-1.5")}
+              onPointerEnter={() => officePointed.set(bot.name)}
+              onPointerLeave={() => officePointed.set(null)}
+              className={cn(
+                TAB,
+                "pl-1.5",
+                pointed === bot.name && "bg-muted/60 text-foreground",
+              )}
             >
               <BotMark
                 size={16}

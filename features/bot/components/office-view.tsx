@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { OfficeStage } from "@/features/bot/components/office-stage";
 import {
   type OfficeThread,
@@ -8,6 +8,7 @@ import {
   sceneOf,
   watch,
 } from "@/features/bot/office";
+import type { Camera } from "@/features/bot/office.scene";
 import type { ThreadView } from "@/features/bot/thread.store";
 import { FileViewer } from "@/features/workspace/components/file-view";
 import { toDate } from "@/lib/date-like";
@@ -19,11 +20,14 @@ import { cn } from "@/lib/utils";
  * the report at your counter and its files under the job's name. The room beside it is the
  * thread's words and box; pressing a bot here opens its tab there.
  * It fades in as it builds itself, and out while `leaving`, as her face comes back through it.
+ * Another thread opened in its place builds its own office as this one sinks away.
  */
 export function OfficeBackdrop({
   thread,
   leaving = false,
   onBot,
+  onAnswer,
+  camera,
   className,
 }: {
   thread: ThreadView;
@@ -31,8 +35,24 @@ export function OfficeBackdrop({
   leaving?: boolean;
   /** A bot pressed in the office: the room opens its tab (bot-room). */
   onBot?: (bot: string) => void;
+  /** The head's ember line pressed: the room takes the user to what they are asked (bot-room). */
+  onAnswer?: () => void;
+  /** Where the office is seen from (office.scene Camera); a film sets its own. */
+  camera?: Camera;
   className?: string;
 }) {
+  // The thread shown before this one, kept while it sinks away (office-sink)
+  const [was, setWas] = useState<ThreadView | null>(null);
+  const [shown, setShown] = useState(thread);
+  if (shown.id !== thread.id) {
+    setWas(shown);
+    setShown(thread);
+  } else if (shown !== thread) setShown(thread);
+  useEffect(() => {
+    if (!was) return;
+    const out = window.setTimeout(() => setWas(null), 240);
+    return () => window.clearTimeout(out);
+  }, [was]);
   return (
     <div
       inert={leaving}
@@ -43,8 +63,36 @@ export function OfficeBackdrop({
           "pointer-events-none opacity-0 transition-opacity duration-250 ease-in",
       )}
     >
-      {/* Another thread builds its own office from the start */}
-      <Office key={thread.id} thread={thread} onBot={onBot} />
+      {/* Another thread builds its own office from the start; the one before keeps its own, the
+          same element, as it sinks away */}
+      <div className="relative flex min-h-0 min-w-0 flex-1">
+        {(was ? [was, thread] : [thread]).map((one) =>
+          one === was ? (
+            <div
+              key={one.id}
+              inert
+              className="pointer-events-none absolute inset-0 flex animate-office-sink"
+            >
+              <Office thread={one} camera={camera} />
+            </div>
+          ) : (
+            <div
+              key={one.id}
+              className={cn(
+                "flex min-h-0 min-w-0 flex-1",
+                was && "animate-office-rise",
+              )}
+            >
+              <Office
+                thread={one}
+                onBot={onBot}
+                onAnswer={onAnswer}
+                camera={camera}
+              />
+            </div>
+          ),
+        )}
+      </div>
     </div>
   );
 }
@@ -52,9 +100,13 @@ export function OfficeBackdrop({
 function Office({
   thread,
   onBot,
+  onAnswer,
+  camera,
 }: {
   thread: ThreadView;
   onBot?: (bot: string) => void;
+  onAnswer?: () => void;
+  camera?: Camera;
 }) {
   const start = toDate(thread.createdAt).getTime();
   const office = useMemo(() => officeOf(thread), [thread]);
@@ -71,6 +123,8 @@ function Office({
         faces={thread.roster}
         from={thread.id}
         onBot={onBot}
+        onAnswer={onAnswer}
+        camera={camera}
         className="min-h-0 min-w-0 flex-1"
       />
     </FileViewer>

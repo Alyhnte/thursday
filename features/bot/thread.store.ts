@@ -595,6 +595,33 @@ export function useOfficeCaption(): boolean {
   );
 }
 
+/**
+ * The bot pointed at in the open thread, in its tab in the room or in its office: pointing at one
+ * lights the other, the tab as if hovered and the bot's plate unfolded (room-conversation
+ * ThreadTabs, office-stage PlateAt).
+ */
+let pointedBot: string | null = null;
+const pointedListeners = new Set<() => void>();
+
+export const officePointed = {
+  set(bot: string | null) {
+    if (bot === pointedBot) return;
+    pointedBot = bot;
+    for (const listener of pointedListeners) listener();
+  },
+};
+
+export function useOfficePointed(): string | null {
+  return useSyncExternalStore(
+    (listener) => {
+      pointedListeners.add(listener);
+      return () => pointedListeners.delete(listener);
+    },
+    () => pointedBot,
+    () => null,
+  );
+}
+
 const writes = new Set<(choose: boolean) => void>();
 const draws = new Set<() => void>();
 let writeLineUp = false;
