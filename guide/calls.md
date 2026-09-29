@@ -23,8 +23,10 @@ memory (`memory.md`). A call she places herself opens on why she called.
 The first call started from the page — spoken or in writing — has the browser ask to know the
 user's location. Allowed, she knows on every call which town they are in and the weather there:
 the page asks BigDataCloud for the town's name and Open-Meteo for the weather, and only those two
-reach her. What was found is used for half an hour before it is looked up again. Refused, or not
-known within three seconds, the call goes on without it and nothing is sent. The browser keeps
+reach her. What was found is used for half an hour before it is looked up again. Once it is
+allowed, the page asks the device for its position as it opens, so a call does not wait on the
+device; the position stays in the page until a call starts. Refused, or not known within three
+seconds, the call goes on without it and nothing is sent. The browser keeps
 the answer; it is changed in the browser's site settings for this app (the icon left of the
 address). A phone chat has no browser, so she does not know it there.
 
@@ -33,7 +35,7 @@ with her turning into a globe: it spins to where they are, dives until their cou
 screen, and shows the sky over it as it is there now — the sun or the moon where it really is,
 and the weather, lightly — while she greets them with that weather. At night the country is
 dark. After about eight seconds she is back; tapping the globe brings her back sooner and does
-not hang up. It waits for the next call on a call she placed herself and on the very first
+not hang up, and opening a job's office over her ends it. It waits for the next call on a call she placed herself and on the very first
 call, and does not play when the system is set to reduce motion or the app's page is not the
 one in front. The day counts only once it has played, in this browser only. The map is drawn
 in the browser, so the position still goes nowhere.
