@@ -439,6 +439,150 @@ test("a run the page asks for with no call out runs her backend on what it put d
   line.leave.abort();
 });
 
+/** What the page sends as a drawing is shown: the fact for her backend, then the picture. */
+const shown = (path: string) => [
+  {
+    type: "response.item.create",
+    item: {
+      type: "message",
+      role: "developer",
+      content: [
+        {
+          type: "input_text",
+          text: `The user drew a picture on screen and showed it to you, kept on this computer at ${path}.`,
+        },
+      ],
+    },
+  },
+  {
+    type: "response.item.create",
+    item: {
+      type: "message",
+      role: "user",
+      content: [
+        { type: "input_text", text: `${path}, as an image:` },
+        {
+          type: "input_image",
+          image_url: "data:image/png;base64,iVBORw0KGgo=",
+        },
+      ],
+    },
+  },
+];
+
+/** Until the voice has been given `count` things, or two seconds. */
+async function saidBy(count: number) {
+  for (let waited = 0; waited < 2_000 && wire.said.length < count; waited += 5)
+    await new Promise((settle) => setTimeout(settle, 5));
+}
+
+test("a run carries what was said as the drawing was shown, and one whose drawing a hand-over already took runs nothing", async () => {
+  const line = await openLine("call-said");
+  const before = wire.said.length;
+  steps.push(() => [{ type: "text", text: "It is busy, yes." }]);
+  wire.hear({
+    type: "turn.done",
+    turn: { role: "user", transcript: "Is this logo too busy?" },
+  });
+  tellPlanLine("call-said", [
+    ...shown("inbox/logo.png"),
+    { type: "response.create" },
+  ]);
+  await saidBy(before + 1);
+  const prompt = prompts.at(-1) ?? "";
+  const said = prompt.indexOf("Is this logo too busy?");
+  assert.ok(said >= 0, "what was said goes in with the run");
+  assert.ok(said < prompt.indexOf("inbox/logo.png, as an image:"));
+  // The voice hands over as the next drawing is shown: the hand-over takes it, and the run the
+  // page asked for after it finds nothing left to answer
+  steps.push(() => [{ type: "text", text: "A second logo, simpler." }]);
+  tellPlanLine("call-said", shown("inbox/logo-2.png"));
+  wire.hear({
+    type: "delegation.created",
+    item: {
+      type: "delegation",
+      target: "client",
+      id: "del_said",
+      content: [{ type: "input_text", text: "And this one?" }],
+    },
+  });
+  tellPlanLine("call-said", [{ type: "response.create" }]);
+  await saidBy(before + 2);
+  await new Promise((settle) => setTimeout(settle, 50));
+  assert.deepEqual(wire.said.slice(before), [
+    { text: "It is busy, yes.", channel: "speakable" },
+    {
+      text: "A second logo, simpler.",
+      channel: "speakable",
+      delegation: "del_said",
+    },
+  ]);
+  assert.equal(steps.length, 0);
+  line.leave.abort();
+});
+
+test("a run asked while her calls are out, before their outputs, is not taken for going on, and what was put down goes in after their results", async () => {
+  const line = await openLine("call-out");
+  const before = wire.said.length;
+  steps.push(
+    () => [
+      {
+        type: "tool-call",
+        toolCallId: "call_out",
+        toolName: TOOL_NAMES.thread_status,
+        input: JSON.stringify({ thread: "all" }),
+      },
+    ],
+    () => [{ type: "text", text: "Nothing runs, and a nice drawing." }],
+  );
+  wire.hear({
+    type: "delegation.created",
+    item: {
+      type: "delegation",
+      target: "client",
+      id: "del_out",
+      content: [{ type: "input_text", text: "Is anything running?" }],
+    },
+  });
+  await line.next("response.completed");
+  const asked = prompts.length;
+  // From a page that had not heard of the step: a run, not the step going on
+  tellPlanLine("call-out", [
+    ...shown("inbox/drawing.png"),
+    { type: "response.create" },
+  ]);
+  await new Promise((settle) => setTimeout(settle, 50));
+  assert.equal(prompts.length, asked, "nothing went on before the outputs");
+  tellPlanLine("call-out", [
+    {
+      type: "response.item.create",
+      item: {
+        type: "function_call_output",
+        call_id: "call_out",
+        output: "No jobs.",
+      },
+    },
+    { type: "response.create" },
+  ]);
+  await saidBy(before + 1);
+  const prompt = prompts.at(-1) ?? "";
+  const result = prompt.indexOf("No jobs.");
+  const fact = prompt.indexOf("showed it to you");
+  const named = prompt.indexOf("inbox/drawing.png, as an image:");
+  assert.ok(result >= 0 && result < fact, "the call's result, then the fact");
+  assert.ok(fact < named, "the fact, then the picture");
+  await new Promise((settle) => setTimeout(settle, 50));
+  assert.deepEqual(wire.said.slice(before), [
+    {
+      text: "Nothing runs, and a nice drawing.",
+      channel: "speakable",
+      delegation: "del_out",
+    },
+  ]);
+  assert.equal(steps.length, 0);
+  line.leave.abort();
+});
+
 test("what the page puts in goes into the voice's context on the channel its kind asks for, and is acknowledged", async () => {
   const line = await openLine("call-say");
   tellPlanLine("call-say", [

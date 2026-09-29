@@ -76,9 +76,28 @@ export function useGivenFiles(options?: {
     [files.length, give],
   );
 
+  /**
+   * Keeps one file in the workspace without holding it here, for what goes on its own (a
+   * drawing shown on a spoken call, write-line). Resolves to its path; null when it was not
+   * kept, and the hook has already said why.
+   */
+  const keepApart = useCallback(
+    async (file: File): Promise<string | null> => {
+      const form = new FormData();
+      form.append("file", file);
+      try {
+        return (await give(form))[0] ?? null;
+      } catch {
+        return null;
+      }
+    },
+    [give],
+  );
+
   return {
     files,
     take,
+    keepApart,
     remove: (key: string) =>
       setFiles((all) => all.filter((one) => one.key !== key)),
     clear: () => setFiles([]),

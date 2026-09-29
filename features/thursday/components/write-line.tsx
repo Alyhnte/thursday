@@ -51,7 +51,6 @@ import {
   roomDrop,
   useGivenFiles,
 } from "@/features/workspace/components/given-files";
-import { giveFilesAction } from "@/features/workspace/workspace.action";
 import { composing, typed, useEscape, windowKey } from "@/hooks/use-hotkey";
 import { useServerAction } from "@/lib/protocol/use-server-action";
 import { revalidate, useServerRoute } from "@/lib/protocol/use-server-route";
@@ -147,7 +146,6 @@ export function WriteLine({
   });
   const field = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
-  const [give] = useServerAction(giveFilesAction);
 
   const calling = Boolean(written?.on);
   // The line is hers, until a bot is picked for one message: that pick lasts for the message
@@ -380,11 +378,17 @@ export function WriteLine({
       onDone={async (file) => {
         setDrawing(false);
         if (!spoken.current) return (await take([file])).length > 0;
-        const form = new FormData();
-        form.append("file", file);
-        // the hook has already said why when this throws; the drawing stays on the pad
-        const [path] = await give(form).catch(() => []);
+        // Not kept, it stays on the pad; the hook has said why
+        const path = await given.keepApart(file);
         if (!path) return false;
+        // Hung up while it was kept: nobody is there to see it, and the pad keeps it
+        if (!spoken.current) {
+          toast.add({
+            type: "error",
+            title: "The call ended before she saw the drawing.",
+          });
+          return false;
+        }
         screenActs.announce({ kind: "showed", path });
         toast.add({ type: "success", title: "Shown to her" });
         return true;

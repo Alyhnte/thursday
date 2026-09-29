@@ -373,6 +373,55 @@ test("a run asked for on what was put down goes at once while the backend is qui
   ]);
 });
 
+test("what is put down or run after a turn is asked for and before it starts waits for that turn, and runs once after it", async () => {
+  const pending = new Map<string, (value: string | LiveToolResult) => void>();
+  const { session } = await connect({
+    runTool: (call) => new Promise((resolve) => pending.set(call.id, resolve)),
+  });
+  nested({ type: "response.created", response: { id: "r1" } });
+  functionCall("a");
+  nested({ type: "response.completed", response: { id: "r1", output: [] } });
+  await tick();
+  pending.get("a")?.("done");
+  await tick();
+  assert.deepEqual(backendOrder(), ["function_call_output:a", "continue"]);
+  // Asked to go on, not yet started: a second run here met the first
+  sent = [];
+  session.picture("data:image/jpeg;base64,BBBB", "inbox/drawing.png");
+  session.run();
+  assert.deepEqual(backendOrder(), []);
+  nested({ type: "response.created", response: { id: "r2" } });
+  assert.deepEqual(backendOrder(), []);
+  nested({ type: "response.completed", response: { id: "r2", output: [] } });
+  await tick();
+  assert.deepEqual(backendOrder(), ["message:user", "continue"]);
+  // The voice handing over is a turn asked for the same way
+  nested({ type: "response.created", response: { id: "r3" } });
+  nested({ type: "response.completed", response: { id: "r3", output: [] } });
+  await tick();
+  sent = [];
+  wire.on.event({ type: "session.delegation.created" });
+  session.picture("data:image/jpeg;base64,CCCC", "inbox/drawing-2.png");
+  session.run();
+  assert.deepEqual(backendOrder(), []);
+  nested({ type: "response.created", response: { id: "r4" } });
+  nested({ type: "response.completed", response: { id: "r4", output: [] } });
+  await tick();
+  assert.deepEqual(backendOrder(), ["message:user", "continue"]);
+});
+
+test("a turn asked for that never starts leaves what waited on it to go in, and the run, once the gap is past", async (context) => {
+  context.mock.timers.enable({ apis: ["setTimeout"] });
+  const { session } = await connect();
+  wire.on.event({ type: "session.delegation.created" });
+  session.picture("data:image/jpeg;base64,BBBB", "inbox/drawing.png");
+  session.run();
+  assert.deepEqual(backendOrder(), []);
+  // well past the gap a response.create is still counted as work for
+  context.mock.timers.tick(60_000);
+  assert.deepEqual(backendOrder(), ["message:user", "continue"]);
+});
+
 test("a picture put down that the connection will not carry is said by its path, to the backend and the user", async () => {
   refuses = (event) => JSON.stringify(event).includes('"type":"input_image"');
   const { session, warnings } = await connect();

@@ -328,6 +328,8 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
     clearTimeout(closeTimer);
     clearTimeout(appendTimer);
     clearTimeout(holdTimer);
+    if (early) clearTimeout(early.timer);
+    early = null;
     clearInterval(activityTimer);
     flushTranscripts();
     pendingAppend = null;
@@ -341,7 +343,10 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
     if (started && !closing) on.failed(message);
     else if (closing) on.warn(message);
   };
-  /** When the backend was last told to go on; cleared once its next response starts. */
+  /**
+   * When a turn of the backend's was last asked for — the page going on or running it, or the
+   * voice handing over — and has not started; cleared once its response starts.
+   */
   let continuedAt = Number.NEGATIVE_INFINITY;
   const activity = () => {
     if (closed || closing) return;
@@ -467,10 +472,31 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
     for (const given of response.held.splice(0))
       if ("fact" in given) sendFact(given.fact);
       else sendImage(given);
-    if (response.rerun && !goesOn) {
-      response.rerun = false;
-      ask();
-    }
+    // Taken either way: gone on with, the run was that, and it is not asked again later
+    const rerun = response.rerun;
+    response.rerun = false;
+    if (rerun && !goesOn) ask();
+  };
+  /**
+   * What is put down or asked for after a turn was asked for and before it starts: that turn
+   * takes it when it does, as what comes while a turn runs. Sent without it — the run asked
+   * then — once CONTINUE_GAP_MS passes with no turn started.
+   */
+  let early: {
+    held: Given[];
+    rerun: boolean;
+    timer: ReturnType<typeof setTimeout>;
+  } | null = null;
+  const flushEarly = () => {
+    const was = early;
+    early = null;
+    if (!was) return;
+    clearTimeout(was.timer);
+    if (closed || closing) return;
+    for (const given of was.held)
+      if ("fact" in given) sendFact(given.fact);
+      else sendImage(given);
+    if (was.rerun) ask();
   };
   /**
    * The turn of the backend's that what is put down now waits on: the latest, while it runs
@@ -483,6 +509,23 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
       (!latest.terminal || latest.calls.size > 0)
       ? latest
       : undefined;
+  };
+  /**
+   * What what is put down now waits on: the turn that runs, or one asked for that has not
+   * started (early). None when the backend is quiet, and it goes in at once. Asked again
+   * while one had not started, a second run met the first and her answer to it was lost.
+   */
+  const waitingOn = (): { held: Given[]; rerun?: boolean } | undefined => {
+    const running = runningTurn();
+    if (running) return running;
+    const since = performance.now() - continuedAt;
+    if (since >= CONTINUE_GAP_MS) return undefined;
+    early ??= {
+      held: [],
+      rerun: false,
+      timer: setTimeout(flushEarly, CONTINUE_GAP_MS - since),
+    };
+    return early;
   };
   const continueResponse = async (response: BackendResponse) => {
     if (!response.terminal || response.continued) return;
@@ -620,6 +663,11 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
         activity();
         break;
       }
+      // The voice handed over: its turn is asked for, and starts with the events that follow
+      // (the delegation guide: "Subsequent Responses events arrive inside a response.event")
+      case "session.delegation.created":
+        continuedAt = performance.now();
+        break;
       case "response.event": {
         const nested = event.event;
         if (!nested || closing) break;
@@ -651,12 +699,19 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
               carried.push(...earlier.held.splice(0));
               rerun ||= Boolean(earlier.rerun);
             }
+          // and what came while it was asked for and not yet started
+          if (early) {
+            clearTimeout(early.timer);
+            carried.push(...early.held);
+            rerun ||= early.rerun;
+            early = null;
+          }
           response = {
             calls: new Map(),
             held: carried,
             terminal: false,
             continued: false,
-            ...(rerun ? { rerun } : {}),
+            rerun,
           };
           responses.set(id, response);
         }
@@ -904,15 +959,16 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
      * Queues a fact for the backend alone. It starts no turn: it waits in the backend's
      * conversation and is read with whatever the voice hands over next, and the voice,
      * which may say aloud anything appended to it, never sees it. It goes in at once, or —
-     * while a turn of the backend's runs or waits on its tools — after that turn's outputs,
-     * in order with what else was put down (runningTurn). Live acknowledges no item; a
+     * while a turn of the backend's runs, waits on its tools, or was asked for and has not
+     * started — after that turn's outputs, in order with what else was put down (waitingOn).
+     * Live acknowledges no item; a
      * refusal comes back as an `error`.
      */
     brief(text: string): void {
       const fact = text.trim();
       if (closed || closing || !fact) return;
-      const running = runningTurn();
-      if (running) running.held.push({ fact });
+      const waiting = waitingOn();
+      if (waiting) waiting.held.push({ fact });
       else sendFact(fact);
     },
     /**
@@ -923,8 +979,8 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
      */
     picture(image: string, path: string): void {
       if (closed || closing) return;
-      const running = runningTurn();
-      if (running) running.held.push({ image, path });
+      const waiting = waitingOn();
+      if (waiting) waiting.held.push({ image, path });
       else sendImage({ image, path });
     },
     /**
@@ -937,8 +993,8 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
      */
     run(): void {
       if (closed || closing) return;
-      const running = runningTurn();
-      if (running) running.rerun = true;
+      const waiting = waitingOn();
+      if (waiting) waiting.rerun = true;
       else ask();
       activity();
     },
