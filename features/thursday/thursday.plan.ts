@@ -99,9 +99,9 @@ type PlanLine = {
    */
   outputs: Map<string, string>;
   /**
-   * Pictures the page sent as the user's, each with the words it came with: of their screen
-   * after the outputs of the step that asked, or of a file they put down. In after those
-   * outputs, or before her next step when no tool's result came with them.
+   * Pictures the page sent as the user's, each with the words it came with: of a file they
+   * put down, or of a drawing they showed. In after the outputs of the step that was running
+   * when they were put down, or before her next step when none was.
    */
   pictures: (
     | { type: "text"; text: string }
@@ -351,7 +351,7 @@ function take(line: PlanLine, event: PageEvent) {
       }
       const parts = item?.type === "message" ? (item.content ?? []) : [];
       if (item?.role === "user") {
-        // A picture of their screen, or of a file they put down, with the words it came with
+        // A file they put down or a drawing they showed, as a picture with the words it came with
         for (const part of parts)
           if (part.type === "input_image" && typeof part.image_url === "string")
             line.pictures.push({ type: "image", image: part.image_url });
@@ -437,7 +437,8 @@ function handedOver(text: string, talk: string): string {
 
 /**
  * One hand-over, a step of her backend at a time, each a response of the page's wire: what
- * the step called goes to the page, which runs it and asks for the next response. What she
+ * the step called goes to the page, which runs it and asks for the next response; a call the
+ * sdk could not take is answered by it, and she reads its error in the next step. What she
  * says at the end goes back to the voice to say; a step that fails tells the voice so. A run
  * the page asked for is the same with no hand-over, on what it put down and what was said
  * since she last worked: its end goes into the voice to say. One whose put-down a turn before
@@ -493,6 +494,13 @@ async function respond(line: PlanLine, handed: Handed) {
     line.calling = done.calls.map((call) => call.toolCallId);
     emit({ type: "response.completed", response: { id } });
     if (!done.calls.length) {
+      // Nothing for the page to run, and the sdk's error is among her messages already: she
+      // reads it, and answers or calls what she meant. What was put down meanwhile goes in
+      // after it, and the steps one answer may take still bound this
+      if (done.invalid) {
+        takeGiven(line);
+        continue;
+      }
       if (done.text) tell(done.text);
       return;
     }
@@ -543,7 +551,10 @@ async function stepOf(
   emit: (event: WireEvent) => void,
 ): Promise<
   | {
+      /** What the page runs. */
       calls: { toolCallId: string; toolName: string }[];
+      /** The sdk could not take a call and answered it itself: the page has no result to send for it. */
+      invalid: boolean;
       text: string;
     }
   | { failed: string }
@@ -577,6 +588,10 @@ async function stepOf(
           break;
         }
         case "tool-call":
+          // A call the sdk could not take, a tool she lacks or input that does not fit its
+          // tool, it answers itself with an error among the step's messages: the page is not
+          // asked to run it as well, or the call would have two results
+          if (part.invalid && !part.providerExecuted) break;
           // Her search runs on the plan's side: the page is told what it looked for, not asked to run it
           emit(
             part.providerExecuted
@@ -647,8 +662,10 @@ async function stepOf(
         },
       });
     line.messages.push(...response.messages);
+    const asked = calls.filter((call) => !call.providerExecuted);
     return {
-      calls: calls.filter((call) => !call.providerExecuted),
+      calls: asked.filter((call) => !call.invalid),
+      invalid: asked.some((call) => call.invalid),
       text: text.trim(),
     };
   } catch (cause) {

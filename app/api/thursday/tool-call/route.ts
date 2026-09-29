@@ -51,7 +51,8 @@ export const POST = serverRoute(async (request) => {
   const tool = tools[name];
   if (!tool) publicError(`There is no tool called "${name}".`);
 
-  // end_call has no execute by design: the page owns the call and intercepts it.
+  // The call's own tools (`callTools`) have no execute by design: the page runs them, so one
+  // asked for here is refused by name rather than as a tool that does not exist.
   if (!tool.execute) publicError(`"${name}" is handled by the page, not here.`);
 
   const parsed = await asSchema(tool.inputSchema).validate?.(input ?? {});

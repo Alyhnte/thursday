@@ -1643,9 +1643,6 @@ function Hint({
   );
 }
 
-const LINE_BUTTON =
-  "rounded-md outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50";
-
 /** The drawing pad, on the line while a spoken call is up: what is drawn is handed to her (draw-pad). */
 function DrawOnLine() {
   return (
@@ -1654,7 +1651,7 @@ function DrawOnLine() {
       <button
         type="button"
         onClick={() => writeLine.draw()}
-        className={LINE_BUTTON}
+        className="rounded-md outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
       >
         Draw
       </button>

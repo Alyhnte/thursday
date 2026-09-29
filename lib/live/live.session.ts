@@ -100,6 +100,16 @@ const APPEND_BYTES = 480;
  * work for the rest of the call.
  */
 const CONTINUE_GAP_MS = 5_000;
+/**
+ * What one data channel message may carry when the far end names no limit (the SCTP default
+ * the two ends both know), for a picture put down while the connection says none it can be
+ * held to.
+ */
+const SCTP_DEFAULT_BYTES = 65_536;
+/** Room left in that message for the event around a picture: its type, ids and fields. */
+const PICTURE_ENVELOPE_BYTES = 1_024;
+/** Room in a picture's message for the words naming it, past its path: `, as an image:` in its part. */
+const PICTURE_WORDS_BYTES = 64;
 const encoder = new TextEncoder();
 
 export function appendChunks(text: string): string[] {
@@ -231,11 +241,11 @@ type Given = { fact: string } | Picture;
 type BackendResponse = {
   calls: Map<string, Promise<void>>;
   /**
-   * What waits on this turn: pictures its tools handed back, and facts and pictures put down
-   * while it ran, sent in order once every output is in and just before it goes on — or as
-   * it ends, when it has nothing to go on with. The guide returns every pending result
-   * first: an item between a call and its output, or between two outputs of one turn, is an
-   * order it never shows.
+   * What waits on this turn: the facts and pictures put down while it ran or waited on its
+   * tools. They go in order once every output is in — just before the turn goes on, or, when
+   * it does not, straight after the outputs. The guide returns every pending result first: an
+   * item between a call and its output, or between two outputs of one turn, is an order it
+   * never shows.
    */
   held: Given[];
   /**
@@ -531,6 +541,18 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
     }
     activity();
   };
+  /**
+   * A turn that ends without going on — failed, cancelled, or cut off again after one was
+   * continued: what waited on it goes in once its tools' outputs are, and the run asked for
+   * while it went follows. Any sooner puts an item between a call and its output.
+   */
+  const endResponse = async (response: BackendResponse) => {
+    response.continued = true;
+    // A turn that called none has nothing to wait for, and is let go as it ends
+    if (response.calls.size) await Promise.all(response.calls.values());
+    if (!closing && !closed) release(response);
+    activity();
+  };
   /** A fact for the backend alone, as a developer message. */
   const sendFact = (text: string) =>
     transport.send({
@@ -544,8 +566,9 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
     });
   /**
    * A picture for the backend, as the user's image, named by its path. One the connection will
-   * not carry is said to the backend instead, which was told a picture follows and without a
-   * word described what it never saw — and to the user, whose picture went unseen.
+   * not carry is said to the backend and to the user instead. The backend was told of the file
+   * (where it is kept, or that it was shown) and without a word would describe what it never
+   * saw; the user's picture went unseen.
    */
   const sendImage = ({ image, path }: Picture) => {
     try {
@@ -569,6 +592,26 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
       );
       on.warn(`${path} did not go through to her: ${reason}`);
     }
+  };
+  /**
+   * The most a picture's data URL may take to go in one message naming `path` (sendImage): what
+   * the connection carries in one, less the event around the picture, the words naming it and
+   * the path's own bytes.
+   */
+  const pictureRoom = (path: string): number => {
+    const limit = transport.limit();
+    // A limit no picture can be held to — none yet, 0, none at all (Infinity), or too small for
+    // the event around one — is taken as the smallest one every end takes
+    const bytes =
+      limit && Number.isFinite(limit) && limit > PICTURE_ENVELOPE_BYTES * 2
+        ? limit
+        : SCTP_DEFAULT_BYTES;
+    return (
+      bytes -
+      PICTURE_ENVELOPE_BYTES -
+      encoder.encode(path).length -
+      PICTURE_WORDS_BYTES
+    );
   };
   const handle = (event: LiveEvent) => {
     if (closed) return;
@@ -765,10 +808,7 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
             if (response.calls.size && !salvaging) {
               salvaging = true;
               void continueResponse(response);
-            } else {
-              response.continued = true;
-              release(response);
-            }
+            } else void endResponse(response);
             break;
           }
           on.turn({
@@ -833,8 +873,7 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
             void continueResponse(response);
           } else {
             salvaging = false;
-            response.continued = true;
-            release(response);
+            void endResponse(response);
             on.warn(
               nested.response?.error?.message ??
                 `The Live backend ${nested.type.slice(9)}.`,
@@ -929,13 +968,7 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
       transport.send({ type: "session.input_audio.mute", event_id: held.mute });
       holdTimer = setTimeout(letGo, ms);
     },
-    /**
-     * The largest message the connection carries, in bytes, once it is up: a picture for the
-     * backend goes in one message, so it is made to fit. Null before the connection says.
-     */
-    messageLimit(): number | null {
-      return transport.limit();
-    },
+    pictureRoom,
     /**
      * Queues a fact for the backend alone. It starts no turn: it waits in the backend's
      * conversation and is read with whatever the voice hands over next, and the voice,
@@ -953,7 +986,7 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
       else sendFact(fact);
     },
     /**
-     * A picture kept at `path` (a data URL of it, made to fit `messageLimit`) into the
+     * A picture kept at `path` (a data URL of it, made to fit `pictureRoom(path)`) into the
      * backend's conversation, as the guide has an image reach it ("Add images and visual
      * context"): at once, or after the outputs of the turn it would land in, as a brief goes.
      * Like a brief it starts no turn.

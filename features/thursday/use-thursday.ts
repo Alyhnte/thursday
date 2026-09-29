@@ -66,6 +66,7 @@ import {
   toldWork,
 } from "./open-work";
 import { pictureOfFile } from "./picture";
+import { type PutDown, putDown } from "./put-down";
 import { screenActLine } from "./screen-act";
 import {
   endCallAction,
@@ -119,58 +120,6 @@ const FACE_SETTLE_MS = 600;
  * enough for the orb to spell its ERROR out. The toast carries the reason.
  */
 const FAILED_FACE_MS = 6000;
-
-/**
- * What one data channel message may carry when the far end names no limit (the SCTP default
- * the two ends both know), for a picture put down while the connection says none it can be
- * held to.
- */
-const SCTP_DEFAULT_BYTES = 65_536;
-
-/** Room left in that message for the event around a picture: its type, ids and fields. */
-const PICTURE_ENVELOPE_BYTES = 1_024;
-
-/** The most a picture may take to fit one message of a connection whose limit is `limit`. */
-function pictureBytes(limit: number | null | undefined) {
-  // A limit no picture can be held to — none yet, 0, or none at all (Infinity) — is taken as
-  // the smallest one every end takes
-  const bytes =
-    limit && Number.isFinite(limit) && limit > PICTURE_ENVELOPE_BYTES * 2
-      ? limit
-      : SCTP_DEFAULT_BYTES;
-  return bytes - PICTURE_ENVELOPE_BYTES;
-}
-
-/**
- * Files put down on a spoken call: the fact that names them, which of them are pictures, and
- * whether the backend runs on them once they are in (a drawing shown to her).
- */
-type PutDown = { fact: string; pictures: string[]; run?: boolean };
-
-/** Room in a picture's message for the words naming it, past its path: `, as an image:` in its part. */
-const PICTURE_WORDS_BYTES = 64;
-
-/**
- * Files put down, into the backend's conversation: the fact with their paths, then each
- * picture among them as a picture, read through the file route and made to fit the line. One that cannot be made so is said to it instead, never left out unsaid. Asked
- * to, the backend then runs on them, and what it makes of them is hers to say.
- */
-async function putDown(live: LiveSession, { fact, pictures, run }: PutDown) {
-  live.brief(fact);
-  for (const path of pictures) {
-    const room =
-      pictureBytes(live.messageLimit()) -
-      new TextEncoder().encode(path).length -
-      PICTURE_WORDS_BYTES;
-    const taken = await pictureOfFile(path, room);
-    if ("url" in taken) live.picture(taken.url, path);
-    else
-      live.brief(
-        `${path} could not be put before you as a picture: ${taken.failed}`,
-      );
-  }
-  if (run) live.run();
-}
 
 /**
  * What the activity line draws: a tool the model is using, or a relay. `line` is
@@ -386,14 +335,15 @@ export function useThursday(
   const latest = useRef<Thread[] | undefined>(undefined);
   /**
    * Context she need not say (screen acts), including what arrives before the
-   * line opens. Held until the session exists.
+   * line opens. Held until the session exists. A file put down is not in it: she is told of
+   * that once the backend has it (`briefs`).
    */
   const outboxRef = useRef<Outbox<string> | null>(null);
   const outbox = (outboxRef.current ??= createOutbox<string>());
   /**
    * What the backend alone is given, held the same way: files put down, each a fact with its
    * path (`brief`) and the pictures among them as pictures, into its conversation before it is
-   * asked about them (putDown).
+   * asked about them; she is told of them once they are in (putDown).
    */
   const briefsRef = useRef<Outbox<PutDown> | null>(null);
   const briefs = (briefsRef.current ??= createOutbox<PutDown>());
@@ -722,24 +672,20 @@ export function useThursday(
 
   // The user acted on screen: context she need not say (screen-act). A file put down is the
   // backend's too, which the voice cannot give it: on the plan's line the voice's context
-  // never reaches it, a picture the voice cannot take at all, and a bot needs the path
+  // never reaches it, a picture the voice cannot take at all, and a bot needs the path. She is
+  // told of a file once the backend has it (putDown), not at once: told first, she hands over
+  // a question about what it has not been given. Shown to her, a drawing is asked about: she
+  // looks at once, the voice with nothing to hand over
   useEffect(
     () =>
       screenActs.subscribe((act) => {
         if (!calling.current) return;
-        outbox.send(screenActLine(act));
+        const line = screenActLine(act);
         if (act.kind === "gave")
-          briefs.send({
-            fact: screenActLine(act),
-            pictures: act.paths.filter(isPicture),
-          });
-        // Shown to her, it is asked about: she looks at once, the voice with nothing to hand over
-        if (act.kind === "showed")
-          briefs.send({
-            fact: screenActLine(act),
-            pictures: [act.path],
-            run: true,
-          });
+          briefs.send({ fact: line, pictures: act.paths.filter(isPicture) });
+        else if (act.kind === "showed")
+          briefs.send({ fact: line, pictures: [act.path], run: true });
+        else outbox.send(line);
       }),
     [outbox, briefs],
   );
@@ -1326,8 +1272,21 @@ export function useThursday(
         ? new Set()
         : stoodBefore(latest.current ?? []);
       // Context is not gated: held lines first, then each as it comes
-      outbox.open((text) => void live.append("thinking", text));
-      briefs.open((given) => void putDown(live, given));
+      const tell = (text: string) => void live.append("thinking", text);
+      outbox.open(tell);
+      // A put-down still being made when the line goes down ends on this closed session and
+      // tells no other call, as it would through the outbox the next call reuses. One that
+      // fails says so on screen, after she has been told
+      briefs.open(
+        (given) =>
+          void putDown(live, given, pictureOfFile, tell).catch((cause) =>
+            toast.add({
+              type: "error",
+              title: "What you put down did not reach the backend",
+              description: errorToString(cause),
+            }),
+          ),
+      );
       // The quiet clock starts with the line, so nothing is put to her the moment it opens
       heard.current = Date.now();
 

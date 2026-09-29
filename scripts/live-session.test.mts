@@ -21,6 +21,8 @@ let sent: Record<string, unknown>[] = [];
 let released = false;
 /** A message the data channel throws on, as it does on one past its limit. */
 let refuses: ((event: Record<string, unknown>) => boolean) | null = null;
+/** The largest message the connection says it carries, as `limit` answers; null before it says. */
+let messageBytes: number | null = 262_144;
 mock.module("../lib/live/live.transport.ts", {
   namedExports: {
     createWebRtcTransport: (options: typeof wire) => {
@@ -34,7 +36,7 @@ mock.module("../lib/live/live.transport.ts", {
           if (refuses?.(event)) throw new TypeError("Message too large");
           sent.push(event);
         },
-        limit: () => 262_144,
+        limit: () => messageBytes,
         // A key's call: its events ride the media connection
         relayed: () => false,
         close: () => {
@@ -63,6 +65,7 @@ afterEach(async () => {
     await closed;
   }
   refuses = null;
+  messageBytes = 262_144;
   mock.restoreAll();
 });
 
@@ -127,7 +130,7 @@ function nested(event: Record<string, unknown>) {
     event,
   });
 }
-const functionCall = (call_id: string) =>
+const functionCall = (call_id: string, status?: string) =>
   nested({
     type: "response.output_item.done",
     item: {
@@ -136,6 +139,7 @@ const functionCall = (call_id: string) =>
       call_id,
       name: "lookup",
       arguments: "{}",
+      ...(status ? { status } : {}),
     },
   });
 const count = (type: string) =>
@@ -191,29 +195,35 @@ const backendOrder = () =>
         : `${item.type}:${item.call_id}`;
     });
 
-test("with two tools in one turn, a picture put down waits until both outputs are in, whichever finishes first", async () => {
-  const pending = new Map<string, (value: string) => void>();
-  const { session } = await connect({
-    runTool: (call) => new Promise((resolve) => pending.set(call.id, resolve)),
+for (const [first, second] of [
+  ["a", "b"],
+  ["b", "a"],
+] as const) {
+  test(`with two tools in one turn, a picture put down waits until both outputs are in, whichever finishes first: ${first} first`, async () => {
+    const pending = new Map<string, (value: string) => void>();
+    const { session } = await connect({
+      runTool: (call) =>
+        new Promise((resolve) => pending.set(call.id, resolve)),
+    });
+    nested({ type: "response.created", response: { id: "r1" } });
+    functionCall("a");
+    functionCall("b");
+    nested({ type: "response.completed", response: { id: "r1", output: [] } });
+    await tick();
+    session.picture("data:image/jpeg;base64,AAAA", "inbox/photo.png");
+    pending.get(first)?.("done");
+    await tick();
+    assert.deepEqual(backendOrder(), [`function_call_output:${first}`]);
+    pending.get(second)?.("done");
+    await tick();
+    assert.deepEqual(backendOrder(), [
+      `function_call_output:${first}`,
+      `function_call_output:${second}`,
+      "message:user",
+      "continue",
+    ]);
   });
-  nested({ type: "response.created", response: { id: "r1" } });
-  functionCall("a");
-  functionCall("b");
-  nested({ type: "response.completed", response: { id: "r1", output: [] } });
-  await tick();
-  session.picture("data:image/jpeg;base64,AAAA", "inbox/photo.png");
-  pending.get("a")?.("done");
-  await tick();
-  assert.deepEqual(backendOrder(), ["function_call_output:a"]);
-  pending.get("b")?.("done");
-  await tick();
-  assert.deepEqual(backendOrder(), [
-    "function_call_output:a",
-    "function_call_output:b",
-    "message:user",
-    "continue",
-  ]);
-});
+}
 
 test("a picture put down while the backend is quiet goes in at once, named by its path, and starts no turn", async () => {
   const image = "data:image/jpeg;base64,BBBB";
@@ -228,8 +238,63 @@ test("a picture put down while the backend is quiet goes in at once, named by it
       { type: "input_image", image_url: image },
     ],
   });
-  // What a picture is made to fit: the connection's own limit
-  assert.equal(session.messageLimit(), 262_144);
+});
+
+test("the room a picture has is the connection's limit less the event around it, the words naming it and its path in bytes", async () => {
+  const { session } = await connect();
+  // The mock's limit of 262,144, less 1,024 for the event, 64 for the words, 15 for the path
+  assert.equal(session.pictureRoom("inbox/photo.png"), 261_041);
+  // A path takes its UTF-8 bytes, not its characters: here 2, 3 and 4 to a character
+  const wide = "inbox/\u{e9}\u{4e2d}\u{1F642}.png";
+  assert.equal(new TextEncoder().encode(wide).length, 19);
+  assert.equal(session.pictureRoom(wide), 261_037);
+});
+
+test("a limit no picture can be held to is taken as the smallest one every end takes", async () => {
+  const { session } = await connect();
+  // None yet, none, no bound at all, and one too small to hold an event with a picture in it:
+  // the 65,536 of a data channel's default, less 1,024, 64 and the path's 15
+  for (const limit of [null, 0, Number.POSITIVE_INFINITY, 2_048]) {
+    messageBytes = limit;
+    assert.equal(session.pictureRoom("inbox/photo.png"), 64_433, String(limit));
+  }
+  // Past that the limit is the connection's own
+  messageBytes = 2_049;
+  assert.equal(session.pictureRoom("inbox/photo.png"), 946);
+});
+
+test("a picture as long as its room goes in one message no larger than the limit it was made for", async () => {
+  const { session } = await connect();
+  const head = "data:image/jpeg;base64,";
+  const size = (event: unknown) =>
+    new TextEncoder().encode(JSON.stringify(event)).length;
+  const paths = [
+    "inbox/photo.png",
+    // 2, 3 and 4 bytes to a character, a long run of them
+    `inbox/${"\u{e9}\u{4e2d}\u{1F642}".repeat(40)}.png`,
+    // Characters JSON writes as two
+    'inbox/a "quoted" \\ name.png',
+  ];
+  // What the message is made to fit, and the limit it must then be under: the connection's own,
+  // or, where it names none a picture can be held to, the default every end takes
+  for (const [limit, under] of [
+    [262_144, 262_144],
+    [null, 65_536],
+    [0, 65_536],
+    [Number.POSITIVE_INFINITY, 65_536],
+  ] as const) {
+    messageBytes = limit;
+    for (const path of paths) {
+      sent = [];
+      const room = session.pictureRoom(path);
+      const image = head + "A".repeat(room - head.length);
+      assert.equal(image.length, room);
+      session.picture(image, path);
+      assert.deepEqual(backendOrder(), ["message:user"]);
+      const bytes = size(sent[0]);
+      assert.ok(bytes <= under, `${path} in ${limit}: ${bytes} > ${under}`);
+    }
+  }
 });
 
 test("a picture put down while the backend waits on its tools goes in after their outputs, before it goes on", async () => {
@@ -382,6 +447,40 @@ test("a picture put down that the connection will not carry is said by its path,
   assert.match(warnings.at(-1) ?? "", /inbox\/photo\.png did not go through/);
 });
 
+test("a picture held behind a tool turn that the connection will not carry is said by its path, to the backend and the user, and the turn still goes on", async () => {
+  refuses = (event) => JSON.stringify(event).includes('"type":"input_image"');
+  const pending = new Map<string, (value: string) => void>();
+  const { session, warnings } = await connect({
+    runTool: (call) => new Promise((resolve) => pending.set(call.id, resolve)),
+  });
+  nested({ type: "response.created", response: { id: "r1" } });
+  functionCall("a");
+  nested({ type: "response.completed", response: { id: "r1", output: [] } });
+  await tick();
+  session.picture("data:image/jpeg;base64,AAAA", "inbox/photo.png");
+  assert.deepEqual(backendOrder(), []);
+  pending.get("a")?.("done");
+  await tick();
+  // Refused as it is let go: said in its place, and the turn goes on after it
+  assert.deepEqual(backendOrder(), [
+    "function_call_output:a",
+    "message:developer",
+    "continue",
+  ]);
+  const note = (
+    sent.find(
+      (event) =>
+        (event.item as { role?: string } | undefined)?.role === "developer",
+    )?.item as { content: { text: string }[] }
+  ).content[0].text;
+  assert.match(
+    note,
+    /picture of inbox\/photo\.png did not go through.*Message too large/,
+  );
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0], /inbox\/photo\.png did not go through/);
+});
+
 test("a fact put down while the backend waits on its tools goes in after their outputs, in order with the picture it names", async () => {
   const pending = new Map<string, (value: string) => void>();
   const { session } = await connect({
@@ -521,6 +620,135 @@ test("a call completed before one the output cap cut off still has its result co
   assert.equal(ran, 2);
   assert.equal(count("response.item.create"), 2);
   assert.equal(count("response.create"), 1);
+});
+
+/** What the page puts down for a drawing shown to her: its fact, the picture, then the run (put-down). */
+function showDrawing(session: ReturnType<typeof createLiveSession>) {
+  session.brief("The user showed you a drawing, kept at inbox/drawing.png.");
+  session.picture("data:image/png;base64,AAAA", "inbox/drawing.png");
+  session.run();
+}
+
+for (const end of ["response.failed", "response.cancelled"]) {
+  test(`a ${end.slice(9)} turn whose tools still run holds what is put down until every output is in, then sends it and the run`, async () => {
+    const pending = new Map<string, (value: string) => void>();
+    const { session } = await connect({
+      runTool: (call) =>
+        new Promise((resolve) => pending.set(call.id, resolve)),
+    });
+    nested({ type: "response.created", response: { id: "r1" } });
+    functionCall("a");
+    functionCall("b");
+    await tick();
+    showDrawing(session);
+    assert.deepEqual(backendOrder(), []);
+    nested({ type: end, response: { id: "r1" } });
+    await tick();
+    assert.deepEqual(backendOrder(), []);
+    // The turn is over and its tools are not: what is put down now waits on them too
+    session.brief("The user put a file down, kept at inbox/photo.png.");
+    assert.deepEqual(backendOrder(), []);
+    // The one called last finishes first: what waits does not go in on that output
+    pending.get("b")?.("done");
+    await tick();
+    assert.deepEqual(backendOrder(), ["function_call_output:b"]);
+    pending.get("a")?.("done");
+    await tick();
+    assert.deepEqual(backendOrder(), [
+      "function_call_output:b",
+      "function_call_output:a",
+      "message:developer",
+      "message:user",
+      "message:developer",
+      "continue",
+    ]);
+  });
+}
+
+test("a second incomplete turn in a row, its tool still running, holds what is put down and the run until that output is in", async () => {
+  const pending = new Map<string, (value: string) => void>();
+  const { session, warnings } = await connect({
+    runTool: (call) => new Promise((resolve) => pending.set(call.id, resolve)),
+  });
+  // The first is continued once, after its tool's output
+  nested({ type: "response.created", response: { id: "r1" } });
+  functionCall("a");
+  nested({ type: "response.incomplete", response: { id: "r1" } });
+  await tick();
+  pending.get("a")?.("done");
+  await tick();
+  assert.deepEqual(backendOrder(), ["function_call_output:a", "continue"]);
+  sent = [];
+  // The one after it runs out again, and its tool has not finished
+  nested({ type: "response.created", response: { id: "r2" } });
+  functionCall("b");
+  await tick();
+  showDrawing(session);
+  nested({ type: "response.incomplete", response: { id: "r2" } });
+  await tick();
+  assert.deepEqual(backendOrder(), []);
+  pending.get("b")?.("done");
+  await tick();
+  assert.deepEqual(backendOrder(), [
+    "function_call_output:b",
+    "message:developer",
+    "message:user",
+    "continue",
+  ]);
+  assert.equal(warnings.length, 1);
+});
+
+test("a call cut off after one was continued, another call of its turn still running, holds what is put down and the run until that output is in", async () => {
+  const pending = new Map<string, (value: string) => void>();
+  const { session } = await connect({
+    runTool: (call) => new Promise((resolve) => pending.set(call.id, resolve)),
+  });
+  nested({ type: "response.created", response: { id: "r1" } });
+  functionCall("a");
+  functionCall("cut", "incomplete");
+  await tick();
+  pending.get("a")?.("done");
+  await tick();
+  assert.deepEqual(backendOrder(), ["function_call_output:a", "continue"]);
+  sent = [];
+  // Cut off again, once one was continued: not continued, and its other call still runs
+  nested({ type: "response.created", response: { id: "r2" } });
+  functionCall("b");
+  await tick();
+  showDrawing(session);
+  functionCall("cut-again", "incomplete");
+  await tick();
+  assert.deepEqual(backendOrder(), []);
+  pending.get("b")?.("done");
+  await tick();
+  assert.deepEqual(backendOrder(), [
+    "function_call_output:b",
+    "message:developer",
+    "message:user",
+    "continue",
+  ]);
+});
+
+test("a turn that ended while its tool ran sends nothing once the call is closing", async () => {
+  const pending = new Map<string, (value: string) => void>();
+  const { session } = await connect({
+    runTool: (call) => new Promise((resolve) => pending.set(call.id, resolve)),
+  });
+  nested({ type: "response.created", response: { id: "r1" } });
+  functionCall("a");
+  await tick();
+  showDrawing(session);
+  nested({ type: "response.failed", response: { id: "r1" } });
+  const closing = session.close();
+  pending.get("a")?.("done");
+  await tick();
+  assert.deepEqual(backendOrder(), []);
+  wire.on.event({
+    type: "session.closed",
+    reason: "close_requested",
+    usage: { seconds: 1 },
+  });
+  await closing;
 });
 
 test("a finished reasoning summary part is reported once, whole, with its place in the call", async () => {

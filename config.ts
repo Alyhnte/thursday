@@ -925,7 +925,13 @@ export const LOOK = { maxBytes: 4 * 1024 * 1024, perRequest: 12 * 1024 * 1024 };
  *   screenshot readable, and has the picture shrink further to fit the connection's one
  *   message; smaller loses that text first.
  * - `qualities` then `scales`  what a picture too large for that message steps down through:
- *   at each size the JPEG quality, then the size, until it fits.
+ *   at each size the JPEG qualities in turn, then the next size, until it fits. The scales are
+ *   fractions of the size the picture starts at, its own or `longestSide` on its longest side
+ *   when it is larger, largest first, so a small picture steps down as a large one does. Lower
+ *   values fit a picture with much detail, and blur the text on it the model has to read;
+ *   higher values, or fewer steps, leave more pictures that do not fit, and the backend is told
+ *   so in words instead of shown one. Every size and quality tried is one more JPEG encode on
+ *   the page, and a picture that fits early never reaches the later ones.
  */
 export const CALL_PICTURE = {
   longestSide: 1600,

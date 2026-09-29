@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { after, mock, test } from "node:test";
+import { after, mock, type TestContext, test } from "node:test";
 import { APICallError, simulateReadableStream } from "ai";
 import { MockLanguageModelV4 } from "ai/test";
 
@@ -146,6 +146,7 @@ await migrateDatabase();
 const { LiveSettingsSchema, liveLineOf } = await import(
   "../features/ai/live.schema.ts"
 );
+const { TEXT_CALL } = await import("../config.ts");
 const { TOOL_NAMES } = await import("../features/ai/tools/tool-name.ts");
 const { loadLivePrompt } = await import(
   "../features/ai/prompts/live.prompt.ts"
@@ -623,6 +624,286 @@ test("what the page puts in goes into the voice's context on the channel its kin
     (event) => event.client_event_id === "e-3",
   );
   line.leave.abort();
+});
+
+/** The calls the page was handed, by id, as the events of her backend's responses word them. */
+const handedCalls = (events: WireEvent[]) =>
+  events.flatMap((event) => {
+    const nested = event.event as WireEvent | undefined;
+    const item = nested?.item as WireEvent | undefined;
+    return event.type === "response.event" &&
+      nested?.type === "response.output_item.done" &&
+      item?.type === "function_call"
+      ? [String(item.call_id)]
+      : [];
+  });
+
+/** What a request to her backend carried as the result of a call, as the model is handed it. */
+const resultsOf = (prompt: string, callId: string) =>
+  (
+    JSON.parse(prompt) as {
+      role: string;
+      content: {
+        type: string;
+        toolCallId?: string;
+        output?: { type: string };
+      }[];
+    }[]
+  )
+    .filter((message) => message.role === "tool")
+    .flatMap((message) => message.content)
+    .filter(
+      (part) => part.type === "tool-result" && part.toolCallId === callId,
+    );
+
+/** A hand-over of the voice, as the wire carries it. */
+const handOver = (id: string, text: string) =>
+  wire.hear({
+    type: "delegation.created",
+    item: {
+      type: "delegation",
+      target: "client",
+      id,
+      content: [{ type: "input_text", text }],
+    },
+  });
+
+/**
+ * A line the test leaves when it ends, however it ends, dropping the steps it did not run: a
+ * failed check then fails that test, where a line left open keeps the whole run from ending.
+ */
+async function openLineFor(t: TestContext, callId: string) {
+  const line = await openLine(callId);
+  t.after(() => {
+    steps.splice(0);
+    line.leave.abort();
+  });
+  return line;
+}
+
+test("a call to a tool she lacks is not handed to the page: the error the sdk answered it with is its one result, and she goes on to answer", async (t) => {
+  const line = await openLineFor(t, "call-lacks");
+  const before = wire.said.length;
+  const asked = prompts.length;
+  steps.push(
+    () => [
+      {
+        type: "tool-call",
+        toolCallId: "call_lacks",
+        toolName: "no_such_tool",
+        input: JSON.stringify({}),
+      },
+    ],
+    () => [{ type: "text", text: "I have no way to do that." }],
+  );
+  handOver("del_lacks", "Do the thing");
+  await saidBy(before + 1);
+  await new Promise((settle) => setTimeout(settle, 50));
+
+  // Her second step was sent the error for it as its one result: the page never ran the call
+  assert.equal(prompts.length, asked + 2);
+  const results = resultsOf(prompts.at(-1) ?? "", "call_lacks");
+  assert.equal(results.length, 1, "one result for one call");
+  assert.match(results[0]?.output?.type ?? "", /^error/);
+  assert.deepEqual(handedCalls(line.events), []);
+  // The page still hears her first step end, so it is not left waiting on a response
+  assert.deepEqual(
+    line.events
+      .filter((event) => event.type === "response.event")
+      .map((event) => (event.event as WireEvent).type),
+    [
+      "response.created",
+      "response.completed",
+      "response.created",
+      "response.completed",
+    ],
+  );
+  assert.deepEqual(wire.said.slice(before), [
+    {
+      text: "I have no way to do that.",
+      channel: "speakable",
+      delegation: "del_lacks",
+    },
+  ]);
+  assert.equal(steps.length, 0);
+});
+
+test("a known tool called with input that does not fit it is answered the same way, and the call she makes next goes to the page", async (t) => {
+  const line = await openLineFor(t, "call-misfit");
+  const before = wire.said.length;
+  const asked = prompts.length;
+  steps.push(
+    () => [
+      {
+        type: "tool-call",
+        toolCallId: "call_misfit",
+        toolName: TOOL_NAMES.thread_status,
+        input: JSON.stringify({}),
+      },
+    ],
+    () => [
+      {
+        type: "tool-call",
+        toolCallId: "call_fixed",
+        toolName: TOOL_NAMES.thread_status,
+        input: JSON.stringify({ thread: "all" }),
+      },
+    ],
+    () => [{ type: "text", text: "Nothing is running." }],
+  );
+  handOver("del_misfit", "Is anything running?");
+  const call = await line.next(
+    "response.output_item.done",
+    (event) => (event.item as WireEvent).type === "function_call",
+  );
+  const step = call.event as WireEvent;
+  assert.equal((step.item as WireEvent).call_id, "call_fixed");
+  await line.next(
+    "response.completed",
+    (event) => (event.response as { id: string }).id === step.response_id,
+  );
+  tellPlanLine("call-misfit", [
+    {
+      type: "response.item.create",
+      item: {
+        type: "function_call_output",
+        call_id: "call_fixed",
+        output: "No jobs.",
+      },
+    },
+    { type: "response.create" },
+  ]);
+  await saidBy(before + 1);
+
+  // Each call has one result: the sdk's error for the first, the page's output for the second
+  assert.equal(prompts.length, asked + 3);
+  const prompt = prompts.at(-1) ?? "";
+  assert.equal(resultsOf(prompt, "call_misfit").length, 1);
+  assert.match(
+    resultsOf(prompt, "call_misfit")[0]?.output?.type ?? "",
+    /^error/,
+  );
+  assert.equal(resultsOf(prompt, "call_fixed").length, 1);
+  assert.match(prompt, /No jobs\./);
+  assert.deepEqual(handedCalls(line.events), ["call_fixed"]);
+  assert.deepEqual(wire.said.slice(before), [
+    {
+      text: "Nothing is running.",
+      channel: "speakable",
+      delegation: "del_misfit",
+    },
+  ]);
+  assert.equal(steps.length, 0);
+});
+
+test("of one step's calls the page is handed those the sdk could take, and going on waits for their outputs alone", async (t) => {
+  const line = await openLineFor(t, "call-both");
+  const before = wire.said.length;
+  steps.push(
+    () => [
+      {
+        type: "tool-call",
+        toolCallId: "call_gone",
+        toolName: "no_such_tool",
+        input: JSON.stringify({}),
+      },
+      {
+        type: "tool-call",
+        toolCallId: "call_kept",
+        toolName: TOOL_NAMES.thread_status,
+        input: JSON.stringify({ thread: "all" }),
+      },
+    ],
+    () => [{ type: "text", text: "Nothing is running." }],
+  );
+  handOver("del_both", "Is anything running?");
+  await line.next("response.completed");
+  assert.deepEqual(handedCalls(line.events), ["call_kept"]);
+  // Were the call the sdk answered counted among those the page runs, going on would wait for its output for good
+  tellPlanLine("call-both", [
+    {
+      type: "response.item.create",
+      item: {
+        type: "function_call_output",
+        call_id: "call_kept",
+        output: "No jobs.",
+      },
+    },
+    { type: "response.create" },
+  ]);
+  await saidBy(before + 1);
+  const prompt = prompts.at(-1) ?? "";
+  assert.equal(resultsOf(prompt, "call_gone").length, 1);
+  assert.equal(resultsOf(prompt, "call_kept").length, 1);
+  assert.deepEqual(wire.said.slice(before), [
+    {
+      text: "Nothing is running.",
+      channel: "speakable",
+      delegation: "del_both",
+    },
+  ]);
+  assert.equal(steps.length, 0);
+});
+
+test("a drawing shown while her call is answered by the sdk is in her next step, after that answer", async (t) => {
+  await openLineFor(t, "call-given");
+  const before = wire.said.length;
+  steps.push(
+    () => {
+      // Shown as her step runs, before it ends
+      tellPlanLine("call-given", shown("inbox/drawing.png"));
+      return [
+        {
+          type: "tool-call",
+          toolCallId: "call_given",
+          toolName: "no_such_tool",
+          input: JSON.stringify({}),
+        },
+      ];
+    },
+    () => [{ type: "text", text: "A nice drawing." }],
+  );
+  handOver("del_given", "Do the thing");
+  await saidBy(before + 1);
+  const prompt = prompts.at(-1) ?? "";
+  const result = prompt.indexOf("tool-result");
+  const fact = prompt.indexOf("showed it to you");
+  const named = prompt.indexOf("inbox/drawing.png, as an image:");
+  assert.ok(result >= 0 && result < fact, "her call's answer, then the fact");
+  assert.ok(fact < named, "the fact, then the picture");
+  assert.deepEqual(wire.said.slice(before), [
+    {
+      text: "A nice drawing.",
+      channel: "speakable",
+      delegation: "del_given",
+    },
+  ]);
+  assert.equal(steps.length, 0);
+});
+
+test("a backend that keeps calling what she lacks stops at the steps one answer may take", async (t) => {
+  const line = await openLineFor(t, "call-endless");
+  const asked = prompts.length;
+  for (let call = 0; call <= TEXT_CALL.maxSteps; call += 1)
+    steps.push(() => [
+      {
+        type: "tool-call",
+        toolCallId: `call_endless_${call}`,
+        toolName: "no_such_tool",
+        input: JSON.stringify({}),
+      },
+    ]);
+  handOver("del_endless", "Do the thing");
+  for (
+    let waited = 0;
+    waited < 2_000 && prompts.length < asked + TEXT_CALL.maxSteps;
+    waited += 5
+  )
+    await new Promise((settle) => setTimeout(settle, 5));
+  await new Promise((settle) => setTimeout(settle, 50));
+  assert.equal(prompts.length, asked + TEXT_CALL.maxSteps);
+  assert.equal(steps.length, 1, "the step past the bound never ran");
+  assert.deepEqual(handedCalls(line.events), []);
 });
 
 test("a step that fails tells the page and the voice in the provider's words", async () => {

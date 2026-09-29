@@ -22,7 +22,7 @@ import { ORB_INK } from "../ascii.const";
  * A pad to draw on, over the screen, whose drawing is handed over as a picture: kept as a PNG
  * cropped to what was drawn, on the pad's own colour, and put on the write line as a pasted
  * picture is (write-line). So it goes where any picture goes — on a spoken call into her
- * backend's conversation as it lands (use-thursday putDown), in writing with the words
+ * backend's conversation once it is made to fit (put-down), in writing with the words
  * (thursday.text readPictures). The write line holds it, opened from its paperclip or from the
  * call's line (writeLine.draw). What is drawn stays while the pad is closed, until it is handed
  * over or cleared. Undo and Redo walk it back and forth a stroke at a time, a Clear included,
