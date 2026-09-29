@@ -221,7 +221,7 @@ export const CONFIG_GROUPS: ConfigGroup[] = [
     requireKeys: LIVE_LINES.map(
       (line) => TEXT_MODEL_PROVIDERS[line].apiKeyName,
     ),
-    note: "required for calls",
+    note: "calls need this or the GPT Subscription",
     entries: TEXT_MODEL_PROVIDER_LIST.filter(isVoiceKey).map(keyEntry),
   },
   {

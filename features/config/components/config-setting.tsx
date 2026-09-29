@@ -168,7 +168,7 @@ function ConfigScreen({ screen }: { screen: keyof typeof SCREENS }) {
                 lost ? ` · ${lost} to enter again` : ""
               }${
                 groups.some((group) => !meets(group))
-                  ? " · a call needs one voice key"
+                  ? " · a call needs the GPT Subscription or an OpenAI key"
                   : " · your keys stay on this machine"
               }`}
         </SettingRailNote>
@@ -191,7 +191,6 @@ function ConfigScreen({ screen }: { screen: keyof typeof SCREENS }) {
                   set={isSet(entry.key)}
                   lost={isLost(entry.key)}
                   env={isEnv(entry.key)}
-                  needed={false}
                 />
               ))}
             </div>
@@ -226,9 +225,6 @@ function ConfigScreen({ screen }: { screen: keyof typeof SCREENS }) {
                     set={isSet(entry.key)}
                     lost={isLost(entry.key)}
                     env={isEnv(entry.key)}
-                    // Amber only where something is actually missing: an
-                    // unsatisfied required group is waiting on the user
-                    needed={!meets(group)}
                   />
                 ),
               )}
@@ -286,7 +282,6 @@ export function AccountsSetup({
             set={isSet(entry.key)}
             lost={isLost(entry.key)}
             env={isEnv(entry.key)}
-            needed={false}
           />
         ))}
       </div>
@@ -346,7 +341,6 @@ export function AccountsSetup({
             set={isSet(entry.key)}
             lost={isLost(entry.key)}
             env={isEnv(entry.key)}
-            needed={false}
           />
         ))}
       </div>
@@ -443,7 +437,6 @@ function KeyRow({
   set,
   lost,
   env,
-  needed,
   card = false,
   narrow = false,
 }: {
@@ -457,8 +450,6 @@ function KeyRow({
   card?: boolean;
   /** In a narrow column the state takes the second line, where the key's name is of no use. */
   narrow?: boolean;
-  /** Its group must have a key and has none, so this row is waiting on the user. */
-  needed: boolean;
 }) {
   const credits = useKeyCredits(entry, set);
   const usage = useSubscriptionUsage(entry, set);
@@ -466,7 +457,7 @@ function KeyRow({
   // A plan's use keeps the row as it is, narrow as the card is; its dialog says where it is set
   const state = usage.data
     ? usageState(usage.data)
-    : keyState(set, needed, credits.data, entry.signIn, lost, env);
+    : keyState(set, credits.data, entry.signIn, lost, env);
 
   const waiting = credits.isLoading || usage.isLoading;
   const stateLine = (
@@ -547,13 +538,12 @@ const USD = new Intl.NumberFormat("en-US", {
  */
 function keyState(
   set: boolean,
-  needed: boolean,
   credits: KeyCredits | null | undefined,
   signIn?: true,
   lost = false,
   env = false,
 ): { text: string; ink: string; warn: boolean } {
-  const state = keyStateText(set, needed, credits, signIn, lost);
+  const state = keyStateText(set, credits, signIn, lost);
   return set ? envState(state, env, Boolean(credits)) : state;
 }
 
@@ -574,7 +564,6 @@ function envState(
 
 function keyStateText(
   set: boolean,
-  needed: boolean,
   credits: KeyCredits | null | undefined,
   signIn?: true,
   lost = false,
@@ -586,14 +575,13 @@ function keyStateText(
       ink: WAITING_INK,
       warn: true,
     };
+  // An unmet voice group says so at its head, since the sign-in in another group meets it too
   if (!set)
-    return needed
-      ? { text: "Needed", ink: WAITING_INK, warn: true }
-      : {
-          text: signIn ? "Signed out" : "Not set",
-          ink: "text-muted-foreground/60",
-          warn: false,
-        };
+    return {
+      text: signIn ? "Signed out" : "Not set",
+      ink: "text-muted-foreground/60",
+      warn: false,
+    };
   if (!credits)
     return {
       text: signIn ? "Signed in" : "Set",
@@ -1019,7 +1007,7 @@ function ConfigDialog({
   // Set where this dialog cannot reach: it says where, and offers nothing that would not stick
   const env = isConfigFromEnv(status, entry.key);
   const { data: credits } = useKeyCredits(entry, set);
-  const state = credits ? keyState(set, false, credits) : null;
+  const state = credits ? keyState(set, credits) : null;
 
   // The model picker reads hasKey too, and a catalog key's credits sit under the same url
   const refresh = () => {
