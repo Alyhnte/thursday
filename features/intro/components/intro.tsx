@@ -13,7 +13,6 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { queryKey } from "@/app/api/query-key";
 import { Button } from "@/components/ui/button";
-import { ShinyText } from "@/components/ui/shiny-text";
 import { Switch } from "@/components/ui/switch";
 import {
   Tooltip,
@@ -56,7 +55,6 @@ import {
   type Turn,
   useTurnFocus,
 } from "@/features/thursday/components/side-captions";
-import { Ear } from "@/features/thursday/components/thursday";
 import { awake } from "@/features/thursday/face-words";
 import { silentVoice } from "@/features/thursday/silent-voice";
 import type { CallStatus, FaceWord } from "@/features/thursday/thursday.schema";
@@ -66,8 +64,6 @@ import {
   type Finished,
   FinishedCard,
 } from "@/features/workspace/components/artifact-view";
-import { useWakeWord } from "@/hooks/use-wake-word";
-import { type AudioTap, createAudioTap } from "@/lib/live/live.tap";
 import { useServerAction } from "@/lib/protocol/use-server-action";
 import { revalidate, useServerRoute } from "@/lib/protocol/use-server-route";
 import { cn, WAITING_INK } from "@/lib/utils";
@@ -91,9 +87,7 @@ const SAYS = {
   key: "I am Thursday, and the first thing I need is a voice. Sign in with ChatGPT and I talk on your plan, or paste an OpenAI key. Neither yet? Go on without it, and I will ask again when you call.",
   awake:
     "There, I am awake, and that is everything a call needs. From here on it is quick: your microphone, who works for you, and what they think with.",
-  mic: "Now let me hear you. Your browser asks before it opens the microphone: say yes, then say anything at all and watch the line under me move. From then on, saying hey Thursday calls me.",
-  heard:
-    "I hear you: that line is your voice. Now try calling me: say hey Thursday.",
+  mic: "Now let me hear you. Your browser asks before it opens the microphone: say yes. From then on, saying hey Thursday calls me.",
   bots: "Long work goes to bots, so we can keep talking while they are at it. They work on this computer, with a shell, a browser and your files, and signing in or paying always stays with you.",
   models:
     "Bots think with a model you choose. Start small: a small model is quick and costs little, and any bot can move up later. Your ChatGPT plan or OpenAI key already covers it; one Vercel key opens far more.",
@@ -244,7 +238,7 @@ export function Intro({
   const helloIn = opening === "hello" || opening === "over";
   /** The box her face stands in, which the opening is laid on. */
   const faceBox = useRef<HTMLDivElement>(null);
-  const mic = useMic(step === "mic" && !gone);
+  const mic = useMic();
   const demo = useDemo(step === "hello" && shown && !gone && helloIn);
 
   // The call under the intro keeps its wake word and hotkey off until it is gone
@@ -269,8 +263,8 @@ export function Intro({
   );
   const thinks = Boolean(automatic?.ref);
   const said = useMemo(
-    () => herTurns(step, callable, mic.on, thinks),
-    [step, callable, mic.on, thinks],
+    () => herTurns(step, callable, thinks),
+    [step, callable, thinks],
   );
   const turns = step === "hello" ? demo.turns : said;
   // Only while it is up: mounted on every page load, its ↓ took the key from every call after
@@ -307,13 +301,7 @@ export function Intro({
   };
 
   const status: CallStatus =
-    step === "hello"
-      ? demo.status
-      : voice.speaking
-        ? "speaking"
-        : step === "mic" && mic.on
-          ? "listening"
-          : "idle";
+    step === "hello" ? demo.status : voice.speaking ? "speaking" : "idle";
   const last = step === "call";
   /** A step past the first screen: in a narrow window it stacks (the column below). */
   const stacked = step !== "hello";
@@ -496,8 +484,6 @@ export function Intro({
               <p className="w-[min(24rem,calc(var(--face-w)*1.39+6rem))] animate-in rounded-xl bg-background/85 px-3.5 py-2 text-[14px] leading-[1.55] text-balance text-foreground ring-1 ring-border/60 backdrop-blur-md fade-in duration-300">
                 {said.at(-1)?.text}
               </p>
-            ) : step === "mic" && mic.on ? (
-              <Ear live getMicSpectrum={mic.spectrum} />
             ) : !callable ? (
               "Asleep"
             ) : last ? (
@@ -525,11 +511,15 @@ export function Intro({
                   // Inside this click, so the browser lets her be heard from here on
                   voice.say("hello", callable ? "awake" : "key");
                   setStep("key");
-                } else if (step === "mic" && !mic.on)
-                  // The microphone turned on here is the wake phrase turned on: one yes, not two
-                  // (09-29). Refused, it stays off, and Settings › Thursday has it
+                } else if (step === "mic" && !mic.allowed)
+                  // The microphone turned on here is the wake phrase turned on, and the step
+                  // done: one press, not a second to go on (09-29). Refused, it stays, saying
+                  // why; Settings › Thursday has the phrase either way
                   void mic.turnOn().then((on) => {
-                    if (on) patchCall({ wake: { ...wake, enabled: true } });
+                    if (!on) return;
+                    patchCall({ wake: { ...wake, enabled: true } });
+                    // Left by Back while the browser asked: it stays where they went
+                    setStep((now) => (now === "mic" ? "bots" : now));
                   });
                 else if (last) leave(callable);
                 else setStep(STEPS[at + 1]);
@@ -537,15 +527,15 @@ export function Intro({
               // on the first screen it follows her line up, once
               className={cn(
                 "pointer-events-auto h-12 rounded-full px-7 pl-8 text-[15px]",
-                step === "mic" && !mic.on && "pl-6",
+                step === "mic" && !mic.allowed && "pl-6",
                 step === "hello" &&
                   "animate-in delay-300 duration-700 fill-mode-backwards fade-in slide-in-from-bottom-2",
               )}
             >
-              {step === "mic" && !mic.on && !mic.asking && <Mic />}
+              {step === "mic" && !mic.allowed && !mic.asking && <Mic />}
               {step === "hello"
                 ? "Start"
-                : step === "mic" && !mic.on
+                : step === "mic" && !mic.allowed
                   ? "Turn on the microphone"
                   : last
                     ? callable
@@ -568,7 +558,7 @@ export function Intro({
               "neither is fine — both can wait for the call screen"
             ) : step === "mic" && mic.asking ? (
               "your browser is asking — allow it at the top of the window"
-            ) : step === "mic" && !mic.on ? (
+            ) : step === "mic" && !mic.allowed ? (
               <button
                 type="button"
                 onClick={() => setStep(STEPS[at + 1])}
@@ -644,7 +634,6 @@ function herTurns(
   step: Step,
   /** A call can open: a ChatGPT sign-in or the key, made here or before. */
   callable: boolean,
-  heard: boolean,
   /** A model bots can run on is set (api/llm-model/automatic): only then does "everything else" work. */
   thinks: boolean,
 ): Turn[] {
@@ -660,7 +649,6 @@ function herTurns(
   if (callable) lines.push(line("awake", SAYS.awake));
   if (step === "key") return lines;
   lines.push(line("mic", SAYS.mic));
-  if (heard) lines.push(line("heard", SAYS.heard));
   if (step === "mic") return lines;
   lines.push(line("bots", SAYS.bots));
   if (step === "bots") return lines;
@@ -761,51 +749,23 @@ function micFailure(error: unknown): MicFailure {
 }
 
 /**
- * The microphone on the intro: opened by the step's main button and nothing else, heard
- * through the call's own tap so her face moves as it does on a call, and released as the
- * step is left. `asking` while the browser's own question is up: it opens by the address
- * bar, and a page that said nothing meanwhile read as a button that did not press.
+ * The microphone on the intro: asked for by the step's main button and nothing else, and let go
+ * at once. What it gets is the browser's yes, which the wake phrase and the first call open it
+ * on. `asking` while the browser's own question is up: it opens by the address bar, and a page
+ * that said nothing meanwhile read as a button that did not press.
  */
-function useMic(active: boolean) {
-  const [state, setState] = useState<"off" | "asking" | "on" | MicFailure>(
-    "off",
-  );
-  /** It opened once: the browser will not ask again, whatever the step. */
+function useMic() {
+  const [state, setState] = useState<"off" | "asking" | MicFailure>("off");
+  /** Allowed once: the browser will not ask again, whatever the step. */
   const [allowed, setAllowed] = useState(false);
-  const [label, setLabel] = useState("");
-  const tap = useRef<AudioTap | null>(null);
-  const stream = useRef<MediaStream | null>(null);
-  const live = useRef(active);
-  live.current = active;
 
-  const release = useCallback(() => {
-    for (const track of stream.current?.getTracks() ?? []) track.stop();
-    stream.current = null;
-  }, []);
-  useEffect(() => {
-    if (active) return;
-    release();
-    setState((was) => (was === "on" || was === "asking" ? "off" : was));
-  }, [active, release]);
-  useEffect(() => release, [release]);
-
-  /** Whether it opened here. */
+  /** Whether the browser said yes. */
   const turnOn = useCallback(async (): Promise<boolean> => {
     setState("asking");
     try {
       const heard = await navigator.mediaDevices.getUserMedia({ audio: true });
-      // Answered after the step was left: allowed, but not opened here
-      if (!live.current) {
-        for (const track of heard.getTracks()) track.stop();
-        setAllowed(true);
-        return true;
-      }
-      stream.current = heard;
-      tap.current ??= createAudioTap();
-      tap.current.open();
-      tap.current.hear?.(heard);
-      setLabel(heard.getAudioTracks()[0]?.label ?? "");
-      setState("on");
+      for (const track of heard.getTracks()) track.stop();
+      setState("off");
       setAllowed(true);
       return true;
     } catch (error) {
@@ -814,72 +774,38 @@ function useMic(active: boolean) {
     }
   }, []);
 
-  const spectrum = useCallback(() => tap.current?.readMic() ?? [], []);
   return {
-    on: state === "on",
     asking: state === "asking",
     failed: typeof state === "object" ? state : null,
     allowed,
-    label,
     turnOn,
-    spectrum,
   };
 }
 
 function MicTurn({ mic }: { mic: MicState }) {
   const wake = useThursdayStore((state) => state.wake);
-  const [heard, setHeard] = useState(false);
-  const [unheard, setUnheard] = useState<string | null>(null);
-  // Tried out right here: the call screen's own listener is held off while the intro is up
-  useWakeWord({
-    enabled: mic.on && wake.enabled && !unheard,
-    phrases: [wake.phrase],
-    onWake: () => setHeard(true),
-    onError: setUnheard,
-  });
-
+  // Back on the step once it is allowed: what it did, and the button goes on
+  if (mic.allowed)
+    return <Done>{`Microphone on, and "${wake.phrase}" calls her`}</Done>;
   // The step's main button turns it on (Intro), and the wake phrase with it, so what the
   // phrase costs is said before the press
-  if (!mic.on)
-    return (
-      <>
-        <Mine>Turn on the microphone</Mine>
-        {mic.failed ? (
-          <>
-            <p className={cn("text-[13px] leading-normal", WAITING_INK)}>
-              {mic.failed.what}
-            </p>
-            <Fine>{mic.failed.next}</Fine>
-          </>
-        ) : (
-          <Fine>
-            On a call, and to hear "{wake.phrase}" while this tab is open.
-            Chrome does that listening and sends what it hears to Google;
-            Settings › Thursday switches it off.
-          </Fine>
-        )}
-      </>
-    );
   return (
     <>
-      <Done>Microphone is on</Done>
-      {/* The one thing this step asks them to try, so it is the one thing that moves */}
-      {wake.enabled &&
-        !unheard &&
-        (heard ? (
-          <span className="flex items-center gap-2 text-[13px]">
-            <span className="grid size-5 shrink-0 animate-in place-items-center rounded-full bg-foreground text-background duration-300 zoom-in-50">
-              <Check className="size-3" />
-            </span>
-            Heard you. That is how you call her.
-          </span>
-        ) : (
-          <span className="flex items-center gap-2 text-[13px]">
-            <Mic className="size-4 shrink-0" />
-            <ShinyText text={`Try it now: say "${wake.phrase}"`} speed={2.2} />
-          </span>
-        ))}
-      {unheard && <Fine>{unheard}</Fine>}
+      <Mine>Turn on the microphone</Mine>
+      {mic.failed ? (
+        <>
+          <p className={cn("text-[13px] leading-normal", WAITING_INK)}>
+            {mic.failed.what}
+          </p>
+          <Fine>{mic.failed.next}</Fine>
+        </>
+      ) : (
+        <Fine>
+          On a call, and to hear "{wake.phrase}" while this tab is open. Chrome
+          does that listening and sends what it hears to Google; Settings ›
+          Thursday switches it off.
+        </Fine>
+      )}
     </>
   );
 }
