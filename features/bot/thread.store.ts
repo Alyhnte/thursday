@@ -740,7 +740,7 @@ export const messageOf = (line: Chatter) =>
  * Who says a line. A person's words carry the bot that heard them as `bot`, and are the
  * user's own when they wrote them, else Thursday's, who stands for the user in a thread.
  */
-const speakerOf = (line: Chatter): BotRef =>
+export const speakerOf = (line: Chatter): BotRef =>
   line.kind === "user"
     ? { name: line.by === "user" ? ROOM_USER : ROOM_THURSDAY }
     : line.bot;

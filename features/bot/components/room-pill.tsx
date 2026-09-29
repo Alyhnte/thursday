@@ -43,13 +43,14 @@ import { MARK_PALETTE, MARK_SHAPES } from "../mark.const";
 import {
   type BotRef,
   type Chatter,
+  speakerOf,
   type ThreadView,
   type ThreadViewStatus,
   useWriteLineUp,
   writeLine,
 } from "../thread.store";
 
-import { leadOf, stepOf, THURSDAY } from "./room-conversation";
+import { leadOf, stepOf, THURSDAY, YOU } from "./room-conversation";
 import { ThreadRow } from "./room-list";
 
 /** The room folded: the pill at the foot of the call screen, the faces on it, and what passed between two parties riding above one for a moment. Split out of bot-room by subject; see it for the room as a whole. */
@@ -218,7 +219,8 @@ export function happenedIn(
             {
               rank: 1,
               at: own.name,
-              from: THURSDAY,
+              // a job the user wrote to the bot is theirs, as the thread says (room-conversation)
+              from: thread.startedBy === "user" ? YOU : THURSDAY,
               to: [own],
               text: `took on “${clipWord(thread.label)}”`,
             },
@@ -250,7 +252,8 @@ export function happenedIn(
           : {
               rank: 1,
               at: line.bot.name,
-              from: THURSDAY,
+              // hers or the user's own, as the thread draws them (thread.store speakerOf)
+              from: speakerOf(line),
               to: [line.bot],
               text: clipWord(line.text),
             },
@@ -1029,7 +1032,12 @@ function Party({ from, to }: { from: BotRef; to: BotRef[] }) {
       {faces.map((bot, index) => (
         <span
           key={bot.name}
-          className={cn("relative flex", index > 0 && "-ml-1.25")}
+          className={cn(
+            "relative flex",
+            // faces overlap as the crew row's do; the word "You" is not one, so the next stands clear
+            index > 0 &&
+              (faces[index - 1].name === YOU.name ? "ml-1" : "-ml-1.25"),
+          )}
           style={{ zIndex: faces.length - index }}
         >
           <Speaker bot={bot} />
@@ -1039,8 +1047,17 @@ function Party({ from, to }: { from: BotRef; to: BotRef[] }) {
   );
 }
 
-/** A face in a bubble: Thursday's own mark for the user's side, else the bot's. */
+/**
+ * A face in a bubble: Thursday's own mark for hers, the bot's for a bot, and for the user's own
+ * words the word "You", as the thread names them (room-conversation YOU).
+ */
 function Speaker({ bot }: { bot: BotRef }) {
+  if (bot.name === YOU.name)
+    return (
+      <span className="shrink-0 font-mono text-[10.5px] text-muted-foreground">
+        You
+      </span>
+    );
   return bot.name === THURSDAY.name ? (
     <ThursdayMark size={18} className="shrink-0" />
   ) : (
