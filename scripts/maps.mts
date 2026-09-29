@@ -14,7 +14,8 @@ const ROOT = execFileSync("git", ["rev-parse", "--show-toplevel"], {
 const RULES = ".claude/rules";
 // A map is read whenever its area is; past this it costs more than it tells. Counted in
 // characters without the frontmatter, which never reaches the model, so a line rewrapped or
-// merged into another to fit saves nothing
+// merged into another to fit saves nothing. A map whose area needs more room may be given it
+// here, only once the maintainer says yes: asked, not raised to let a line through
 const MAX_CHARS: Record<string, number> = {
   "AGENTS.md": 9500,
   "taste.md": 2000,
@@ -104,7 +105,10 @@ for (const file of ["AGENTS.md", ...maps]) {
   const text = readFileSync(join(ROOT, file), "utf8");
   const size = text.replace(/^---\n[\s\S]*?\n---\n/, "").length;
   const max = MAX_CHARS[basename(file)] ?? MAX_CHARS[file] ?? MAP_MAX;
-  if (size > max) problems.push(`${file}: ${size} characters, over ${max}`);
+  if (size > max)
+    problems.push(
+      `${file}: ${size} characters, over ${max}. Say each thing once; for more room, ask the maintainer (MAX_CHARS).`,
+    );
   if (file !== "AGENTS.md") {
     const globs = globsOf(text);
     // A rule file with no paths is loaded into every session
