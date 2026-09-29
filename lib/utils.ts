@@ -77,6 +77,26 @@ export function hostOf(url: string): string | null {
   }
 }
 
+/**
+ * Takes emphasis marks off, and only marks, as CommonMark reads them: a run longer than the
+ * mark (a key shown as `sk-…******…`), a mark with a space inside it (`2 * 3`), or an
+ * underscore inside a word (`cafe_list_v2.md`) is text and stays. Widest first, so one mark
+ * inside another (`**a *b* c**`) comes off too.
+ */
+const EMPHASIS = (["\\*", "_"] as const).flatMap((mark) => {
+  // what may not touch it from outside: another mark, and for `_` a letter too
+  const outside = mark === "_" ? "\\w_" : mark;
+  return [3, 2, 1].map((width) => {
+    const run = mark.repeat(width);
+    return new RegExp(
+      `(?<![${outside}])${run}(?![\\s${mark}])(.+?)(?<![\\s${mark}])${run}(?![${outside}])`,
+      "g",
+    );
+  });
+});
+const unemphasize = (text: string) =>
+  EMPHASIS.reduce((out, mark) => out.replace(mark, "$1"), text);
+
 /** Markdown as plain text for a one-line preview: strips headings, emphasis, code, links and table rules. */
 export function plainText(markdown: string): string {
   return markdown
@@ -84,8 +104,7 @@ export function plainText(markdown: string): string {
     .replace(/`([^`]*)`/g, "$1")
     .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
     .replace(/^\s{0,3}(#{1,6}\s+|[-*+]\s+|\d+\.\s+|>\s?)/gm, "")
-    .replace(/(\*\*|__)(.*?)\1/g, "$2")
-    .replace(/(\*|_)(.*?)\1/g, "$2")
+    .replace(/[^\n]+/g, unemphasize)
     .replace(/^\s*\|?[\s:|-]+\|\s*$/gm, " ")
     .replace(/\|/g, " ")
     .replace(/\s+/g, " ")
@@ -99,7 +118,7 @@ export const MARKDOWN_LINK = /\[([^\]\n]+)\]\(([^)\s]+)\)/g;
  * Markdown as a caption: the marks go as in `plainText`, but the lines a list or a table is
  * made of stay lines (a table row as its cells with " · " between, its rule dropped) and a
  * link keeps its `[label](href)` for the caption to draw as one. Emphasis is taken off around
- * links, never inside them: a file name's underscores are part of where it leads.
+ * a link and off its label, never off where it leads: a file name's underscores are its path.
  */
 export function captionText(markdown: string): string {
   const links: string[] = [];
@@ -107,7 +126,7 @@ export function captionText(markdown: string): string {
     .replace(/```[\s\S]*?```/g, " ")
     .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
     .replace(MARKDOWN_LINK, (_, label: string, href: string) => {
-      links.push(`[${label.replace(/[*_`]/g, "")}](${href})`);
+      links.push(`[${unemphasize(label.replace(/`/g, ""))}](${href})`);
       return `\uE000${links.length - 1}\uE000`;
     });
   const lines: string[] = [];
@@ -123,15 +142,13 @@ export function captionText(markdown: string): string {
         .map((cell) => cell.trim())
         .filter(Boolean)
         .join(" · ");
-    line = line
-      .replace(/^#{1,6}\s+/, "")
-      .replace(/^>\s?/, "")
-      .replace(/^[-*+]\s+/, "• ")
-      .replace(/`([^`]*)`/g, "$1")
-      .replace(/(\*\*|__)(\S(?:.*?\S)?)\1/g, "$2")
-      // Only a mark that opens and closes on a word: snake_case keeps its underscores
-      .replace(/(^|[^\w*])([*_])(\S(?:[^*_\n]*?\S)?)\2(?![\w*])/g, "$1$3")
-      .replace(/\s+/g, " ");
+    line = unemphasize(
+      line
+        .replace(/^#{1,6}\s+/, "")
+        .replace(/^>\s?/, "")
+        .replace(/^[-*+]\s+/, "• ")
+        .replace(/`([^`]*)`/g, "$1"),
+    ).replace(/\s+/g, " ");
     lines.push(line);
   }
   return lines
