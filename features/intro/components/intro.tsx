@@ -29,8 +29,9 @@ import {
 import { PERSONAS } from "@/features/ai/prompts/persona";
 import { BOT_SEEDS, ERRANDS_BOT, findBotSeed } from "@/features/bot/bot.seed";
 import { BotMark } from "@/features/bot/components/bot-mark";
+import { ROOM_THURSDAY } from "@/features/bot/room.schema";
 import { installSeedBots } from "@/features/bot/seed-bots";
-import type { ThreadView } from "@/features/bot/thread.store";
+import type { Chatter, ThreadView } from "@/features/bot/thread.store";
 import { AccountsSetup } from "@/features/config/components/config-setting";
 import {
   CallLines,
@@ -64,6 +65,7 @@ import {
   type Finished,
   FinishedCard,
 } from "@/features/workspace/components/artifact-view";
+import { toDate } from "@/lib/date-like";
 import { useServerAction } from "@/lib/protocol/use-server-action";
 import { revalidate, useServerRoute } from "@/lib/protocol/use-server-route";
 import { cn, WAITING_INK } from "@/lib/utils";
@@ -116,46 +118,103 @@ const OfficeBackdrop = dynamic(
 const OFFICE_LEAVE_MS = 250;
 
 /**
- * The bots picked, as a thread nobody has started: the first holds it, and each other one has
- * a desk (office.ts seats every exchange's bot). Words alone, nothing read off the server.
+ * The bots step's office, played in under 7s from the step opening. A bot is drawn once the work
+ * walked to it lands at its desk (office.scene momentOf), and the one who holds the team walks it
+ * one at a time, each walk under `OFFICE_WALK_S` there and back (office.scene tripsOf: under 1.1s
+ * each way and 0.35s at the desk). So all but the last two walks lie before the step opened, and
+ * those two are walked while you look: the first once the office stands built (about 1.5s,
+ * office.scene stageOf `built`), the second once it is back.
  */
-function teamThread(names: string[], since: Date): ThreadView | null {
+const OFFICE_WALK_S = 2.5;
+/** When the last two walks set off, in seconds from the step opening. */
+const OFFICE_SEEN_S = [2, 4.2];
+/** When the holder has handed out everything and waits on the team: the last walk is back. */
+const OFFICE_SETTLED_MS = 6_700;
+
+/**
+ * The bots picked, as a thread under way when the step opened: the first holds it and each other
+ * one is at its desk on what that bot is for. Words alone, nothing read off the server.
+ */
+function teamThread(
+  names: string[],
+  opened: Date,
+  settled: boolean,
+): ThreadView | null {
   const [lead, ...rest] = names;
   if (!lead) return null;
   const ref = (name: string) => ({
     name,
     icon: findBotSeed(name)?.icon ?? null,
   });
+  // The walks before the step opened, one after another once the holder is back with the job
+  // (office.scene tripsOf `job`, back by 2s), and the thread begun early enough to have had them
+  const before = Math.max(0, rest.length - OFFICE_SEEN_S.length);
+  const ahead = before ? 2 + before * OFFICE_WALK_S : 0;
+  const since = new Date(opened.getTime() - ahead * 1000);
+  const at = (seconds: number) => new Date(since.getTime() + seconds * 1000);
+  const lines = rest.flatMap((bot, index): Chatter[] => {
+    const hint = findBotSeed(bot)?.hint ?? bot;
+    const given =
+      index < before
+        ? 2 + index * OFFICE_WALK_S
+        : ahead + OFFICE_SEEN_S[index - before];
+    return [
+      {
+        id: `intro-ask-${bot}-0`,
+        bot: ref(lead),
+        to: ref(bot),
+        text: hint,
+        kind: "ask",
+        exchange: `intro-${bot}`,
+        parent: "intro-lead",
+        at: at(given),
+      },
+      // Its step once the work is at its desk: the words of a turn that goes on (office.ts steps)
+      {
+        id: `intro-step-${bot}-0`,
+        bot: ref(bot),
+        to: null,
+        text: hint,
+        kind: "say",
+        parent: `intro-${bot}`,
+        at: at(given + 1.2),
+      },
+    ];
+  });
   return {
-    id: "intro-team",
+    // Each opening of the step builds its office afresh
+    id: `intro-team-${opened.getTime()}`,
     request: "Who works for you",
     label: "Who works for you",
     bot: ref(lead),
     roster: names.map(ref),
-    // The one who holds it hands each of the rest what that bot is for, one after another, so
-    // they come in to their desks as a thread's helpers do (office.scene joinsOf)
-    lines: rest.map((bot, index) => ({
-      id: `intro-ask-${bot}`,
-      bot: ref(lead),
-      to: ref(bot),
-      text: findBotSeed(bot)?.hint ?? bot,
-      kind: "ask" as const,
-      exchange: `intro-${bot}`,
-      parent: null,
-      at: new Date(since.getTime() + 600 + index * 450),
-    })),
+    lines: lines.sort(
+      (a, b) =>
+        toDate(a.at ?? since).getTime() - toDate(b.at ?? since).getTime(),
+    ),
     room: {
       participants: names.map((bot) => ({ bot, state: "done" as const })),
       questions: [],
       deliveries: [],
       relays: [],
-      exchanges: rest.map((bot) => ({
-        id: `intro-${bot}`,
-        bot,
-        caller: lead,
-        state: "queued" as const,
-        waitsFor: [],
-      })),
+      exchanges: [
+        // The holder's own seat, as a thread's bot has it (room.schema isCoordinatorSeat): at
+        // work while it hands out, then its turn over, waiting on the rest
+        {
+          id: "intro-lead",
+          bot: lead,
+          caller: ROOM_THURSDAY,
+          state: settled ? ("waiting" as const) : ("running" as const),
+          waitsFor: [],
+        },
+        ...rest.map((bot) => ({
+          id: `intro-${bot}`,
+          bot,
+          caller: lead,
+          state: "running" as const,
+          waitsFor: [],
+        })),
+      ],
     },
     status: "working",
     outcome: null,
@@ -219,19 +278,29 @@ export function Intro({
   // The bots step is drawn as their office (teamThread), and it goes as the step does
   const officeUp = step === "bots";
   const [officeDrawn, setOfficeDrawn] = useState(false);
+  // Its walks are timed from the step opening (teamThread)
+  const [opened, setOpened] = useState<Date | null>(null);
+  const [settled, setSettled] = useState(false);
   useEffect(() => {
-    if (officeUp) return setOfficeDrawn(true);
+    if (officeUp) {
+      setOpened(new Date());
+      setSettled(false);
+      setOfficeDrawn(true);
+      const done = setTimeout(() => setSettled(true), OFFICE_SETTLED_MS);
+      return () => clearTimeout(done);
+    }
     const end = setTimeout(() => setOfficeDrawn(false), OFFICE_LEAVE_MS);
     return () => clearTimeout(end);
   }, [officeUp]);
-  const [since] = useState(() => new Date());
   const team = useMemo(
     () =>
+      opened &&
       teamThread(
         BOT_SEEDS.filter((seed) => picked[seed.name]).map((seed) => seed.name),
-        since,
+        opened,
+        settled,
       ),
-    [picked, since],
+    [picked, opened, settled],
   );
   // her face comes in on the opening's last beat, and the first screen after it
   const herIn = opening !== "echoes";
