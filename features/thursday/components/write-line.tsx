@@ -65,11 +65,11 @@ import { ThursdayMark } from "./thursday-mark";
  * which open it on the list of who to write to, or a file dragged onto the window — and it
  * holds who it is for, the words, and the files. Files are kept in the workspace the moment
  * they arrive (given-files), so they wait here by path until words go with them. Sent to a
- * bot, the room opens on the thread it started. Sent to Thursday — who it opens on until someone else is picked —
- * it becomes a call in writing (use-text-call): the line stays up as that call's way
- * in, says what the call runs on, and Esc ends the call rather than closing the line. A
- * bot can still be picked during it, for one message; then the line is hers again. Its
- * paperclip offers a file from this computer or a drawing (draw-pad), which the line holds
+ * bot, the room opens on the thread it started. Sent to Thursday — who it opens on until
+ * someone else is picked — it becomes a call in writing (use-text-call): the line stays up
+ * as that call's way in, says what the call runs on, and Esc ends the call rather than
+ * closing the line. A bot can still be picked during it, for one message; then the line is
+ * hers again. Its paperclip offers a file from this computer or a drawing (draw-pad), which the line holds
  * for the call's line too (writeLine.draw): a drawing arrives as a pasted picture does, but on
  * a spoken call, where it goes to her alone and she answers it (screen-act `showed`).
  */
@@ -177,8 +177,11 @@ export function WriteLine({
         setCursor(0);
       }
       requestAnimationFrame(() => {
-        field.current?.focus();
-        if (choose) field.current?.setSelectionRange(1, 1);
+        const box = field.current;
+        box?.focus();
+        // after the name a kept `@` already has, so what is typed goes on with it
+        const end = box?.value.split(/\s/, 1)[0].length ?? 0;
+        if (choose) box?.setSelectionRange(end, end);
       });
     },
     [held],
