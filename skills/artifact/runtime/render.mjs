@@ -115,10 +115,13 @@ const done = orFail(
           );
           if (off.length || (strict && broken.length))
             return { files: [], broken, off, printed: false };
+          // A page that names no sheet of its own (a deck does, in @page) prints on A4, the
+          // ISO size nearly every country uses, where Chromium's own default is US Letter
           await tab.pdf({
             path: pdf,
             printBackground: true,
             preferCSSPageSize: true,
+            format: "A4",
           });
           return { files: [], broken, off, printed: true };
         }

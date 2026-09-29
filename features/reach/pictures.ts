@@ -76,8 +76,11 @@ export function picturesOf(full: string): Promise<OutgoingFile[]> {
 export function pdfOf(full: string): Promise<OutgoingFile | null> {
   if (!isPage(full)) return Promise.resolve(null);
   return inTurn(async () => {
-    if (!(await prints(full))) return null;
-    return rendered(full, `--pdf "$OUT/$NAME.pdf"`, {
+    const mark = await printMark(full);
+    if (!mark) return null;
+    // A deck's mark names its slide's size: a slide past it is refused, not split in two
+    const size = mark.size ? ` --size ${mark.size}` : "";
+    return rendered(full, `--pdf "$OUT/$NAME.pdf"${size}`, {
       failed: "not printed",
       take: async (out) => ({
         bytes: await readFile(
@@ -95,15 +98,19 @@ export function pdfOf(full: string): Promise<OutgoingFile | null> {
 
 const isPage = (full: string) => ["html", "htm"].includes(extensionOf(full));
 
-/** Whether a page says it prints: the mark stands in its head, before its styles. */
-async function prints(full: string) {
+/**
+ * The mark a page that prints carries in its head, before its styles, with the sheet size
+ * a deck gives it; null for a page without one.
+ */
+async function printMark(full: string) {
   const file = await open(full);
   try {
     const head = Buffer.alloc(4096);
     const { bytesRead } = await file.read(head, 0, head.length, 0);
-    return /<meta name="print" content="pdf">/.test(
+    const found = /<meta name="print" content="pdf(?: (\d+x\d+))?">/.exec(
       head.subarray(0, bytesRead).toString("utf8"),
     );
+    return found ? { size: found[1] ?? "" } : null;
   } finally {
     await file.close();
   }

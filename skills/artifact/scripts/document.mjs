@@ -51,6 +51,9 @@ import {
 } from "../runtime/shell/workspace.mjs";
 
 const SKILL = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+/** The mark a page made to be read carries in its head (shell head.html), a deck's size in it. */
+const PRINTS = /<meta name="print" content="pdf(?: (\d+x\d+))?">/;
+const MARK = '<meta name="print" content="pdf">';
 const SCRIPT = join(SKILL, "scripts", "document.mjs");
 
 /**
@@ -163,7 +166,11 @@ function putBody(name, from) {
   const put = putBetween(page, body);
   if (!put) throw unmarked(file);
   const title = headingOf(body);
-  const html = title ? retitle(put, title) : put;
+  // A document made before the mark gains it here, beside the shell's own meta, so it prints
+  const marked = PRINTS.test(put)
+    ? put
+    : put.replace(/(<meta name="revision" content="[^"]*">)/, `$1\n${MARK}`);
+  const html = title ? retitle(marked, title) : marked;
   keep(file, html);
   console.log(
     `The body is in ${shown(file)}. Hand back this path; to see it as it opens: node ${SCRIPT} shots ${name}`,
@@ -233,9 +240,10 @@ function shotPage(name) {
  */
 function pdfFile(name) {
   const file = pageAt(name);
-  if (!readFileSync(file, "utf8").includes('<meta name="print" content="pdf">'))
+  const mark = PRINTS.exec(readFileSync(file, "utf8"));
+  if (!mark)
     throw new Stop(
-      `${shown(file)} is not a page made to be read, so it does not print. A canvas goes as its pictures (canvas.mjs shots); a deck made before this has no mark: put it again with make_deck, or use deck.mjs pdf.`,
+      `${shown(file)} does not carry the mark of a page made to be read, so it is not printed. A canvas goes as its pictures (canvas.mjs shots). A document made before the mark gains it when its body is put again (node ${SCRIPT} get, then put); a deck, with deck.mjs pdf.`,
     );
   const out = join(dirname(file), `${basename(file, ".html")}.pdf`);
   const skills = process.env.THURSDAY_SKILLS || resolve(SKILL, "..");
@@ -247,6 +255,8 @@ function pdfFile(name) {
       "--shot",
       "--pdf",
       out,
+      // A deck's slides are each checked to fill one sheet
+      ...(mark[1] ? ["--size", mark[1]] : []),
       // Never in the job's own browser, which may be a window on their screen
       "--apart",
     ],

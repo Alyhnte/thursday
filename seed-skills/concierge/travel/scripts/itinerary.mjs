@@ -52,9 +52,15 @@ if (!NAME.test(name))
 if (!trip.title) fail('The JSON needs a "title".');
 if (!Array.isArray(trip.days) || !trip.days.length)
   fail('The JSON needs "days": [{ "date", "title", "stops": [...] }].');
+// A section given in the wrong shape would be left off the page without a word
+for (const field of ["more", "before"])
+  if (trip[field] != null && !Array.isArray(trip[field]))
+    fail(`"${field}" is a list: [{ ... }, { ... }].`);
 trip.days.forEach((d, i) => {
   if (!Array.isArray(d.stops) || !d.stops.length)
     fail(`Day ${i + 1} has no "stops".`);
+  if (d.cover != null && !d.cover?.wiki && !d.cover?.photo)
+    fail(`Day ${i + 1} "cover" needs a "wiki" or a "photo".`);
   d.stops.forEach((s, j) => {
     const at = `Day ${i + 1}, stop ${j + 1}`;
     if (!s.name) fail(`${at} has no "name".`);
