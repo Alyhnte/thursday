@@ -83,10 +83,10 @@
   font-size: 13.5px;
 }
 .b-lede {
-  font-size: 30px;
-  font-weight: 750;
-  line-height: 1.2;
-  letter-spacing: -0.03em;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: -0.025em;
   text-wrap: balance;
 }
 .b-daynote {
@@ -161,21 +161,27 @@
   background: currentColor;
   opacity: 0.55;
 }
+.b-said {
+  border-radius: 14px;
+  background: var(--b-ground);
+}
 .b-said summary {
-  color: var(--b-2);
-  font-size: 13px;
+  padding: 12px 14px;
+  color: var(--sh-ink);
+  font-size: 14px;
+  font-weight: 600;
   cursor: pointer;
 }
 .b-said p {
-  margin-top: 8px;
+  padding: 0 14px 14px;
   color: var(--b-2);
-  font-size: 14px;
+  font-size: 14.5px;
 }
 
 /* Today: the weather as what to do about it, and the numbers they watch, a tile each */
 .b-tiles {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(6.25rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(6.25rem, 1fr));
   gap: 8px;
 }
 .b-tile {
@@ -402,51 +408,54 @@
   list-style: none;
 }
 .b-follow li {
-  position: relative;
   display: grid;
-  grid-template-columns: 5.5rem minmax(0, 1fr);
-  gap: 0 20px;
-  padding-bottom: 14px;
+  grid-template-columns: 5.5rem 20px minmax(0, 1fr);
+  column-gap: 10px;
   font-size: 14px;
   line-height: 1.5;
 }
-.b-follow li::before {
+.b-follow time {
+  color: var(--b-3);
+  font: 400 12.5px / 21px var(--sh-mono);
+}
+/* The rail: a dot at each moment, a line from it down to the next one's dot */
+.b-rail {
+  position: relative;
+}
+.b-rail::before {
   content: "";
   position: absolute;
-  left: calc(5.5rem + 6px);
-  top: 7px;
-  width: 9px;
-  height: 9px;
+  top: 6px;
+  left: 5px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   background: var(--sh-dot);
 }
-.b-follow li::after {
+.b-rail::after {
   content: "";
   position: absolute;
-  left: calc(5.5rem + 10px);
-  top: 18px;
-  bottom: 0;
+  top: 16px;
+  bottom: -6px;
+  left: 9.5px;
   width: 1px;
-  background: var(--sh-line);
+  background: color-mix(in srgb, var(--sh-ink) 22%, var(--sh-paper));
 }
-.b-follow li:last-child {
-  padding-bottom: 0;
-}
-.b-follow li:last-child::after {
+.b-follow li:last-child .b-rail::after {
   display: none;
 }
-.b-follow li.b-now::before {
+.b-follow li > span {
+  padding-bottom: 14px;
+}
+.b-follow li:last-child > span {
+  padding-bottom: 0;
+}
+.b-follow li.b-now .b-rail::before {
   background: var(--sh-maker);
+  box-shadow: 0 0 0 3px var(--b-soft);
 }
 .b-follow li.b-now span {
   font-weight: 650;
-}
-.b-follow time {
-  color: var(--b-3);
-  font: 400 12.5px / 1.6 var(--sh-mono);
-}
-.b-follow span {
-  padding-left: 4px;
 }
 
 /* The rest: a headline a line */
@@ -484,8 +493,8 @@
     padding-top: 48px;
   }
   .b-lede {
-    font-size: 36px;
-    line-height: 1.12;
+    font-size: 28px;
+    line-height: 1.28;
   }
   .b-lead .b-body {
     padding: 22px 26px 26px;
@@ -516,6 +525,10 @@
   .b-more li {
     grid-template-columns: minmax(0, 1fr);
     gap: 2px;
+  }
+  .b-follow li {
+    grid-template-columns: 4rem 20px minmax(0, 1fr);
+    column-gap: 6px;
   }
 }
 

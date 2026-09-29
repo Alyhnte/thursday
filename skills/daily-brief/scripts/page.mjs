@@ -289,7 +289,7 @@ ${picture(s, false)}
         `<section class="b-follow"><h2><span class="b-chip b-on">${esc(L.following)}</span>${esc(f.topic)}</h2><ol>${f.steps
           .map(
             (st, i) =>
-              `<li${i === f.steps.length - 1 ? ' class="b-now"' : ""}><time>${esc(st.date ?? "")}</time><span>${esc(st.text ?? "")}</span></li>`,
+              `<li${i === f.steps.length - 1 ? ' class="b-now"' : ""}><time>${esc(st.date ?? "")}</time><i class="b-rail" aria-hidden="true"></i><span>${esc(st.text ?? "")}</span></li>`,
           )
           .join("")}</ol></section>`,
     )

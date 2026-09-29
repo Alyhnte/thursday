@@ -118,6 +118,10 @@ small {
 .hero .ph:first-child {
   grid-row: 1 / 3;
 }
+/* The hero is the trip at a glance: who took each picture is said where it opens, not on it */
+.hero figcaption {
+  display: none;
+}
 .hero.n1 {
   grid-template-columns: 1fr;
 }
