@@ -17,7 +17,8 @@ the plan it is on, so the plan can still be signed in to. The call screen's **Se
 Every step can be skipped and done later in Settings. On the microphone step the main button turns
 the microphone on (the browser asks first, by its address bar), and with it the wake phrase, and
 goes on to the next step; the line under it goes on without either. On the bots step her face gives
-way to their office, one desk for each bot switched on, until the step is left. The bots picked
+way to their office, one desk for each bot switched on, with a job already under way that ends a
+few seconds in: each bot hands its part back and the report comes in. The bots picked
 there are set up when it ends; they work once there is a model to run on.
 The models step ends on **Exa**, a key for web search: without it a bot searches only when its own
 model can. The style step shows one of her four characters at a time, with a line on how she talks;

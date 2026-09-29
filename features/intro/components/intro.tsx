@@ -118,27 +118,27 @@ const OfficeBackdrop = dynamic(
 const OFFICE_LEAVE_MS = 250;
 
 /**
- * The bots step's office, played in under 7s from the step opening. A bot is drawn once the work
- * walked to it lands at its desk (office.scene momentOf), and the one who holds the team walks it
- * one at a time, each walk under `OFFICE_WALK_S` there and back (office.scene tripsOf: under 1.1s
- * each way and 0.35s at the desk). So all but the last two walks lie before the step opened, and
- * those two are walked while you look: the first once the office stands built (about 1.5s,
- * office.scene stageOf `built`), the second once it is back.
+ * The bots step's office: a job already under way when the step opens, every bot at its desk
+ * on its part and the one who holds it waiting on them, which ends while you look — each hands
+ * its part back and the report comes in (the maintainer's pick, 09-29: nothing walks in or
+ * vanishes). Only the thread it is handed changes; the office draws it as it draws any job.
  */
-const OFFICE_WALK_S = 2.5;
-/** When the last two walks set off, in seconds from the step opening. */
-const OFFICE_SEEN_S = [2, 4.2];
-/** When the holder has handed out everything and waits on the team: the last walk is back. */
-const OFFICE_SETTLED_MS = 6_700;
+/** How far into the job the step opens: the office's clocks read that much already. */
+const OFFICE_UNDER_WAY_S = 95;
+/** When the job ends, from the step opening. */
+const OFFICE_DONE_MS = 5_000;
+/** The report the job ends with, as the card it leaves reads it. */
+const OFFICE_REPORT = "Everyone did their part. The team is ready for you.";
 
 /**
  * The bots picked, as a thread under way when the step opened: the first holds it and each other
- * one is at its desk on what that bot is for. Words alone, nothing read off the server.
+ * one is at its desk on what that bot is for; `done`, each has handed its part back and the
+ * first has reported. Words alone, nothing read off the server.
  */
 function teamThread(
   names: string[],
   opened: Date,
-  settled: boolean,
+  done: boolean,
 ): ThreadView | null {
   const [lead, ...rest] = names;
   if (!lead) return null;
@@ -146,18 +146,13 @@ function teamThread(
     name,
     icon: findBotSeed(name)?.icon ?? null,
   });
-  // The walks before the step opened, one after another once the holder is back with the job
-  // (office.scene tripsOf `job`, back by 2s), and the thread begun early enough to have had them
-  const before = Math.max(0, rest.length - OFFICE_SEEN_S.length);
-  const ahead = before ? 2 + before * OFFICE_WALK_S : 0;
-  const since = new Date(opened.getTime() - ahead * 1000);
+  // Handed out one after another near the start, long before the step opened
+  const since = new Date(opened.getTime() - OFFICE_UNDER_WAY_S * 1000);
   const at = (seconds: number) => new Date(since.getTime() + seconds * 1000);
+  const ended = OFFICE_UNDER_WAY_S + OFFICE_DONE_MS / 1000;
   const lines = rest.flatMap((bot, index): Chatter[] => {
     const hint = findBotSeed(bot)?.hint ?? bot;
-    const given =
-      index < before
-        ? 2 + index * OFFICE_WALK_S
-        : ahead + OFFICE_SEEN_S[index - before];
+    const given = 2 + index * 2.5;
     return [
       {
         id: `intro-ask-${bot}-0`,
@@ -179,8 +174,33 @@ function teamThread(
         parent: `intro-${bot}`,
         at: at(given + 1.2),
       },
+      // Done, its last words under its exchange are its part handed back (office.ts `return`)
+      ...(done
+        ? [
+            {
+              id: `intro-back-${bot}-0`,
+              bot: ref(bot),
+              to: null,
+              text: "Done.",
+              kind: "say" as const,
+              parent: `intro-${bot}`,
+              at: at(ended),
+            },
+          ]
+        : []),
     ];
   });
+  // and the one who holds it reports (office.ts `report`)
+  if (done)
+    lines.push({
+      id: "intro-report-0",
+      bot: ref(lead),
+      to: null,
+      text: OFFICE_REPORT,
+      kind: "result",
+      parent: "intro-lead",
+      at: at(ended),
+    });
   return {
     // Each opening of the step builds its office afresh
     id: `intro-team-${opened.getTime()}`,
@@ -193,31 +213,38 @@ function teamThread(
         toDate(a.at ?? since).getTime() - toDate(b.at ?? since).getTime(),
     ),
     room: {
-      participants: names.map((bot) => ({ bot, state: "done" as const })),
+      participants: names.map((bot) => ({
+        bot,
+        state: done
+          ? ("done" as const)
+          : bot === lead
+            ? ("waiting" as const)
+            : ("running" as const),
+      })),
       questions: [],
       deliveries: [],
       relays: [],
       exchanges: [
-        // The holder's own seat, as a thread's bot has it (room.schema isCoordinatorSeat): at
-        // work while it hands out, then its turn over, waiting on the rest
+        // The holder's own seat, as a thread's bot has it (room.schema isCoordinatorSeat): its
+        // turn over, waiting on the rest, until they are back and it has reported
         {
           id: "intro-lead",
           bot: lead,
           caller: ROOM_THURSDAY,
-          state: settled ? ("waiting" as const) : ("running" as const),
+          state: done ? ("done" as const) : ("waiting" as const),
           waitsFor: [],
         },
         ...rest.map((bot) => ({
           id: `intro-${bot}`,
           bot,
           caller: lead,
-          state: "running" as const,
+          state: done ? ("done" as const) : ("running" as const),
           waitsFor: [],
         })),
       ],
     },
-    status: "working",
-    outcome: null,
+    status: done ? "done" : "working",
+    outcome: done ? OFFICE_REPORT : null,
     ask: null,
     seen: true,
     routineId: null,
@@ -225,7 +252,7 @@ function teamThread(
     contextTokens: 0,
     contextBudget: 0,
     createdAt: since,
-    updatedAt: since,
+    updatedAt: done ? at(ended) : opened,
   };
 }
 
@@ -278,15 +305,15 @@ export function Intro({
   // The bots step is drawn as their office (teamThread), and it goes as the step does
   const officeUp = step === "bots";
   const [officeDrawn, setOfficeDrawn] = useState(false);
-  // Its walks are timed from the step opening (teamThread)
+  // Its job is timed from the step opening (teamThread), and ends OFFICE_DONE_MS in
   const [opened, setOpened] = useState<Date | null>(null);
-  const [settled, setSettled] = useState(false);
+  const [ended, setEnded] = useState(false);
   useEffect(() => {
     if (officeUp) {
       setOpened(new Date());
-      setSettled(false);
+      setEnded(false);
       setOfficeDrawn(true);
-      const done = setTimeout(() => setSettled(true), OFFICE_SETTLED_MS);
+      const done = setTimeout(() => setEnded(true), OFFICE_DONE_MS);
       return () => clearTimeout(done);
     }
     const end = setTimeout(() => setOfficeDrawn(false), OFFICE_LEAVE_MS);
@@ -298,9 +325,9 @@ export function Intro({
       teamThread(
         BOT_SEEDS.filter((seed) => picked[seed.name]).map((seed) => seed.name),
         opened,
-        settled,
+        ended,
       ),
-    [picked, opened, settled],
+    [picked, opened, ended],
   );
   // her face comes in on the opening's last beat, and the first screen after it
   const herIn = opening !== "echoes";
@@ -509,6 +536,12 @@ export function Intro({
               {step === "key" && <KeyTurn onSaved={() => setKeyed(true)} />}
               {step === "mic" && <MicTurn mic={mic} />}
               {step === "bots" && (
+                // her line, taken off the office; a narrow window has it under her already
+                <p className="text-[15px] leading-[1.6] text-foreground max-[900px]:hidden">
+                  {said.at(-1)?.text}
+                </p>
+              )}
+              {step === "bots" && (
                 <BotsTurn
                   picked={picked}
                   onToggle={(name) =>
@@ -535,13 +568,7 @@ export function Intro({
         >
           {/* One slot of one height for her first words or the step's state, and the rows
               under the button keep theirs: her face and the button stand still from step to step */}
-          <div
-            className={cn(
-              "flex h-14 items-center gap-2 text-[13px] text-muted-foreground",
-              // Her line over the office grows up, off the button
-              officeUp && "items-end",
-            )}
-          >
+          <div className="flex h-14 items-center gap-2 text-[13px] text-muted-foreground">
             {step === "hello" ? (
               helloIn && (
                 <p className="max-w-130 animate-in text-[20px] leading-[1.5] text-balance text-foreground duration-700 fill-mode-backwards fade-in slide-in-from-bottom-2">
@@ -549,11 +576,8 @@ export function Intro({
                   you when it is ready.
                 </p>
               )
-            ) : officeUp ? (
-              <p className="w-[min(24rem,calc(var(--face-w)*1.39+6rem))] animate-in rounded-xl bg-background/85 px-3.5 py-2 text-[14px] leading-[1.55] text-balance text-foreground ring-1 ring-border/60 backdrop-blur-md fade-in duration-300">
-                {said.at(-1)?.text}
-              </p>
-            ) : !callable ? (
+            ) : // Over the office her line is in the step's column beside it, not in a box here
+            officeUp ? null : !callable ? (
               "Asleep"
             ) : last ? (
               <Ready
