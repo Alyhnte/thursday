@@ -4,8 +4,8 @@
    the shell's, on the app's grey ground (app/globals.css), and its one accent is the colour
    of the bot that made it (--sh-maker), so the theme button and the maker reach it too. */
 :root {
-  --bg: #f3f3f3;
-  --card: #ffffff;
+  --bg: var(--sh-ground);
+  --card: var(--sh-card);
   --fg: var(--sh-ink);
   --muted: var(--sh-ink-3);
   --line: var(--sh-line);
@@ -17,14 +17,10 @@
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #0d0d0d;
-    --card: #161616;
     --shade: none;
   }
 }
 :root[data-theme="dark"] {
-  --bg: #0d0d0d;
-  --card: #161616;
   --shade: none;
 }
 * {

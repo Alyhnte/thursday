@@ -97,8 +97,9 @@ const readable = (hex, ground, to) => {
  * The maker's colour as the page's one accent (shell.css --sh-maker): the colour its face
  * is drawn in, when that is one #rrggbb colour, and beside it the same colour darkened or
  * lightened until words in it read on the ground a kind lays them on (--sh-maker-text):
- * the app's grey ground by day, its card at night. Nothing for a face in a paint or the
- * page's text.
+ * of the ground and the card the shell gives, the one words read least well on (shell.css
+ * --sh-ground by day, --sh-card at night). Paper is the day's, as the shell prints it.
+ * Nothing for a face in a paint or the page's text.
  */
 function makerRule(raw) {
   const { ink, paint } = markOf(raw) ?? {};
@@ -110,6 +111,7 @@ function makerRule(raw) {
     `:root{--sh-maker:${ink};--sh-maker-text:${day}}`,
     `@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--sh-maker-text:${night}}}`,
     `:root[data-theme="dark"]{--sh-maker-text:${night}}`,
+    `@media print{:root,:root:not([data-theme="light"]),:root[data-theme="dark"]{--sh-maker-text:${day}}}`,
   ].join("\n");
 }
 

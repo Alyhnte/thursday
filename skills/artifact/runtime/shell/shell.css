@@ -35,6 +35,11 @@
   --sh-line: rgb(13 13 13 / 10%);
   --sh-soft: #f9f9f9;
   --sh-sunk: #ededed;
+  /* For a kind that lays its words on cards (a brief, a trip): the app's grey ground and the
+     cards on it — white on grey by day, a lighter card on black at night (app/globals.css).
+     wear.mjs measures the maker's colour against these two. */
+  --sh-ground: #f3f3f3;
+  --sh-card: #ffffff;
   --sh-brand: #0169cc;
   --sh-bad: #dc2626;
   --sh-good: #15803d;
@@ -57,6 +62,8 @@
     --sh-line: rgb(255 255 255 / 10%);
     --sh-soft: #131313;
     --sh-sunk: #1c1c1c;
+    --sh-ground: #0d0d0d;
+    --sh-card: #161616;
     --sh-brand: #0a84ff;
     --sh-bad: #ef4444;
     --sh-good: #4ade80;
@@ -74,6 +81,8 @@
   --sh-line: rgb(255 255 255 / 10%);
   --sh-soft: #131313;
   --sh-sunk: #1c1c1c;
+  --sh-ground: #0d0d0d;
+  --sh-card: #161616;
   --sh-brand: #0a84ff;
   --sh-bad: #ef4444;
   --sh-good: #4ade80;
@@ -466,6 +475,8 @@ body {
     --sh-line: rgb(13 13 13 / 10%);
     --sh-soft: #f9f9f9;
     --sh-sunk: #ededed;
+    --sh-ground: #f3f3f3;
+    --sh-card: #ffffff;
     --sh-brand: #0169cc;
     --sh-good: #15803d;
     --sh-warn: #b45309;

@@ -5,29 +5,24 @@
    colour is the maker's (--sh-maker). Everything is named `b-` so the shell's names and the
    brief's never meet. */
 :root {
-  /* The app's grey ladder (app/globals.css): the ground a step off the paper, cards on it */
-  --b-bg: #f3f3f3;
-  --b-card: #ffffff;
+  /* Words that step back, off the app's grey ladder (app/globals.css); the ground and the
+     cards are the shell's (--sh-ground, --sh-card) */
   --b-2: #5d5d5d;
   --b-3: #767676;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --b-bg: #0d0d0d;
-    --b-card: #161616;
     --b-2: #afafaf;
     --b-3: #8f8f8f;
   }
 }
 :root[data-theme="dark"] {
-  --b-bg: #0d0d0d;
-  --b-card: #161616;
   --b-2: #afafaf;
   --b-3: #8f8f8f;
 }
 
 body {
-  background: var(--b-bg);
+  background: var(--sh-ground);
 }
 .b-page {
   display: grid;
@@ -101,7 +96,7 @@ body {
   padding: 6px 11px;
   border: 1px solid var(--sh-line);
   border-radius: 999px;
-  background: var(--b-card);
+  background: var(--sh-card);
   font-size: 12.5px;
   white-space: nowrap;
 }
@@ -200,7 +195,7 @@ body {
   overflow: hidden;
   border: 1px solid var(--sh-line);
   border-radius: 22px;
-  background: var(--b-card);
+  background: var(--sh-card);
 }
 .b-pic {
   position: relative;
@@ -409,7 +404,15 @@ body {
   }
 }
 
+/* Paper is the day's, as the shell prints it: the selectors match the dark ones above, so
+   being later is what wins */
 @media print {
+  :root,
+  :root:not([data-theme="light"]),
+  :root[data-theme="dark"] {
+    --b-2: #5d5d5d;
+    --b-3: #767676;
+  }
   body {
     background: none;
   }
