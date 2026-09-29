@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 /**
  * What the ready-made bots were set up with before, so an install that never touched a bot's
  * words moves to the new ones (bot.query refreshSeedWords, at boot). A bot's role and roster
@@ -106,10 +108,42 @@ export const SEED_WORDS = {
       ],
     },
   },
+  /**
+   * Seeds no longer shipped, by the name a bot installed from one keeps (a bot's name never
+   * changes): every role it was set up with. Nothing moves such a bot's words, which are
+   * still the app's, and read as its role, not its owner's (wasSeedRole).
+   */
+  retired: {
+    roles: {
+      // Became the Writer on 09-29 (8b52a59)
+      Marketer: [
+        "48ac45457c2f1756e0adc439478e94cdd314b535ba8d84eba6b3a043119b5f55",
+        "6e0bf4b5821da96d9ee080bb5981191fc2584e7f90027cdd86d5d5073c5a15eb",
+        "845e74d57daf14c00a5b47ee73b7094cecd13756721b46ff6e31980ba72efe36",
+        "b610e11935754fd46387cb28b1b1e72b971c6e7f91f3cda56085709321f23aa3",
+        "b8880b433456f5d66821575f463b8bef3bb9652c6f752886577486f709461340",
+        "b8cf680316e888d1192471c6ef103381adbcb32731fb38badc08a4cf49e940ca",
+        "d532807b2e69bce7836b005e18b5f78437c5c44dabc7839b45f6e2549866da3a",
+      ],
+    },
+  },
 } as const satisfies {
   now: Record<string, { role: string; description: string }>;
   before: {
     roles: Record<string, readonly string[]>;
     descriptions: Record<string, readonly string[]>;
   };
+  retired: { roles: Record<string, readonly string[]> };
 };
+
+/**
+ * Whether `role` is, word for word, one a ready-made bot of this name was set up with — the
+ * app's words, where nobody changed them — though its seed has since been rewritten or
+ * retired (bot.prompt ownerInstruction).
+ */
+export function wasSeedRole(name: string, role: string): boolean {
+  const sha = createHash("sha256").update(role.trim()).digest("hex");
+  const before: Record<string, readonly string[]> = SEED_WORDS.before.roles;
+  const retired: Record<string, readonly string[]> = SEED_WORDS.retired.roles;
+  return Boolean(before[name]?.includes(sha) || retired[name]?.includes(sha));
+}

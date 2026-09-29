@@ -25,6 +25,7 @@ import {
   workHandle,
 } from "@/features/bot/bot.schema";
 import { findBotSeed } from "@/features/bot/bot.seed";
+import { wasSeedRole } from "@/features/bot/bot.seed.retired";
 import { isCoordinatorSeat } from "@/features/bot/room.schema";
 import { listBotWork } from "@/features/bot/thread.query";
 import { findPinnedTools } from "@/features/connectors/mcp.query";
@@ -167,11 +168,14 @@ function identity(name: string, me: JobBot | null, seat?: Seat | null): string {
  * and is said as such (D7): told they were the owner's, the model gave the app's wording the
  * weight of a person's wish. Its form is where the bot starts, not where the job ends: with
  * the role winning outright, a one-page study guide came back as a seven-page picture book.
+ * A role an earlier seed wrote is the app's words too: a bot installed from a seed since
+ * retired keeps its name and them, and nothing moves them (bot.seed.retired).
  */
 const ownerInstruction = (name: string, persona?: string | null) => {
   const role = persona?.trim();
   if (!role) return "";
-  return findBotSeed(name)?.systemPrompt.trim() === role
+  return findBotSeed(name)?.systemPrompt.trim() === role ||
+    wasSeedRole(name, role)
     ? `## Your role
 
 What this bot is for, as the app sets it up. Where it and anything above disagree, it wins. The form it names is where to start: a job that asks for another — one page, slides, a sheet, a few lines — gets that one.

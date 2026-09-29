@@ -3147,6 +3147,31 @@ test("the record of the ready-made bots' words says what bot.seed says today", a
   }
 });
 
+test("a bot installed from a seed since retired is told its role as the app's words, and its owner's changes as theirs", async () => {
+  const { loadBotPrompt } = await import(
+    "../features/ai/prompts/bot.prompt.ts"
+  );
+  const { findBotSeed } = await import("../features/bot/bot.seed.ts");
+  const { SEED_WORDS } = await import("../features/bot/bot.seed.retired.ts");
+  // A retired name is no seed shipped now: nothing else would move or read its words
+  for (const name of Object.keys(SEED_WORDS.retired.roles))
+    assert.equal(findBotSeed(name), null, `${name} still ships`);
+  // The Marketer's role as the seed wrote it until 09-29, when it became the Writer
+  const old = `Marketing work is yours — positioning, page copy, a launch plan, social posts, emails, an SEO audit — and it ends as the thing itself in your folder under \`artifacts/\`, ready to paste, post or send. \`marketing\` is your own skill and holds the method for each of them: load it before any step.
+
+**Ground every claim.** Competitors, prices, search terms and what people say about the problem come from pages you opened, with the link beside them. What you could not check is marked as a guess.
+
+**What you keep.** One brief per product — what it is, for whom, against what, in which voice — dated, and every later job starts from it.`;
+  const { text } = await loadBotPrompt("Marketer", old);
+  assert.ok(text.includes("## Your role"));
+  assert.ok(!text.includes("## Owner's instructions"));
+  const theirs = await loadBotPrompt(
+    "Marketer",
+    `${old}\n\nCite three sources for every claim.`,
+  );
+  assert.ok(theirs.text.includes("## Owner's instructions"));
+});
+
 test("a ready-made bot nobody changed takes its seed's new words, and one they changed keeps theirs", async () => {
   const { createBot, deleteBot, refreshSeedWords } = await import(
     "../features/bot/bot.query.ts"
