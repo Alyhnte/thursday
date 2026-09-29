@@ -86,25 +86,39 @@ export function ThreadReply({
   to?: string | null;
   className?: string;
 }) {
-  const [selected, setSelected] = useState<string>();
+  const [selected, setSelected] = useState(
+    () => threadDrafts.box(thread.id).question,
+  );
   const [recipient, setRecipient] = useState(
     () => threadDrafts.recipient(thread.id) ?? thread.bot,
   );
-  const [stepping, setStepping] = useState(false);
+  const [stepping, setStepping] = useState(
+    () => threadDrafts.box(thread.id).stepping,
+  );
   const [picked, setPicked] = useState<string | null>(null);
-  // Another thread starts from its own kept recipient, no question picked, no step open.
-  // Synced during render, as useDraft does: an effect would draw the old thread's for a frame.
+  // Another thread starts from its own kept recipient, question and step, as this one is drawn
+  // again when the office opens or closes over it (thread.store threadDrafts). Synced during
+  // render, as useDraft does: an effect would draw the old thread's for a frame.
   const [shownFor, setShownFor] = useState({ id: thread.id, bot: thread.bot });
   if (shownFor.id !== thread.id || shownFor.bot !== thread.bot) {
     setShownFor({ id: thread.id, bot: thread.bot });
     setRecipient(threadDrafts.recipient(thread.id) ?? thread.bot);
-    setSelected(undefined);
-    setStepping(false);
+    setSelected(threadDrafts.box(thread.id).question);
+    setStepping(threadDrafts.box(thread.id).stepping);
   }
-  // Opening a bot's tab addresses the composer to it, kept like a pick in RecipientPicker.
+  const show = (question: string) => {
+    setSelected(question);
+    threadDrafts.keepBox(thread.id, { question });
+  };
+  const step = (open: boolean) => {
+    setStepping(open);
+    threadDrafts.keepBox(thread.id, { stepping: open });
+  };
+  // Opening a bot's tab addresses the composer to it, kept like a pick in RecipientPicker. The
+  // same tab drawn again keeps a bot picked on it since.
   useEffect(() => {
-    if (!to) return;
-    threadDrafts.select(thread.id, to);
+    if (!to || threadDrafts.tab(thread.id) === to) return;
+    threadDrafts.follow(thread.id, to);
     setRecipient(to);
   }, [thread.id, to]);
 
@@ -168,7 +182,7 @@ export function ThreadReply({
   const send = async (text: string) => {
     if (busy) return false;
     const sent = await answer(thread, text, recipientName, replyTo);
-    if (sent && onStep) setStepping(false);
+    if (sent && onStep) step(false);
     return sent;
   };
   /** A choice is sent as it is, through the same pipe as typed words. */
@@ -218,7 +232,7 @@ export function ThreadReply({
                   size="icon-sm"
                   aria-label="Previous question"
                   disabled={busy || questionIndex === 0}
-                  onClick={() => setSelected(questions[questionIndex - 1].id)}
+                  onClick={() => show(questions[questionIndex - 1].id)}
                 >
                   <ChevronLeft />
                 </Button>
@@ -234,7 +248,7 @@ export function ThreadReply({
                   size="icon-sm"
                   aria-label="Next question"
                   disabled={busy || questionIndex === questions.length - 1}
-                  onClick={() => setSelected(questions[questionIndex + 1].id)}
+                  onClick={() => show(questions[questionIndex + 1].id)}
                 >
                   <ChevronRight />
                 </Button>
@@ -363,7 +377,7 @@ export function ThreadReply({
             size="sm"
             variant="ghost"
             disabled={busy}
-            onClick={() => setStepping(true)}
+            onClick={() => step(true)}
             className="h-7 shrink-0 gap-1.5 rounded-full px-2.5 text-[12px]"
           >
             <CornerDownLeft className="size-3.5" />
@@ -411,7 +425,7 @@ export function ThreadReply({
         busy={busy}
         // The box appears only after Step in; focus it.
         autoFocus={onStep}
-        onEscape={onStep ? () => setStepping(false) : undefined}
+        onEscape={onStep ? () => step(false) : undefined}
         placeholder={
           onStep
             ? `What's off? ${recipientName} reads this before its next step`
@@ -441,7 +455,7 @@ export function ThreadReply({
               size="icon-sm"
               variant="ghost"
               disabled={busy}
-              onClick={() => setStepping(false)}
+              onClick={() => step(false)}
               aria-label="Never mind"
               className="text-muted-foreground"
             >
@@ -595,8 +609,11 @@ export function DraftComposer({
     setDraft(text);
     threadDrafts.set(threadId, recipient, text, draftKey);
   };
-  // Files go with the words as paths (given-files); what is dropped on the room is this thread's
-  const given = useGivenFiles();
+  // Files go with the words as paths (given-files); what is dropped on the room is this thread's.
+  // They wait with the draft, so a box drawn again (the office opening or closing) still has them
+  const given = useGivenFiles({
+    keep: JSON.stringify([threadId, recipient, draftKey ?? null]),
+  });
   const picker = useRef<HTMLInputElement>(null);
   const { take } = given;
   useEffect(

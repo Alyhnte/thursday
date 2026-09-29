@@ -1,6 +1,7 @@
 "use client";
 
 import { ArrowRight } from "lucide-react";
+import dynamic from "next/dynamic";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useAppEvent } from "@/app/api/events/app-event.client";
 import { queryKey } from "@/app/api/query-key";
@@ -33,7 +34,6 @@ import {
   useSeenOnDetail,
   writeLine,
 } from "../thread.store";
-import { OfficeView } from "./office-view";
 import { Conversation, ThreadHeader } from "./room-conversation";
 import {
   Empty,
@@ -57,6 +57,12 @@ import {
   useHandoff,
   waitingStepIn,
 } from "./room-pill";
+
+/** The office opens over a thread at work (office-view): its code loads when it does. */
+const OfficeView = dynamic(
+  () => import("./office-view").then((module) => module.OfficeView),
+  { ssr: false },
+);
 
 /**
  * The thread room and inbox in the corner of the call screen: what is running, what is
@@ -321,7 +327,12 @@ export const BotRoom = memo(function BotRoom() {
                 thread={current}
                 onBack={() => setPicked(null)}
                 onClose={fold}
-                onOffice={() => setOffice(current.id)}
+                // Watched while it works; one that ends on screen stays open until closed
+                onOffice={
+                  current.status === "working" || current.status === "waiting"
+                    ? () => setOffice(current.id)
+                    : undefined
+                }
               />
               {office === current.id && (
                 <OfficeView

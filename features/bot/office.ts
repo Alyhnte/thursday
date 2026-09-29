@@ -1,19 +1,18 @@
 /**
- * A thread as the office draws it: what crossed the room and when, each seat's turns, and the
- * state a seat wears at any moment. No React, so the bot suite reads a real room through it
- * (scripts/bot-context.test.mts) and the office view replays one (components/office-view).
+ * A thread as the office draws it while it runs: what crossed the room, where each seat stands
+ * now, and when the screen saw each of them happen. No React, so the bot suite reads a real room
+ * through it (scripts/bot-context.test.mts) and the office view follows one (components/office-view).
  *
- * Read off the thread's lines and the room's exchanges (thread.query): a line's time and the
- * exchange it was written under say when and for whom it was written, and an exchange's row says
- * how it stands — whose last words were an answer, which hand-off still waits. The room's own
- * rules place the rest: a bot works one exchange at a time (room.query claimRoomWork), a held
- * hand-off goes out as its sender ends a turn (releaseWaiting), a bot asking you reads nothing
- * else until you answer (deliver). Nothing is guessed from the words.
+ * The lines say what was sent and when it was written, and the room's exchanges how each seat
+ * stands now (thread.query). How a seat stood in between is kept nowhere, so the office draws the
+ * present, and walks what it sees change while it is open (`watch`): a hand-off let out, an
+ * answer handed back, the report. Nothing is guessed from the words.
  */
 
 import { TOOL_NAMES } from "@/features/ai/tools/tool-name";
 import { toDate } from "@/lib/date-like";
-import { ROOM_THURSDAY } from "./room.schema";
+import { plainText } from "@/lib/utils";
+import { ROOM_THURSDAY, type RoomView, type WorkState } from "./room.schema";
 import { type Chatter, messageOf, type ThreadView } from "./thread.store";
 
 /** The user, in the office: questions and the final report come to their counter. */
@@ -29,21 +28,17 @@ export type OfficeKind =
   /** A bot's answer to whoever handed it the work. */
   | "return"
   | "question"
-  /** The user's words to a bot that asked them something. */
+  /** The user's words to a bot whose question they answered. */
   | "answer"
   /** The user's words to a bot that asked nothing: a step in, or more for the job. */
   | "tell"
   /** The thread's bot's final answer to the user. */
   | "report"
   /** A send the room turned down, drawn as the step it was. */
-  | "refused"
-  /** The thread's bot ending a turn with words while work is still out. */
-  | "end"
-  /** The app stopping a bot's turn (a restart, a failure, a limit): it waits for Continue. */
-  | "stop";
+  | "refused";
 
 export type OfficeEvent = {
-  /** Unique within the office, for keys. */
+  /** The same on every reading of the thread: what the office remembers it by, and its key. */
   id: string;
   kind: OfficeKind;
   /** The line it was read from, for events written in the same moment; -1 for the job. */
@@ -54,14 +49,14 @@ export type OfficeEvent = {
   text: string;
   /** Seconds since the job was handed over. */
   at: number;
-  /** Only for `give`: the bots whose answers it waits for. */
+  /** Only for `give`: the bots whose answers it waits for, while it waits. */
   after: string[];
   /** Only for `give`: words that joined an exchange already open to that bot, rather than a new one. */
   extra: boolean;
-  /** The exchange a give opened or a release let out (room exchanges), which pairs the two; "" for none. */
+  /** The exchange a give opened or a release let out, or the room question a question opened; "" for none. */
   exchange: string;
-  /** Only for `end`: another turn followed at once, for words that came in while it ran (room.query finishRoomWork). */
-  again: boolean;
+  /** Only for `question`: when it was seen closed with no answer written yet (answered, or a stop); null while open. */
+  closed: number | null;
 };
 
 export type OfficeStep = {
@@ -72,12 +67,40 @@ export type OfficeStep = {
   order: number;
 };
 
+export type SeatKey =
+  | "run"
+  | "asking"
+  | "paused"
+  | "held"
+  | "ended"
+  | "done"
+  | "stopped"
+  | "none";
+
+/** Where a seat stands now, as the room's exchanges have it. */
+export type Seat = {
+  key: SeatKey;
+  /** Who it waits on: the bots a held hand-off waits for, those whose work is not back, or you. */
+  waits: string[];
+  /** Seconds since the handover it has stood so; null when nothing says. */
+  since: number | null;
+};
+
 export type OfficeThread = {
   coord: string;
   /** The thread's bot first, then each bot in the order it was first handed work. */
   bots: string[];
   events: OfficeEvent[];
   steps: OfficeStep[];
+  seats: Map<string, Seat>;
+  /** Exchanges still owed the answers they wait for, with those bots (room.query releaseWaiting). */
+  owed: Map<string, string[]>;
+  /** How each exchange stands, by id. */
+  states: Map<string, WorkState>;
+  /** The first line each exchange's bot wrote under it, by exchange. */
+  starts: Map<string, number>;
+  /** The questions to the user open now, by id. */
+  asking: Set<string>;
   /** Seconds from the handover to the last line. */
   span: number;
   status: ThreadView["status"];
@@ -99,18 +122,32 @@ const refusalOf = (line: Chatter) =>
 /** What the room hands a caller when a bot's turn ends without words (room.query finishRoomWork). */
 const SILENT = "This turn ended without a message.";
 
+type Exchange = RoomView["exchanges"][number];
+
+const terminal = (state: WorkState) =>
+  state === "done" || state === "cancelled";
+
+/** Owed the answers of the bots it named: held until they go out with them, even once started early. */
+const isOwed = (row: Exchange) =>
+  row.waitsFor.length > 0 && row.state !== "cancelled";
+
+/** Not started: its words wait unread with the answers (room.query isHeld). */
+const isHeld = (row: Exchange) =>
+  row.state === "waiting" && row.waitsFor.length > 0;
+
 export function officeOf(thread: ThreadView): OfficeThread {
   const start = toDate(thread.createdAt).getTime();
   const sec = (line: Chatter) =>
     line.at ? Math.max(0, (toDate(line.at).getTime() - start) / 1000) : 0;
   const coord = thread.bot.name;
   const lines = thread.lines;
-  const rows = new Map(thread.room.exchanges.map((row) => [row.id, row]));
+  const exchanges = thread.room.exchanges;
+  const rows = new Map(exchanges.map((row) => [row.id, row]));
   // A model may write a bot's name in any case; the room goes by its own spelling (room.query awaited)
   const known = [
     coord,
     ...thread.room.participants.map((one) => one.bot),
-    ...thread.room.exchanges.map((row) => row.bot),
+    ...exchanges.map((row) => row.bot),
   ];
   const canon = (name: string) =>
     known.find((one) => one.toLowerCase() === name.toLowerCase()) ?? name;
@@ -124,20 +161,22 @@ export function officeOf(thread: ThreadView): OfficeThread {
   const alone = (line: Chatter) =>
     (line.kind === "say" || line.kind === "result") &&
     !acting.has(messageOf(line));
-  /** Per exchange: the message of its last words, its last line, and the last line its bot wrote. */
+  const own = (line: Chatter) =>
+    line.kind !== "user" && line.kind !== "note" && line.kind !== "stop";
+  /** Per exchange: the message of its last words, and the last and first lines its bot wrote under it. */
   const lastWords = new Map<string, string>();
-  const lastLine = new Map<string, number>();
   const lastOwn = new Map<string, number>();
+  const starts = new Map<string, number>();
   for (const [index, line] of lines.entries()) {
     if (!line.parent) continue;
-    lastLine.set(line.parent, index);
-    if (line.kind !== "user" && line.kind !== "note" && line.kind !== "stop")
-      lastOwn.set(line.parent, index);
+    if (own(line)) lastOwn.set(line.parent, index);
+    if (own(line) && !starts.has(line.parent)) starts.set(line.parent, index);
     if (alone(line)) lastWords.set(line.parent, messageOf(line));
   }
 
-  const events: Omit<OfficeEvent, "id">[] = [
+  const events: OfficeEvent[] = [
     {
+      id: "job",
       kind: "job",
       order: -1,
       from: YOU,
@@ -147,7 +186,7 @@ export function officeOf(thread: ThreadView): OfficeThread {
       after: [],
       extra: false,
       exchange: "",
-      again: false,
+      closed: null,
     },
   ];
   const steps: OfficeStep[] = [];
@@ -155,77 +194,36 @@ export function officeOf(thread: ThreadView): OfficeThread {
   const seat = (bot: string) => {
     if (bot && bot !== ROOM_THURSDAY && !bots.includes(bot)) bots.push(bot);
   };
-  /** Exchanges handed out and not answered yet, by the bot they went to. */
-  const open = new Map<string, Set<string>>();
-  const out = (bot: string) => (open.get(bot)?.size ?? 0) > 0;
-  /** Bots with a question to the user still open. */
-  const asking = new Set<string>();
-  /** Held hand-offs by the exchange each opened, until they are seen to go out. */
-  const held = new Map<string, Omit<OfficeEvent, "id">>();
-  let said: { message: string; event: Omit<OfficeEvent, "id"> } | null = null;
-  /** The line being read, which every event from it carries. */
-  let order = 0;
+  /** Bots whose question you answered, until the answer is read. */
+  const answered = new Set<string>();
+  let said: { message: string; event: OfficeEvent } | null = null;
   const push = (
-    event: Omit<OfficeEvent, "id" | "order" | "exchange" | "again"> &
-      Partial<Pick<OfficeEvent, "exchange" | "again">>,
+    event: Omit<OfficeEvent, "after" | "extra" | "exchange" | "closed"> &
+      Partial<Pick<OfficeEvent, "after" | "extra" | "exchange">>,
   ) => {
-    const full = { exchange: "", again: false, ...event, order };
+    const full: OfficeEvent = {
+      after: [],
+      extra: false,
+      exchange: "",
+      ...event,
+      closed: null,
+    };
     events.push(full);
     said = null;
     return full;
   };
-  /**
-   * A held hand-off goes out as its sender ends a turn with every answer it waited for read
-   * (room.query releaseWaiting, from finishRoomWork): the last such end no later than `limit`,
-   * whose words are the turn's last line. Without one, the recipient's first line under it,
-   * `start`, is the nearest moment written down; with neither it stays held.
-   */
-  const release = (exchange: string, limit: number, start: number | null) => {
-    const give = held.get(exchange);
-    if (!give) return;
-    held.delete(exchange);
-    const back = new Set<string>();
-    let end = -1;
-    for (let index = events.indexOf(give) + 1; index < events.length; index++) {
-      const event = events[index];
-      if (event.at > limit) break;
-      if (event.kind === "return") back.add(event.from);
-      if (
-        event.kind === "end" &&
-        event.from === give.from &&
-        give.after.every((bot) => back.has(bot))
-      )
-        end = index;
-    }
-    if (end < 0) {
-      if (start !== null)
-        push({
-          ...give,
-          kind: "release",
-          at: Math.max(give.at, start),
-        });
-      return;
-    }
-    const { at, order } = events[end];
-    // After the end, and after what that end let out before it
-    let place = end + 1;
-    while (events[place]?.kind === "release" && events[place].order === order)
-      place += 1;
-    events.splice(place, 0, { ...give, kind: "release", at, order });
-  };
 
-  const read = (line: Chatter, index: number, at: number, from: string) => {
+  const read = (line: Chatter, order: number, at: number, from: string) => {
+    const base = { id: line.id, order, at };
     if (line.kind === "tool") {
       if (line.tool?.name === TOOL_NAMES.send_message) {
         const meant = line.meant ? canon(line.meant.name) : "";
         push({
+          ...base,
           kind: "refused",
           from,
           to: meant === ROOM_THURSDAY ? YOU : meant,
           text: refusalOf(line),
-          at,
-          after: [],
-          extra: false,
         });
       } else steps.push({ bot: from, at, text: stepText(line), order });
       return;
@@ -233,88 +231,48 @@ export function officeOf(thread: ThreadView): OfficeThread {
     if (line.kind === "ask") {
       const to = canon(line.to?.name ?? "");
       if (to === ROOM_THURSDAY) {
-        asking.add(from);
+        const id = line.questionId ?? "";
+        // Answered, the user's next words to it are the answer; withdrawn by a stop, they are not
+        if (rows.get(id)?.state === "done") answered.add(from);
         push({
+          ...base,
           kind: "question",
           from,
           to: YOU,
           text: line.text,
-          at,
-          after: [],
-          extra: false,
+          exchange: id,
         });
         return;
       }
       seat(to);
-      const after = (line.after ?? []).map(canon);
       const row = line.exchange ? rows.get(line.exchange) : undefined;
-      if (!row) {
-        // No row of its own: the words joined an exchange already open to that bot, a held one
-        // when they too wait on answers still out (room.query sendRoomMessage)
-        const hold = [...held.values()].find(
-          (give) => give.from === from && give.to === to,
-        );
-        const started = [...(open.get(to) ?? [])].some((id) => !held.has(id));
-        if (hold && (after.some(out) || !started))
-          hold.after = [...new Set([...hold.after, ...after])];
-        push({
-          kind: "give",
-          from,
-          to,
-          text: line.text,
-          at,
-          after,
-          extra: true,
-        });
-        return;
-      }
-      // Held when an answer it names was still out as it was sent, or when the room holds it now
-      const holds = row.waitsFor.length > 0 || after.some(out);
-      const give = push({
+      push({
+        ...base,
         kind: "give",
         from,
         to,
         text: line.text,
-        at,
-        after: holds ? (row.waitsFor.length ? row.waitsFor : after) : [],
-        extra: false,
-        exchange: row.id,
+        after: row && isOwed(row) ? row.waitsFor : [],
+        // No row of its own: the words joined an exchange already open to that bot (room.query sendRoomMessage)
+        extra: !row,
+        exchange: row?.id ?? "",
       });
-      open.set(to, new Set([...(open.get(to) ?? []), row.id]));
-      if (holds) held.set(row.id, give);
       return;
     }
     if (line.kind === "user") {
       push({
-        kind: asking.delete(from) ? "answer" : "tell",
+        ...base,
+        kind: answered.delete(from) ? "answer" : "tell",
         from: YOU,
         to: from,
         text: line.text,
-        at,
-        after: [],
-        extra: false,
       });
       return;
     }
-    if (line.kind === "stop") {
-      // Only the stop that left its exchange paused, with nothing written under it since
-      const row = line.parent ? rows.get(line.parent) : undefined;
-      if (row?.state === "paused" && lastLine.get(row.id) === index)
-        push({
-          kind: "stop",
-          from,
-          to: "",
-          text: line.text,
-          at,
-          after: [],
-          extra: false,
-        });
-      return;
-    }
-    const row = line.parent ? rows.get(line.parent) : undefined;
+    // A stop or a summary is the app's: the seat reads the stop, the floor neither
+    if (line.kind !== "say" && line.kind !== "result") return;
     if (!alone(line)) {
-      if (line.kind === "say" || line.kind === "result")
-        steps.push({ bot: from, at, text: line.text, order });
+      steps.push({ bot: from, at, text: line.text, order });
       return;
     }
     // Several text blocks of one message are one thing said
@@ -324,49 +282,46 @@ export function officeOf(thread: ThreadView): OfficeThread {
       last.event.text = `${last.event.text}\n\n${line.text}`;
       return;
     }
-    // The last words under an exchange that is done are its answer; any before were a turn that
-    // ended with more words waiting for it, and went on (room.query finishRoomWork)
-    const answer = row
-      ? row.state === "done" && lastWords.get(row.id) === message
-      : line.kind === "result";
     if (from === coord) {
-      const event = push({
-        kind: answer ? "report" : "end",
-        from,
-        to: answer ? YOU : "",
-        text: line.text,
-        at,
-        after: [],
-        extra: false,
-      });
-      said = { message, event };
+      // The thread's answer is its last words once it is done (thread.store threadFromRow); words
+      // before ended a turn with work still out, and cross nothing
+      if (line.kind === "result")
+        said = {
+          message,
+          event: push({
+            ...base,
+            kind: "report",
+            from,
+            to: YOU,
+            text: line.text,
+          }),
+        };
       return;
     }
-    if (!answer || !row) {
-      steps.push({ bot: from, at, text: line.text, order });
+    const row = line.parent ? rows.get(line.parent) : undefined;
+    // A helper's last words under an exchange that is done are its answer (room.query
+    // finishRoomWork); words before them ended a turn that went on
+    if (row?.state === "done" && lastWords.get(row.id) === message) {
+      said = {
+        message,
+        event: push({
+          ...base,
+          kind: "return",
+          from,
+          to: canon(row.caller),
+          text: line.text,
+          exchange: row.id,
+        }),
+      };
       return;
     }
-    const event = push({
-      kind: "return",
-      from,
-      to: canon(row.caller),
-      text: line.text,
-      at,
-      after: [],
-      extra: false,
-      exchange: row.id,
-    });
-    open.get(from)?.delete(row.id);
-    said = { message, event };
+    steps.push({ bot: from, at, text: line.text, order });
   };
 
   for (const [index, line] of lines.entries()) {
-    order = index;
     const at = sec(line);
     const from = canon(line.bot.name);
     seat(from);
-    // The first line its recipient writes under a held hand-off: it has gone out by now
-    if (line.parent) release(line.parent, at, at);
     read(line, index, at, from);
     // An exchange done with no words: the room hands the caller its own for them (finishRoomWork)
     const row = line.parent ? rows.get(line.parent) : undefined;
@@ -375,323 +330,221 @@ export function officeOf(thread: ThreadView): OfficeThread {
       from !== coord &&
       lastOwn.get(row.id) === index &&
       !lastWords.has(row.id)
-    ) {
+    )
       push({
+        id: `silent:${line.id}`,
         kind: "return",
+        order: index,
         from,
         to: canon(row.caller),
         text: SILENT,
         at,
-        after: [],
-        extra: false,
         exchange: row.id,
       });
-      open.get(from)?.delete(row.id);
-    }
-  }
-  // Out already, its recipient not yet at a line: the room no longer holds it
-  for (const exchange of [...held.keys()])
-    if (!rows.get(exchange)?.waitsFor.length)
-      release(exchange, Number.POSITIVE_INFINITY, null);
-  // A turn that ended with words waiting went on at once: the bot's next line came before
-  // anything else woke it, or, with nothing after it yet, its exchange is running again now
-  for (const [index, event] of events.entries()) {
-    if (event.kind !== "end") continue;
-    const next = lines.findIndex(
-      (line, place) =>
-        place > event.order &&
-        canon(line.bot.name) === event.from &&
-        line.kind !== "user" &&
-        line.kind !== "note" &&
-        line.kind !== "stop",
-    );
-    const woken = events.findIndex(
-      (other, place) =>
-        place > index &&
-        other.to === event.from &&
-        (other.kind === "return" ||
-          other.kind === "answer" ||
-          other.kind === "tell"),
-    );
-    const row = rows.get(lines[event.order]?.parent ?? "");
-    event.again =
-      next >= 0
-        ? woken < 0 || next < events[woken].order
-        : woken < 0 && (row?.state === "running" || row?.state === "queued");
   }
 
-  const last = lines.length ? Math.max(...lines.map(sec)) : 0;
+  const when = (index: number) => (index < 0 ? null : sec(lines[index]));
+  const lastOf = (bot: string) =>
+    lines.findLastIndex((line) => canon(line.bot.name) === bot && own(line));
+  const seatOf = (bot: string): Seat => {
+    const mine = exchanges.filter((row) => row.bot === bot);
+    const asks = thread.room.questions.filter((one) => canon(one.bot) === bot);
+    // A bot asking you runs nothing else until you answer (room.query deliver)
+    if (asks.length)
+      return {
+        key: "asking",
+        waits: [YOU],
+        since: when(lines.findIndex((line) => line.questionId === asks[0].id)),
+      };
+    if (mine.some((row) => row.state === "running" || row.state === "queued"))
+      return { key: "run", waits: [], since: null };
+    const paused = mine.filter((row) => row.state === "paused");
+    if (paused.length)
+      return {
+        key: "paused",
+        waits: [YOU],
+        since: when(
+          lines.findLastIndex(
+            (line) =>
+              line.kind === "stop" &&
+              paused.some((row) => row.id === line.parent),
+          ),
+        ),
+      };
+    const held = mine.find(isHeld);
+    if (held)
+      return {
+        key: "held",
+        waits: held.waitsFor,
+        since: when(
+          lines.findIndex(
+            (line) => line.kind === "ask" && line.exchange === held.id,
+          ),
+        ),
+      };
+    if (mine.some((row) => row.state === "waiting")) {
+      // What it handed out that is not back, which its turn waits on (room.query finishRoomWork)
+      const out = exchanges.filter(
+        (row) =>
+          canon(row.caller) === bot &&
+          row.bot !== ROOM_THURSDAY &&
+          !terminal(row.state),
+      );
+      return {
+        key: "ended",
+        waits: bots.filter((one) => out.some((row) => row.bot === one)),
+        since: when(lastOf(bot)),
+      };
+    }
+    const last = mine.at(-1);
+    if (!last) return { key: "none", waits: [], since: null };
+    if (last.state === "cancelled")
+      return { key: "stopped", waits: [], since: null };
+    // Its last turn ended with nothing out and no words: the room is idle until you write
+    if (bot === coord && thread.status !== "done")
+      return thread.status === "cancelled"
+        ? { key: "stopped", waits: [], since: null }
+        : { key: "ended", waits: [], since: when(lastOf(bot)) };
+    return { key: "done", waits: [], since: when(lastOf(bot)) };
+  };
+  // A bot the user wrote to before it said anything has an exchange and no line yet
+  for (const row of exchanges) seat(row.bot);
+
   return {
     coord,
     bots,
-    events: events.map((event, index) => ({ ...event, id: `e${index}` })),
+    events,
     steps,
-    span: last,
+    seats: new Map(bots.map((bot) => [bot, seatOf(bot)])),
+    owed: new Map(
+      exchanges.filter(isOwed).map((row) => [row.id, row.waitsFor]),
+    ),
+    states: new Map(exchanges.map((row) => [row.id, row.state])),
+    starts,
+    asking: new Set(thread.room.questions.map((one) => one.id)),
+    // Folded rather than spread: a long job's lines outnumber what a call takes as arguments
+    span: lines.reduce((most, line) => Math.max(most, sec(line)), 0),
     status: thread.status,
   };
 }
 
-// ---- the clock a replay runs on
+// ---- what the office has seen since it opened
 
-/** A long wait, shortened for a replay: gaps up to two seconds as they were, longer ones on a log. */
-const squeeze = (gap: number) =>
-  gap <= 2 ? gap : 2 + 3.2 * Math.log(1 + (gap - 2) / 4);
-
-/** Room a message gets to be walked across the floor, and a step to be read, in a replay. */
-const WALK = 1.9;
-const READ = 0.8;
-
-export type OfficeClock = {
-  /** Scene seconds from real seconds since the handover, and back. */
-  scene: (real: number) => number;
-  real: (scene: number) => number;
-  end: number;
-  /** Stretches that run well ahead of the real clock, for the timeline to hatch. */
-  fast: { from: number; to: number; ratio: number }[];
-  /**
-   * When each event and step falls on the scene, by index: two sends written in the same
-   * moment still get a walk each, which a mapping from real time alone would fold into one.
-   */
-  events?: number[];
-  steps?: number[];
+/** What the office saw of a thread while open, in seconds since the handover. */
+export type OfficeMemory = {
+  /** When each event was first read, by id. */
+  read: Map<string, number>;
+  /** Each seat as last read, and since when it has stood so (null: from before the office opened, the lines not saying). */
+  seats: Map<string, { state: string; since: number | null }>;
+  /** Hand-offs seen owed answers, the bots they waited on, and when each was seen let out. */
+  owed: Map<string, { waits: string[]; out: number | null }>;
+  /** Questions seen open, and when each was seen closed. */
+  asked: Map<string, number | null>;
+  /** When the thread was seen to end; null while it runs. */
+  ended: number | null;
 };
 
-/** Live: the scene runs on the real clock. */
-export const liveClock = (span: number): OfficeClock => ({
-  scene: (real) => real,
-  real: (scene) => scene,
-  end: span,
-  fast: [],
-});
-
-/** Replay: every message gets time to cross the floor, and long waits are squeezed. */
-export function replayClock(office: OfficeThread): OfficeClock {
-  const events = office.events.map(() => 0);
-  const steps = office.steps.map(() => 0);
-  // In the order they were written; the job at the start stays there
-  const points = [
-    ...office.events.flatMap((event, index) =>
-      event.kind === "job"
-        ? []
-        : [
-            {
-              at: event.at,
-              order: event.order,
-              gap: WALK,
-              set: (at: number) => (events[index] = at),
-            },
-          ],
-    ),
-    ...office.steps.map((step, index) => ({
-      at: step.at,
-      order: step.order,
-      gap: READ,
-      set: (at: number) => (steps[index] = at),
-    })),
-  ].sort((a, b) => a.at - b.at || a.order - b.order);
-  const marks: [number, number][] = [[0, 0]];
-  let scene = 0;
-  let before = 0;
-  for (const point of points) {
-    scene += Math.max(squeeze(Math.max(0, point.at - before)), point.gap);
-    before = Math.max(before, point.at);
-    point.set(scene);
-    marks.push([scene, before]);
+/**
+ * The office's memory after one more reading at `now`. What was written before the office
+ * opened stays where it was written; what shows up later is walked from when it shows, which
+ * for an answer handed back is when its bot's turn ended, not when its words began.
+ */
+export function watch(
+  memory: OfficeMemory | null,
+  office: OfficeThread,
+  now: number,
+): OfficeMemory {
+  const first = memory === null;
+  const read = new Map(memory?.read);
+  for (const event of office.events)
+    if (!read.has(event.id))
+      read.set(event.id, first ? event.at : Math.max(event.at, now));
+  const seats = new Map(memory?.seats);
+  for (const [bot, seat] of office.seats) {
+    const state = `${seat.key}:${seat.waits.join(",")}`;
+    if (seats.get(bot)?.state === state) continue;
+    seats.set(bot, { state, since: first ? seat.since : now });
   }
-  marks.push([scene + 2.5, Math.max(office.span, before)]);
-  const between = (x: number, from: 0 | 1, to: 0 | 1) => {
-    for (let index = 1; index < marks.length; index++) {
-      const a = marks[index - 1];
-      const b = marks[index];
-      if (x <= b[from])
-        return b[from] === a[from]
-          ? a[to]
-          : a[to] + ((b[to] - a[to]) * (x - a[from])) / (b[from] - a[from]);
-    }
-    return marks[marks.length - 1][to];
-  };
-  const fast: OfficeClock["fast"] = [];
-  for (let index = 1; index < marks.length; index++) {
-    const [s0, r0] = marks[index - 1];
-    const [s1, r1] = marks[index];
-    const ratio = (r1 - r0) / Math.max(0.01, s1 - s0);
-    if (ratio < 3.5) continue;
-    const previous = fast.at(-1);
-    if (previous && Math.abs(previous.to - s0) < 0.01) {
-      previous.ratio =
-        (previous.ratio * (previous.to - previous.from) + (r1 - r0)) /
-        (s1 - previous.from);
-      previous.to = s1;
-    } else fast.push({ from: s0, to: s1, ratio });
+  const owed = new Map(memory?.owed);
+  for (const [id, waits] of office.owed) owed.set(id, { waits, out: null });
+  for (const [id, hold] of owed) {
+    if (hold.out !== null || office.owed.has(id)) continue;
+    // Out with the answers it waited for, unless a stop cancelled it first
+    if (office.states.get(id) === "cancelled") owed.delete(id);
+    else owed.set(id, { ...hold, out: now });
   }
+  const asked = new Map(memory?.asked);
+  for (const id of office.asking) if (!asked.has(id)) asked.set(id, null);
+  for (const [id, closed] of asked)
+    if (closed === null && !office.asking.has(id)) asked.set(id, now);
+  const over = office.status === "done" || office.status === "cancelled";
   return {
-    scene: (real) => between(real, 1, 0),
-    real: (s) => between(s, 0, 1),
-    end: marks[marks.length - 1][0],
-    fast: fast.filter((one) => one.to - one.from >= 3),
-    events,
-    steps,
+    read,
+    seats,
+    owed,
+    asked,
+    ended: over ? (memory?.ended ?? (first ? office.span : now)) : null,
   };
 }
 
-// ---- each seat's turns
-
-export type TurnKey = "run" | "asking" | "ended" | "held" | "done" | "paused";
-
-export type Turn = {
-  /** Unique within the office, for keys. */
-  id: string;
-  key: TurnKey;
-  from: number;
-  to: number;
-  /** Which turn of this bot's it is, for a running one. */
-  n: number;
-  /** Only for `held`: the bots it waits on. */
-  after: string[];
-};
-
-/** The office's events and steps on a clock, and each seat's turns on it. */
+/** The office's events on the clock they were seen by, and each seat with since when it stands. */
 export type OfficeScene = {
   office: OfficeThread;
-  clock: OfficeClock;
   events: OfficeEvent[];
   steps: OfficeStep[];
-  turns: Record<string, Turn[]>;
-  end: number;
+  seats: Map<string, Seat>;
+  /** When the thread was seen to end; null while it runs. */
+  ended: number | null;
 };
 
-export function sceneOf(office: OfficeThread, clock: OfficeClock): OfficeScene {
-  const events = office.events.map((event, index) => ({
-    ...event,
-    at: clock.events?.[index] ?? clock.scene(event.at),
-  }));
-  const steps = office.steps.map((step, index) => ({
-    ...step,
-    at: clock.steps?.[index] ?? clock.scene(step.at),
-  }));
-  const { coord } = office;
-  const turns: Record<string, Turn[]> = {};
-  const open: Record<string, Turn | null> = {};
-  const runs: Record<string, number> = {};
-  /** Exchanges waiting for their bot to finish the one it is on (room.query claimRoomWork). */
-  const queued: Record<string, number> = {};
-  /** Held hand-offs not out yet, by the bot they are for. */
-  const holds: Record<string, OfficeEvent[]> = {};
-  let made = 0;
-  const seat = (bot: string) => {
-    if (turns[bot]) return;
-    turns[bot] = [];
-    open[bot] = null;
-    runs[bot] = 0;
-    queued[bot] = 0;
-    holds[bot] = [];
-  };
-  for (const bot of office.bots) seat(bot);
-  const close = (bot: string, at: number) => {
-    seat(bot);
-    const turn = open[bot];
-    if (turn) turns[bot].push({ ...turn, to: at });
-    open[bot] = null;
-  };
-  const begin = (
-    bot: string,
-    key: TurnKey,
-    at: number,
-    after: string[] = [],
-  ) => {
-    close(bot, at);
-    if (key === "run") runs[bot] += 1;
-    made += 1;
-    open[bot] = {
-      id: `t${made}`,
-      key,
-      from: at,
-      to: Number.POSITIVE_INFINITY,
-      n: runs[bot],
-      after,
-    };
-  };
-  const busy = (bot: string) => open[bot]?.key === "run";
-  /** Work that reaches a bot: it starts now, or after the exchange it is on. */
-  const reach = (bot: string, at: number) => {
-    seat(bot);
-    if (busy(bot)) queued[bot] += 1;
-    else begin(bot, "run", at);
-  };
-  for (const event of events) {
-    const { at } = event;
-    switch (event.kind) {
-      case "job":
-        begin(coord, "run", at);
-        break;
-      case "question":
-        begin(event.from, "asking", at);
-        break;
-      case "answer":
-      case "tell":
-        // Your words start a bot, a held one too, or join the turn it is on (room.query tellRoom)
-        if (!busy(event.to)) begin(event.to, "run", at);
-        break;
-      case "end":
-        // A bot waiting on you reads nothing else until you answer (room.query deliver)
-        if (open[coord]?.key === "asking") break;
-        if (event.again) begin(coord, "run", at);
-        else begin(coord, "ended", at);
-        break;
-      case "return": {
-        begin(event.from, "done", at);
-        if (queued[event.from] > 0) {
-          queued[event.from] -= 1;
-          begin(event.from, "run", at);
-        } else if (holds[event.from]?.length)
-          begin(event.from, "held", at, holds[event.from][0].after);
-        // Its caller reads it at its next step when at work, or once you answer when asking you
-        const caller = open[event.to]?.key;
-        if (caller !== "run" && caller !== "asking" && caller !== "paused")
-          reach(event.to, at);
-        break;
-      }
-      case "report":
-        begin(coord, "done", at);
-        break;
-      case "give": {
-        // Words that joined an exchange already open change nothing
-        if (event.extra) break;
-        seat(event.to);
-        if (event.after.length) {
-          holds[event.to].push(event);
-          const now = open[event.to]?.key;
-          if (!now || now === "done" || now === "ended")
-            begin(event.to, "held", at, event.after);
-        } else reach(event.to, at);
-        break;
-      }
-      case "release":
-        seat(event.to);
-        holds[event.to] = holds[event.to].filter(
-          (give) => give.exchange !== event.exchange,
-        );
-        reach(event.to, at);
-        break;
-      case "stop":
-        begin(event.from, "paused", at);
-        break;
-      case "refused":
-        break;
-    }
+export function sceneOf(
+  office: OfficeThread,
+  memory: OfficeMemory,
+): OfficeScene {
+  const events = office.events.map((event): OfficeEvent => {
+    const at = memory.read.get(event.id) ?? event.at;
+    const hold = memory.owed.get(event.exchange);
+    if (event.kind === "give" && !event.extra && hold)
+      return { ...event, at, after: hold.waits };
+    if (event.kind === "question")
+      return {
+        ...event,
+        at,
+        // Closed before the office opened: at once, where it was asked
+        closed:
+          memory.asked.get(event.exchange) ??
+          (office.asking.has(event.exchange) ? null : at),
+      };
+    return { ...event, at };
+  });
+  // A hand-off seen let out is carried to its desk with the answers it waited for
+  for (const [id, hold] of memory.owed) {
+    if (hold.out === null) continue;
+    const give = events.find(
+      (event) => event.kind === "give" && event.exchange === id,
+    );
+    if (give)
+      events.push({
+        ...give,
+        id: `release:${id}`,
+        kind: "release",
+        // Seen with other things, it comes before the first line its bot wrote for it, and so
+        // before that bot's answer and any report; with none yet, after all there is
+        order: (office.starts.get(id) ?? Number.POSITIVE_INFINITY) - 0.5,
+        at: Math.max(hold.out, give.at),
+      });
   }
-  const end = Math.max(
-    clock.end,
-    events.at(-1)?.at ?? 0,
-    steps.at(-1)?.at ?? 0,
+  events.sort((a, b) => a.at - b.at || a.order - b.order);
+  const seats = new Map(
+    [...office.seats].map(([bot, seat]) => [
+      bot,
+      { ...seat, since: memory.seats.get(bot)?.since ?? seat.since },
+    ]),
   );
-  for (const bot of Object.keys(turns)) close(bot, Number.POSITIVE_INFINITY);
-  return { office, clock, events, steps, turns, end };
+  return { office, events, steps: office.steps, seats, ended: memory.ended };
 }
 
-// ---- what a seat wears at a moment
-
-export type SeatKey = TurnKey | "none" | "stopped";
+// ---- what a seat wears
 
 export type SeatState = {
   key: SeatKey;
@@ -706,123 +559,47 @@ export type SeatState = {
   waits: string[];
 };
 
-export const turnAt = (scene: OfficeScene, bot: string, t: number) =>
-  scene.turns[bot]?.find((turn) => t >= turn.from && t < turn.to) ?? null;
-
-/** Bots it handed work that has not come back, or you. */
-export function awaited(scene: OfficeScene, bot: string, t: number): string[] {
-  const turn = turnAt(scene, bot, t);
-  if (!turn) return [];
-  if (turn.key === "asking" || turn.key === "paused") return [YOU];
-  if (turn.key === "held") return turn.after;
-  if (turn.key !== "ended") return [];
-  return scene.office.bots.filter((other) => {
-    if (other === bot) return false;
-    const theirs = turnAt(scene, other, t);
-    return theirs?.key === "run" || theirs?.key === "held";
-  });
-}
-
 const nameOf = (who: string) => (who === YOU ? "you" : who);
 
 /** "Analyst", "Analyst and Designer", "3 bots". */
 export const namesOf = (list: string[]) =>
   list.length > 2 ? `${list.length} bots` : list.map(nameOf).join(" and ");
 
-export function seatAt(scene: OfficeScene, bot: string, t: number): SeatState {
-  const turn = turnAt(scene, bot, t);
+const NOBODY: Seat = { key: "none", waits: [], since: null };
+
+export function seatAt(scene: OfficeScene, bot: string): SeatState {
+  const { key, waits, since } = scene.seats.get(bot) ?? NOBODY;
   const own = bot === scene.office.coord;
-  const stopped =
-    scene.office.status === "cancelled" &&
-    t >= scene.end &&
-    turn?.key !== "done";
-  if (stopped)
-    return {
-      key: "stopped",
-      label: "Stopped",
-      short: "Stopped",
-      why: "The job was stopped",
-      since: null,
-      waits: [],
-    };
-  if (!turn)
-    return {
-      key: "none",
-      label: "Not called yet",
-      short: "Not called",
-      why: "Not part of the job yet",
-      since: null,
-      waits: [],
-    };
-  const since = turn.from;
-  switch (turn.key) {
-    case "run":
-      return {
-        key: "run",
-        label: `Working · turn ${turn.n}`,
-        short: "Working",
-        why: "",
-        since,
-        waits: [],
-      };
-    case "asking":
-      return {
-        key: "asking",
-        label: "Waiting on you",
-        short: "Your turn",
-        why: "Picks up when you answer",
-        since,
-        waits: [YOU],
-      };
-    case "paused":
-      return {
-        key: "paused",
-        label: "Paused",
-        short: "Paused",
-        why: "Picks up when you press Continue",
-        since,
-        waits: [YOU],
-      };
-    case "held":
-      return {
-        key: "held",
-        label: `Held · after ${namesOf(turn.after)}`,
-        short: "Held",
-        why: `Starts once ${namesOf(turn.after)} ${turn.after.length === 1 ? "answers" : "answer"}`,
-        since,
-        waits: turn.after,
-      };
-    case "ended": {
-      const waits = awaited(scene, bot, t);
-      return {
-        key: "ended",
-        label: waits.length ? `Waiting on ${namesOf(waits)}` : "Waiting",
-        short: "Waiting",
-        why: waits.length
-          ? `Turn over · waiting on ${namesOf(waits)}`
-          : "Turn over",
-        since,
-        waits,
-      };
-    }
-    case "done":
-      return {
-        key: "done",
-        label: own ? "Reported" : "Answered",
-        short: own ? "Reported" : "Answered",
-        why: own ? "Reported to you" : `Gave ${scene.office.coord} its answer`,
-        since,
-        waits: [],
-      };
-  }
+  const words: Record<SeatKey, [string, string, string]> = {
+    run: ["Working", "Working", ""],
+    asking: ["Waiting on you", "Your turn", "Picks up when you answer"],
+    paused: ["Paused", "Paused", "Picks up when you press Continue"],
+    held: [
+      `Held · after ${namesOf(waits)}`,
+      "Held",
+      `Starts once ${namesOf(waits)} ${waits.length === 1 ? "answers" : "answer"}`,
+    ],
+    ended: [
+      waits.length ? `Waiting on ${namesOf(waits)}` : "Waiting",
+      "Waiting",
+      waits.length ? `Turn over · waiting on ${namesOf(waits)}` : "Turn over",
+    ],
+    done: own
+      ? ["Reported", "Reported", "Reported to you"]
+      : ["Answered", "Answered", `Gave ${scene.office.coord} its answer`],
+    stopped: ["Stopped", "Stopped", "The job was stopped"],
+    none: ["Not called yet", "Not called", "Not part of the job yet"],
+  };
+  const [label, short, why] = words[key];
+  return { key, label, short, why, since, waits };
 }
 
 /** The step a seat is on while it runs, else why it stands. */
 export function nowOf(scene: OfficeScene, bot: string, t: number): string {
-  const state = seatAt(scene, bot, t);
+  const state = seatAt(scene, bot);
   if (state.key !== "run") return state.why;
-  const turn = turnAt(scene, bot, t);
-  const from = (turn?.from ?? 0) - 0.01;
+  // Lines keep whole seconds: one written in the second its turn was seen to start belongs to it
+  const from = (state.since ?? Number.NEGATIVE_INFINITY) - 1;
   let step: OfficeStep | null = null;
   for (const one of scene.steps)
     if (one.bot === bot && one.at >= from && one.at <= t) step = one;
@@ -835,15 +612,15 @@ export function nowOf(scene: OfficeScene, bot: string, t: number): string {
       (event.kind === "give" || event.kind === "refused")
     )
       sent = event;
-  if (sent && (!step || sent.at >= step.at))
+  if (sent && (!step || sent.order >= step.order))
     return sent.kind === "refused"
       ? "A send turned down"
       : `Handing ${sent.to} ${sent.extra ? "more" : "work"}`;
-  if (step) return step.text;
+  if (step) return plainText(step.text);
   return bot === scene.office.coord ? "Reading the job" : "Reading the work";
 }
 
-/** What the line of time says of a message. */
+/** What the caption says of a message. */
 export function kindWord(event: OfficeEvent): string {
   switch (event.kind) {
     case "job":
@@ -868,22 +645,15 @@ export function kindWord(event: OfficeEvent): string {
       return "final report";
     case "refused":
       return "turned down";
-    case "end":
-      return "turn over";
-    case "stop":
-      return "stopped";
   }
 }
 
 /** The last message that crossed the room by `t`. */
 export const beatAt = (scene: OfficeScene, t: number) =>
-  scene.events.findLast(
-    (event) => event.kind !== "end" && event.kind !== "stop" && event.at <= t,
-  ) ?? null;
+  scene.events.findLast((event) => event.at <= t) ?? null;
 
-/** The question to you open at `t`, and the last one answered. A stop leaves none open. */
+/** The question to you open at `t`, and the last one answered. */
 export function questionAt(scene: OfficeScene, t: number) {
-  const stopped = scene.office.status === "cancelled" && t >= scene.end;
   let open: OfficeEvent | null = null;
   let answered: { question: OfficeEvent; answer: OfficeEvent } | null = null;
   for (const event of scene.events) {
@@ -894,24 +664,32 @@ export function questionAt(scene: OfficeScene, t: number) {
       open = null;
     }
   }
-  return { open: stopped ? null : open, answered };
+  const last = open as OfficeEvent | null;
+  if (last?.closed != null && last.closed <= t) open = null;
+  return { open, answered };
 }
 
+/** The final report, once it has been handed over. */
 export const reportAt = (scene: OfficeScene, t: number) =>
   scene.events.find((event) => event.kind === "report" && event.at <= t) ??
   null;
 
-/** "now", "12s", "3m 5s", counted in real time. */
-export function heldFor(scene: OfficeScene, since: number | null, t: number) {
+/** "now", "12s", "3m 5s", "2h 14m": how long a seat has stood so. */
+export function heldFor(since: number | null, t: number) {
   if (since === null) return "";
-  const seconds = Math.max(0, scene.clock.real(t) - scene.clock.real(since));
+  const seconds = Math.max(0, t - since);
   if (seconds < 1) return "now";
   if (seconds < 60) return `${Math.floor(seconds)}s`;
-  const rest = Math.floor(seconds % 60);
-  return `${Math.floor(seconds / 60)}m${rest ? ` ${rest}s` : ""}`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) {
+    const rest = Math.floor(seconds % 60);
+    return `${minutes}m${rest ? ` ${rest}s` : ""}`;
+  }
+  const rest = minutes % 60;
+  return `${Math.floor(minutes / 60)}h${rest ? ` ${rest}m` : ""}`;
 }
 
-/** "4:40", or "2:04:40" past the hour, from real seconds. */
+/** "4:40", or "2:04:40" past the hour, from seconds. */
 export const clockOf = (seconds: number) => {
   const whole = Math.max(0, Math.floor(seconds));
   const two = (n: number) => String(n).padStart(2, "0");
@@ -923,7 +701,7 @@ export const clockOf = (seconds: number) => {
 
 /** What a bot's card says: who it is here, the state it wears and why, what it is on, given and gave. */
 export function cardOf(scene: OfficeScene, bot: string, t: number) {
-  const state = seatAt(scene, bot, t);
+  const state = seatAt(scene, bot);
   const own = bot === scene.office.coord;
   // The work it is on: the last exchange handed to it by now, and the words that joined it since
   const given = own
@@ -961,6 +739,6 @@ export function cardOf(scene: OfficeScene, bot: string, t: number) {
     given: given?.text ?? "",
     more,
     gave: gave?.text ?? "",
-    since: heldFor(scene, state.since, t),
+    since: heldFor(state.since, t),
   };
 }

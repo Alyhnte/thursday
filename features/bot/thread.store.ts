@@ -375,14 +375,32 @@ export type ScreenAct =
   /** Handed files over through the write line; they are kept at these workspace paths. */
   | { kind: "gave"; paths: string[] };
 
-/** Drafts and selected recipients survive switching threads, independently for each participant. */
+/**
+ * Drafts and selected recipients survive switching threads, independently for each participant;
+ * so do an open Step in and the question on show. A thread's box is drawn again when the office
+ * opens or closes over it (bot-room), and takes up where the last one left off.
+ */
 const drafts = new Map<string, Map<string, string>>();
 const recipients = new Map<string, string>();
+/** The tab a thread's box last followed, so a pick made on it since outlives the box. */
+const tabs = new Map<string, string>();
+const boxes = new Map<string, { stepping: boolean; question?: string }>();
 
 export const threadDrafts = {
   recipient: (id: string) => recipients.get(id),
   select: (id: string, bot: string) => {
     recipients.set(id, bot);
+  },
+  tab: (id: string) => tabs.get(id),
+  /** A tab opened: the box addresses its bot. */
+  follow: (id: string, bot: string) => {
+    tabs.set(id, bot);
+    recipients.set(id, bot);
+  },
+  /** Whether Step in is open, and which question is on show. */
+  box: (id: string) => boxes.get(id) ?? { stepping: false },
+  keepBox: (id: string, box: { stepping?: boolean; question?: string }) => {
+    boxes.set(id, { ...threadDrafts.box(id), ...box });
   },
   get: (id: string, bot: string, question?: string) =>
     drafts.get(id)?.get(JSON.stringify([bot, question ?? null])) ?? "",

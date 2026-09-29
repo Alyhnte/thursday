@@ -45,7 +45,7 @@ export type Desk = {
 export type Plan = {
   width: number;
   desks: Desk[];
-  byBot: Record<string, Desk>;
+  byBot: Map<string, Desk>;
   own: Desk;
   lobby: Point;
   door: Point;
@@ -114,7 +114,7 @@ function planOf(coord: string, helpers: string[]): Plan {
   return {
     width,
     desks,
-    byBot: Object.fromEntries(desks.map((desk) => [desk.bot, desk])),
+    byBot: new Map(desks.map((desk) => [desk.bot, desk])),
     own,
     lobby,
     door,
@@ -346,17 +346,19 @@ export type Stage = {
 
 /** Helpers in the order they joined, and when each was first handed work (scene seconds). */
 export function joinsOf(scene: OfficeScene) {
-  const at: Record<string, number> = {};
+  // A Map, not an object: a bot may be named after what every object already has (constructor)
+  const at = new Map<string, number>();
   for (const event of scene.events)
     if (
       (event.kind === "give" || event.kind === "release") &&
-      at[event.to] === undefined
+      !at.has(event.to)
     )
-      at[event.to] = event.at;
+      at.set(event.to, event.at);
   const helpers = scene.office.bots.filter((bot) => bot !== scene.office.coord);
   helpers.sort(
     (a, b) =>
-      (at[a] ?? Number.POSITIVE_INFINITY) - (at[b] ?? Number.POSITIVE_INFINITY),
+      (at.get(a) ?? Number.POSITIVE_INFINITY) -
+      (at.get(b) ?? Number.POSITIVE_INFINITY),
   );
   return { helpers, at };
 }
@@ -775,7 +777,7 @@ export function stageOf(
   );
   deskAt(plan.own, null, true);
   const built = cue;
-  for (const desk of plan.desks) deskAt(desk, joinAt[desk.bot] ?? 0, false);
+  for (const desk of plan.desks) deskAt(desk, joinAt.get(desk.bot) ?? 0, false);
 
   // a box on the back wall (x along it, z down it), and one lying on the ground reading rightward
   const onWall = (x: number, y: number, z: number, px: number) => {
@@ -886,7 +888,7 @@ type Trip = {
 /** Every walk: a message carried across the floor. One walker at a time, so a busy one sets off late. */
 export function tripsOf(scene: OfficeScene, plan: Plan): Trip[] {
   const trips: Trip[] = [];
-  const free: Record<string, number> = {};
+  const free = new Map<string, number>();
   const coord = scene.office.coord;
   const travel = (route: Point[]) => clamp(routeLength(route) / 80, 0.5, 1.1);
   const plot = (
@@ -910,9 +912,9 @@ export function tripsOf(scene: OfficeScene, plan: Plan): Trip[] {
     if (standing && standing.back === Number.POSITIVE_INFINITY) {
       standing.stay = Math.max(standing.arrive + 0.35, at);
       standing.back = standing.stay + travel(standing.route) * 0.9;
-      free[who] = standing.back;
+      free.set(who, standing.back);
     }
-    const leave = Math.max(at, free[who] ?? Number.NEGATIVE_INFINITY);
+    const leave = Math.max(at, free.get(who) ?? Number.NEGATIVE_INFINITY);
     const time = travel(route);
     const arrive = leave + time;
     const stay =
@@ -932,7 +934,7 @@ export function tripsOf(scene: OfficeScene, plan: Plan): Trip[] {
       event,
       answer: options.answer,
     });
-    free[who] = back;
+    free.set(who, back);
   };
   for (const event of scene.events) {
     switch (event.kind) {
@@ -951,7 +953,7 @@ export function tripsOf(scene: OfficeScene, plan: Plan): Trip[] {
           home: "start",
           event,
         });
-        free[coord] = 0.8 + time;
+        free.set(coord, 0.8 + time);
         break;
       }
       case "give":
@@ -978,11 +980,16 @@ export function tripsOf(scene: OfficeScene, plan: Plan): Trip[] {
         break;
       case "question": {
         if (event.from !== coord) break;
-        const answer = scene.events.find(
-          (other) =>
-            other.kind === "answer" &&
-            other.to === event.from &&
-            other.at >= event.at,
+        // The first answer after it: a question asked in the second an earlier one was answered
+        // is not answered by that
+        const answer = scene.events
+          .slice(scene.events.indexOf(event) + 1)
+          .find((other) => other.kind === "answer" && other.to === event.from);
+        // Back from the counter once it is answered or withdrawn, whichever is seen first: the
+        // answer is read a moment after it closed the question (room.query tellRoom)
+        const until = Math.min(
+          answer?.at ?? Number.POSITIVE_INFINITY,
+          event.closed ?? Number.POSITIVE_INFINITY,
         );
         plot(
           coord,
@@ -991,8 +998,10 @@ export function tripsOf(scene: OfficeScene, plan: Plan): Trip[] {
           event,
           "question",
           answer
-            ? { home: "answer", until: answer.at + 0.35, answer }
-            : { forever: true },
+            ? { home: "answer", until: until + 0.35, answer }
+            : Number.isFinite(until)
+              ? { until }
+              : { forever: true },
         );
         break;
       }
@@ -1118,28 +1127,28 @@ export function momentOf(
     r2(easeOut(clamp((t - from) / time, 0, 1)));
   const size = stage.botSize;
   // A helper appears at its desk when the first paper for it lands there
-  const lands: Record<string, number> = {};
+  const lands = new Map<string, number>();
   for (const trip of trips)
     if (
       trip.who === coord &&
       trip.event.to !== YOU &&
-      lands[trip.event.to] === undefined &&
+      !lands.has(trip.event.to) &&
       trip.event.kind !== "job"
     )
-      lands[trip.event.to] = trip.arrive;
+      lands.set(trip.event.to, trip.arrive);
   const walkers: Walker[] = [];
   const trail: Moment["trail"] = [];
   const tags: Moment["tags"] = [];
   const seatOf = (bot: string) =>
-    bot === coord ? plan.own.seat : plan.byBot[bot]?.seat;
+    bot === coord ? plan.own.seat : plan.byBot.get(bot)?.seat;
   for (const bot of scene.office.bots) {
     const own = bot === coord;
-    const come = own ? Number.NEGATIVE_INFINITY : lands[bot];
+    const come = own ? Number.NEGATIVE_INFINITY : lands.get(bot);
     if (!own && (come === undefined || t < come)) continue;
     const seat = seatOf(bot);
     if (!seat) continue;
     const walk = walkOf(trips, bot, t);
-    const state = seatAt(scene, bot, t);
+    const state = seatAt(scene, bot);
     let x = seat[0];
     let y = seat[1];
     let hop = 0;
@@ -1354,7 +1363,11 @@ export function momentOf(
     (trip) =>
       trip.out === "question" &&
       t >= trip.arrive &&
-      t < (trip.answer ? trip.answer.at + 0.3 : Number.POSITIVE_INFINITY),
+      t <
+        Math.min(
+          trip.answer ? trip.answer.at + 0.3 : Number.POSITIVE_INFINITY,
+          trip.event.closed ?? Number.POSITIVE_INFINITY,
+        ),
   );
   if (asked) flat("question", 29, 77, 8.2, 4.4, 3.4, false, -0.2, 1, true);
   const reported = trips.find(

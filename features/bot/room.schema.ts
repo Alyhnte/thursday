@@ -33,8 +33,9 @@ const RoomParticipantSchema = z.object({
 });
 /**
  * One exchange of the room (`thread_work`), by the id its lines are written under (a line's
- * `parent`, a send's `exchange`). The office reads where a line stands off these: the last words
- * under an exchange that is done are its answer, and one still `waitsFor` has not gone out.
+ * `parent`, a send's `exchange`), in the order they were opened. The office reads how each seat
+ * stands now off these (office.ts): the last words under an exchange that is done are its
+ * answer, and one still `waitsFor` has not gone out. Only a thread that carries its lines has them.
  */
 const RoomExchangeSchema = z.object({
   id: z.string(),

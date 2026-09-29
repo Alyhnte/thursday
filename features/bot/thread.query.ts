@@ -676,7 +676,9 @@ async function withLines(
     database
       .select()
       .from(threadWorkTable)
-      .where(inArray(threadWorkTable.threadId, threadIds)),
+      .where(inArray(threadWorkTable.threadId, threadIds))
+      // As the room opened them: two sends of one step share a millisecond
+      .orderBy(sql`${threadWorkTable}.rowid`),
     database
       .select()
       .from(threadDeliveryTable)
@@ -752,13 +754,16 @@ async function withLines(
             delivered: item.consumed,
           })),
         relays: relays.filter((item) => item.threadId === row.id),
-        exchanges: own.map((item) => ({
-          id: item.id,
-          bot: item.bot,
-          caller: item.caller,
-          state: item.state,
-          waitsFor: item.waitsFor,
-        })),
+        // Read with the lines they place, as the office is (office.ts)
+        exchanges: carries(row)
+          ? own.map((item) => ({
+              id: item.id,
+              bot: item.bot,
+              caller: item.caller,
+              state: item.state,
+              waitsFor: item.waitsFor,
+            }))
+          : [],
       },
     };
   });
