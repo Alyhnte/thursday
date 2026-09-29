@@ -24,6 +24,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
+import { toast } from "@/components/ui/toast";
 import { ModelPicker } from "@/features/ai/components/model-picker";
 import {
   TEXT_MODEL_PROVIDERS,
@@ -50,6 +51,7 @@ import {
   roomDrop,
   useGivenFiles,
 } from "@/features/workspace/components/given-files";
+import { giveFilesAction } from "@/features/workspace/workspace.action";
 import { composing, typed, useEscape, windowKey } from "@/hooks/use-hotkey";
 import { useServerAction } from "@/lib/protocol/use-server-action";
 import { revalidate, useServerRoute } from "@/lib/protocol/use-server-route";
@@ -68,7 +70,8 @@ import { ThursdayMark } from "./thursday-mark";
  * in, says what the call runs on, and Esc ends the call rather than closing the line. A
  * bot can still be picked during it, for one message; then the line is hers again. Its
  * paperclip offers a file from this computer or a drawing (draw-pad), which the line holds
- * for the call's line too (writeLine.draw): a drawing arrives as a pasted picture does.
+ * for the call's line too (writeLine.draw): a drawing arrives as a pasted picture does, but on
+ * a spoken call, where it goes to her alone and she answers it (screen-act `showed`).
  */
 
 /** What the line needs of a call in writing, and what such a call would run on. */
@@ -144,6 +147,7 @@ export function WriteLine({
   });
   const field = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
+  const [give] = useServerAction(giveFilesAction);
 
   const calling = Boolean(written?.on);
   // The line is hers, until a bot is picked for one message: that pick lasts for the message
@@ -363,15 +367,24 @@ export function WriteLine({
   }, [up]);
 
   // Over the screen and out of the foot's grid (a portal), and there with the line put away:
-  // Draw on the call's line opens it before the line is up. What it hands over lands as a
-  // pasted picture does, which brings the line up
+  // Draw on the call's line opens it before the line is up. In writing, what it hands over
+  // lands as a pasted picture does, which brings the line up. On a spoken call it goes to her
+  // and not onto the line, which is a bot's then: held there, it was a message to that bot
   const pad = (
     <DrawPad
       open={drawing}
       onClose={() => setDrawing(false)}
       onDone={async (file) => {
         setDrawing(false);
-        return (await take([file])).length > 0;
+        if (!spoken.current) return (await take([file])).length > 0;
+        const form = new FormData();
+        form.append("file", file);
+        // the hook has already said why when this throws; the drawing stays on the pad
+        const [path] = await give(form).catch(() => []);
+        if (!path) return false;
+        screenActs.announce({ kind: "showed", path });
+        toast.add({ type: "success", title: "Shown to her" });
+        return true;
       }}
       // on a spoken call she is given it as it lands; in writing it goes with the words
       action={onCall ? "Show her" : "Add to the message"}

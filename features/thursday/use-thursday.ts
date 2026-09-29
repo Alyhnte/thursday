@@ -149,8 +149,11 @@ function pictureBytes(limit: number | null | undefined) {
   return bytes - PICTURE_ENVELOPE_BYTES;
 }
 
-/** Files put down on a spoken call: the fact that names them, and which of them are pictures. */
-type PutDown = { fact: string; pictures: string[] };
+/**
+ * Files put down on a spoken call: the fact that names them, which of them are pictures, and
+ * whether the backend runs on them once they are in (a drawing shown to her).
+ */
+type PutDown = { fact: string; pictures: string[]; run?: boolean };
 
 /** Room in a picture's message for the words naming it, past its path: `, as an image:` in its part. */
 const PICTURE_WORDS_BYTES = 64;
@@ -158,9 +161,10 @@ const PICTURE_WORDS_BYTES = 64;
 /**
  * Files put down, into the backend's conversation: the fact with their paths, then each
  * picture among them as a picture, read through the file route and made to fit the line as a
- * shown one is. One that cannot be made so is said to it instead, never left out unsaid.
+ * shown one is. One that cannot be made so is said to it instead, never left out unsaid. Asked
+ * to, the backend then runs on them, and what it makes of them is hers to say.
  */
-async function putDown(live: LiveSession, { fact, pictures }: PutDown) {
+async function putDown(live: LiveSession, { fact, pictures, run }: PutDown) {
   live.brief(fact);
   for (const path of pictures) {
     const room =
@@ -174,6 +178,7 @@ async function putDown(live: LiveSession, { fact, pictures }: PutDown) {
         `${path} could not be put before you as a picture: ${taken.failed}`,
       );
   }
+  if (run) live.run();
 }
 
 /** What she reads when she looks and nothing is shown: how they can show her, as far as this browser can. */
@@ -708,6 +713,13 @@ export function useThursday(
           briefs.send({
             fact: screenActLine(act),
             pictures: act.paths.filter(isPicture),
+          });
+        // Shown to her, it is asked about: she looks at once, the voice with nothing to hand over
+        if (act.kind === "showed")
+          briefs.send({
+            fact: screenActLine(act),
+            pictures: [act.path],
+            run: true,
           });
       }),
     [outbox, briefs],

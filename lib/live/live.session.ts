@@ -255,6 +255,11 @@ type BackendResponse = {
   continued: boolean;
   /** Taken for ended by a top-level error that named no end for it; lifted if it goes on. */
   stale?: boolean;
+  /**
+   * A run was asked for while it went (`run`): what waited on it goes in, then a run on it
+   * follows, unless it goes on after its tools, which takes it in by itself.
+   */
+  rerun?: boolean;
 };
 
 /** The events that end a backend response. */
@@ -445,12 +450,27 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
       LIVE_CALL.transcriptSaveMs,
     );
   };
-  /** What waited on a turn of the backend's, into its conversation now, in order. */
-  const release = (response: BackendResponse) => {
+  /** Runs the backend, or goes on with it once every output of its turn is in. */
+  const ask = () => {
+    continuedAt = performance.now();
+    transport.send({
+      type: "response.create",
+      event_id: crypto.randomUUID(),
+    });
+  };
+  /**
+   * What waited on a turn of the backend's, into its conversation now, in order; and the run
+   * asked for while it went, unless the turn `goesOn` after its tools.
+   */
+  const release = (response: BackendResponse, goesOn = false) => {
     response.settled = true;
     for (const given of response.held.splice(0))
       if ("fact" in given) sendFact(given.fact);
       else sendImage(given);
+    if (response.rerun && !goesOn) {
+      response.rerun = false;
+      ask();
+    }
   };
   /**
    * The turn of the backend's that what is put down now waits on: the latest, while it runs
@@ -471,12 +491,8 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
     response.continued = true;
     await Promise.all(response.calls.values());
     if (!closing && !closed) {
-      release(response);
-      continuedAt = performance.now();
-      transport.send({
-        type: "response.create",
-        event_id: crypto.randomUUID(),
-      });
+      release(response, true);
+      ask();
     }
     activity();
   };
@@ -628,16 +644,19 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
           // after its tools had run — goes no further, and what waited on it waits on this.
           // One going on after its tools' outputs sends its own (continueResponse)
           const carried: Given[] = [];
+          let rerun = false;
           for (const earlier of responses.values())
             if (!earlier.settled && !earlier.continued) {
               earlier.settled = true;
               carried.push(...earlier.held.splice(0));
+              rerun ||= Boolean(earlier.rerun);
             }
           response = {
             calls: new Map(),
             held: carried,
             terminal: false,
             continued: false,
+            ...(rerun ? { rerun } : {}),
           };
           responses.set(id, response);
         }
@@ -907,6 +926,21 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
       const running = runningTurn();
       if (running) running.held.push({ image, path });
       else sendImage({ image, path });
+    },
+    /**
+     * Runs the backend on what was put down, as the guide has it run on an image it was given
+     * ("then send response.create to run or resume backend work"), with no hand-over of the
+     * voice's: its answer comes back to the voice as a hand-over's does. At once while it is
+     * quiet; while a turn runs, once that turn's outputs and what waited on it are in — the
+     * turn goes on with them by itself, and one that has nothing to go on with is followed by
+     * the run.
+     */
+    run(): void {
+      if (closed || closing) return;
+      const running = runningTurn();
+      if (running) running.rerun = true;
+      else ask();
+      activity();
     },
   };
 };

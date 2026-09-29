@@ -56,6 +56,12 @@ type PageEvent = {
   };
 };
 
+/**
+ * Work for her backend: what the voice handed over, by its delegation; or, with a null id, a
+ * run the page asked for with nothing waiting on it (`response.create`), on what it put down.
+ */
+type Handed = { id: string; text: string } | { id: null };
+
 type PlanLine = {
   id: string;
   wire: PlanWire;
@@ -80,8 +86,10 @@ type PlanLine = {
   facts: string[];
   /** What was said since the last hand-over, as the voice's side transcribed it. */
   talk: { role: "user" | "assistant"; text: string; done: boolean }[];
-  handed: { id: string; text: string }[];
+  handed: Handed[];
   working: boolean;
+  /** A step's calls are with the page: the next `response.create` goes on with them. */
+  calling: boolean;
   /**
    * What the page sent back for her calls, by call: kept as it comes, since a tool can finish
    * before the step that called it has.
@@ -191,6 +199,7 @@ export async function openPlanLine(input: {
     talk: [],
     handed: [],
     working: false,
+    calling: false,
     outputs: new Map(),
     pictures: [],
     asked: false,
@@ -354,7 +363,12 @@ function take(line: PlanLine, event: PageEvent) {
       return;
     }
     case "response.create":
-      if (line.next) line.next();
+      // Going on with a step's calls; with none out, a run on what the page put down, as the
+      // guide has a key's backend run on a picture ("then send response.create to run")
+      if (!line.calling) {
+        line.handed.push({ id: null });
+        void work(line);
+      } else if (line.next) line.next();
       else line.asked = true;
       return;
     case "session.close":
@@ -363,7 +377,7 @@ function take(line: PlanLine, event: PageEvent) {
   }
 }
 
-/** Hand-overs one at a time, in the order the voice made them. */
+/** Hand-overs and runs the page asked for, one at a time, in the order they came. */
 async function work(line: PlanLine) {
   if (line.working) return;
   line.working = true;
@@ -416,20 +430,32 @@ function handedOver(text: string, talk: string): string {
 /**
  * One hand-over, a step of her backend at a time, each a response of the page's wire: what
  * the step called goes to the page, which runs it and asks for the next response. What she
- * says at the end goes back to the voice to say; a step that fails tells the voice so.
+ * says at the end goes back to the voice to say; a step that fails tells the voice so. A run
+ * the page asked for is the same with no hand-over: its end goes into the voice to say.
  */
-async function respond(line: PlanLine, handed: { id: string; text: string }) {
-  const talk = line.talk
-    .splice(0)
-    .map((entry) => `${entry.role}: ${entry.text}`)
-    .join("\n");
-  line.messages.push({ role: "user", content: handedOver(handed.text, talk) });
+async function respond(line: PlanLine, handed: Handed) {
+  const tell = (text: string) =>
+    handed.id === null
+      ? line.wire.say(text, "speakable")
+      : line.wire.answer(handed.id, text, "speakable");
+  // What was put down before the voice handed over came before it: in after the hand-over,
+  // a picture put down a while ago read as sent with the words, and "how do I look?" with the
+  // camera on was answered from a drawing
+  takeGiven(line);
+  if (handed.id !== null) {
+    const talk = line.talk
+      .splice(0)
+      .map((entry) => `${entry.role}: ${entry.text}`)
+      .join("\n");
+    line.messages.push({
+      role: "user",
+      content: handedOver(handed.text, talk),
+    });
+  }
 
   for (let step = 0; step < TEXT_CALL.maxSteps && !line.over; step += 1) {
-    for (const fact of line.facts.splice(0))
-      line.messages.push({ role: "system", content: fact });
-    // A file put down since she last worked: no tool's result brought it
-    showPictures(line);
+    // Put down since she last worked: no tool's result brought it
+    takeGiven(line);
     const id = `resp_${randomUUID()}`;
     const emit = (event: WireEvent) =>
       toPage(line, {
@@ -446,12 +472,14 @@ async function respond(line: PlanLine, handed: { id: string; text: string }) {
         type: "response.failed",
         response: { id, error: { message: done.failed } },
       });
-      line.wire.answer(handed.id, `That failed: ${done.failed}`, "speakable");
+      tell(`That failed: ${done.failed}`);
       return;
     }
+    // Set before the page hears the step end, which is when it may ask to go on
+    line.calling = done.calls.length > 0;
     emit({ type: "response.completed", response: { id } });
     if (!done.calls.length) {
-      if (done.text) line.wire.answer(handed.id, done.text, "speakable");
+      if (done.text) tell(done.text);
       return;
     }
 
@@ -462,6 +490,7 @@ async function respond(line: PlanLine, handed: { id: string; text: string }) {
       });
     line.next = null;
     line.asked = false;
+    line.calling = false;
     if (line.over) return;
     line.messages.push({
       role: "tool",
@@ -478,6 +507,13 @@ async function respond(line: PlanLine, handed: { id: string; text: string }) {
     for (const call of done.calls) line.outputs.delete(call.toolCallId);
     showPictures(line);
   }
+}
+
+/** What the page put down, into her conversation in the order it sent it: each fact, then the pictures it names. */
+function takeGiven(line: PlanLine) {
+  for (const fact of line.facts.splice(0))
+    line.messages.push({ role: "system", content: fact });
+  showPictures(line);
 }
 
 /** The pictures the page sent as the user's, into her conversation as one message of theirs. */

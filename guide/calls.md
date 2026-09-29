@@ -55,8 +55,9 @@ picture of it as it is at that moment goes to the model behind her, nowhere else
 stops it. When the browser refuses — on a Mac, the browser needs Screen Recording, or Camera, in
 System Settings › Privacy & Security — its reason shows, and nothing is shown.
 
-**Draw**, beside them, opens a pad over the call: pick a colour, draw, and **Show her** puts the
-drawing before her as a picture, the moment it is pressed — "what do you think of this logo?"
+**Draw**, beside them, opens a pad over the call: pick a colour, draw, and **Show her** gives her
+the drawing the moment it is pressed. She looks at it and says what she makes of it, and you can go
+on from there — "what do you think of this logo?" It goes to her alone, not onto the write line.
 **Esc** closes the pad and keeps what is on it for next time; **Clear** wipes it.
 
 ## Ending it

@@ -337,6 +337,42 @@ test("a picture put down while the backend answers goes in once that answer ends
   ]);
 });
 
+test("a run asked for on what was put down goes at once while the backend is quiet, and after a running turn once, never twice", async () => {
+  const pending = new Map<string, (value: string | LiveToolResult) => void>();
+  const { session } = await connect({
+    runTool: (call) => new Promise((resolve) => pending.set(call.id, resolve)),
+  });
+  // Quiet: the picture, then the run on it
+  session.picture("data:image/jpeg;base64,BBBB", "inbox/drawing.png");
+  session.run();
+  assert.deepEqual(backendOrder(), ["message:user", "continue"]);
+  // While it answers: the picture and the run wait for its end, then go in that order
+  sent = [];
+  nested({ type: "response.created", response: { id: "r1" } });
+  session.picture("data:image/jpeg;base64,CCCC", "inbox/drawing-2.png");
+  session.run();
+  assert.deepEqual(backendOrder(), []);
+  nested({ type: "response.completed", response: { id: "r1", output: [] } });
+  await tick();
+  assert.deepEqual(backendOrder(), ["message:user", "continue"]);
+  // While it waits on its tools: it goes on with the picture itself, and nothing more is asked
+  sent = [];
+  nested({ type: "response.created", response: { id: "r2" } });
+  functionCall("a");
+  nested({ type: "response.completed", response: { id: "r2", output: [] } });
+  await tick();
+  session.picture("data:image/jpeg;base64,DDDD", "inbox/drawing-3.png");
+  session.run();
+  assert.deepEqual(backendOrder(), []);
+  pending.get("a")?.("done");
+  await tick();
+  assert.deepEqual(backendOrder(), [
+    "function_call_output:a",
+    "message:user",
+    "continue",
+  ]);
+});
+
 test("a picture put down that the connection will not carry is said by its path, to the backend and the user", async () => {
   refuses = (event) => JSON.stringify(event).includes('"type":"input_image"');
   const { session, warnings } = await connect();

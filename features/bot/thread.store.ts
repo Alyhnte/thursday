@@ -373,7 +373,9 @@ export type ScreenAct =
   /** Stopped the thread. */
   | { kind: "stopped"; id: string; label: string }
   /** Handed files over through the write line; they are kept at these workspace paths. */
-  | { kind: "gave"; paths: string[] };
+  | { kind: "gave"; paths: string[] }
+  /** Showed her a drawing on a spoken call (draw-pad), kept at this workspace path. */
+  | { kind: "showed"; path: string };
 
 /** Drafts and selected recipients survive switching threads, independently for each participant. */
 const drafts = new Map<string, Map<string, string>>();

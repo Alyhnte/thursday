@@ -317,7 +317,7 @@ test("a hand-over runs her backend on the plan a step at a time, the page runs h
   line.leave.abort();
 });
 
-test("a picture put down before a hand-over is in her next step as the user's, with its path, after the fact that names it", async () => {
+test("a picture put down before a hand-over is in her next step before the hand-over, as the user's, with its path, after the fact that names it", async () => {
   const line = await openLine("call-picture");
   steps.push(() => [{ type: "text", text: "A lighthouse at sunset." }]);
   // What the page sends as the file lands: the fact for the backend, then the picture itself
@@ -365,9 +365,11 @@ test("a picture put down before a hand-over is in her next step as the user's, w
   const fact = prompt.indexOf("put a file down on screen");
   const named = prompt.indexOf("inbox/photo.png, as an image:");
   const picture = prompt.indexOf('"type":"file"', named);
-  assert.ok(handed >= 0 && handed < fact, "the hand-over, then the fact");
-  assert.ok(fact < named, "the fact, then the picture it names");
+  // Put down before the voice handed over, so read before its words: after them, the picture
+  // read as sent with "how do I look?" and was taken for the camera
+  assert.ok(fact >= 0 && fact < named, "the fact, then the picture it names");
   assert.ok(picture > named, "the picture itself, after its path");
+  assert.ok(picture < handed, "what was put down, then the hand-over");
   assert.match(prompt.slice(picture), /image\/png/);
   for (let waited = 0; waited < 2_000 && !wire.said.length; waited += 5)
     await new Promise((settle) => setTimeout(settle, 5));
@@ -376,6 +378,64 @@ test("a picture put down before a hand-over is in her next step as the user's, w
     channel: "speakable",
     delegation: "del_picture",
   });
+  line.leave.abort();
+});
+
+test("a run the page asks for with no call out runs her backend on what it put down, and what she makes of it goes into the voice to say", async () => {
+  const line = await openLine("call-shown");
+  steps.push(() => [{ type: "text", text: "A cat, drawn in red." }]);
+  const before = wire.said.length;
+  tellPlanLine("call-shown", [
+    {
+      type: "response.item.create",
+      item: {
+        type: "message",
+        role: "developer",
+        content: [
+          {
+            type: "input_text",
+            text: "The user drew a picture on screen and showed it to you, kept on this computer at inbox/drawing.png.",
+          },
+        ],
+      },
+    },
+    {
+      type: "response.item.create",
+      item: {
+        type: "message",
+        role: "user",
+        content: [
+          { type: "input_text", text: "inbox/drawing.png, as an image:" },
+          {
+            type: "input_image",
+            image_url: "data:image/png;base64,iVBORw0KGgo=",
+          },
+        ],
+      },
+    },
+    { type: "response.create" },
+  ]);
+  // The page hears it as any response of her backend's, bound to no hand-over
+  const created = await line.next("response.created");
+  assert.equal(created.delegation_id, null);
+  await line.next("response.completed");
+  const prompt = prompts.at(-1) ?? "";
+  assert.ok(
+    prompt.indexOf("showed it to you") <
+      prompt.indexOf("inbox/drawing.png, as an image:"),
+    "the fact, then the picture",
+  );
+  assert.doesNotMatch(prompt, /<realtime_delegation>/);
+  for (
+    let waited = 0;
+    waited < 2_000 && wire.said.length === before;
+    waited += 5
+  )
+    await new Promise((settle) => setTimeout(settle, 5));
+  assert.deepEqual(wire.said.slice(before), [
+    { text: "A cat, drawn in red.", channel: "speakable" },
+  ]);
+  assert.equal(steps.length, 0);
   line.leave.abort();
 });
 
