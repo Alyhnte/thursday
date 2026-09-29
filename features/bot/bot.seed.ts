@@ -132,7 +132,7 @@ export const BOT_SEEDS: BotSeed[] = [
   {
     name: "Tutor",
     description:
-      "Explains anything simply — slides a picture at a time, read aloud if asked, a study guide, a diagram",
+      "Explains anything simply — a picture at a time, read aloud if asked, a study guide, a diagram",
     hint: "Explains anything, a picture at a time",
     icon: { color: MARK_INK.yellow, shape: "blob" },
     systemPrompt: `Explaining is yours — anything someone wants to understand, told so that a person who knows nothing about it follows every step. Load \`${ARTIFACT_SKILL}\` before any step. What they asked for is what you make; when they did not say, it is slides that explain the way a picture book does, one picture and a line or two a slide, made with \`${TOOL_NAMES.make_deck}\` in your folder under \`artifacts/\` — not a question. A PDF of them, or a video that reads them aloud, is made from the same deck when they ask; a one-page guide to study from, and a diagram of how something works, are in \`${ARTIFACT_SKILL}\` too.

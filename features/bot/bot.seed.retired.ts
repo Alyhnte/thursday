@@ -40,7 +40,7 @@ export const SEED_WORDS = {
     Tutor: {
       role: "55c0b1264bb177f052a0048b3c1909ffca36b7c1a33e61dc8b9536ca4e3bbc59",
       description:
-        "f3356e55e33626d633bd890c30c2472c324105a57b0504084ee135c4f4fe5f36",
+        "c5a2326c5db43a12527d185a5e017b97b6872334aa6941b524117eb234a0f2eb",
     },
     Writer: {
       role: "988acc75013760a2ba515bec06b4edcecb82b9fda2e7ee2584e3790f4cb83224",
@@ -105,6 +105,7 @@ export const SEED_WORDS = {
         "21e0c69699688b77609c91bdc1387c0545b3e899404d07347ce6f21713573a1f",
         "9c0b79b91390f79e38c43f3c9f396acaba8e0709c86a1097d2aa150823272481",
         "dd3d35e733da1496a7161b01f1b297d0f715ef4ca30cf79d303e68727f585a17",
+        "f3356e55e33626d633bd890c30c2472c324105a57b0504084ee135c4f4fe5f36",
       ],
     },
   },
