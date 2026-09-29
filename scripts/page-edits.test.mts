@@ -421,9 +421,20 @@ test("a document written in Markdown is put in the document's own markup, and ma
     // It carries its own Word converter, which its Export and `document.mjs docx` both run
     "data-docx>Word file<small>.docx</small>",
     "window.shell.docx = async () =>",
+    // Edited where it is read: what keeps its words when its file cannot, and a link's card
+    "const drafts = {",
+    "shell.edits.rest({",
+    '<div class="pg-kept-list" id="kept" hidden></div>',
+    'id="link-card"',
+    "data-discard",
   ])
     assert.ok(html.includes(piece), `the page holds ${piece}`);
   assert.ok(!html.includes("the outline's guidance"), "comments are dropped");
+  assert.ok(
+    !html.includes("// shell.drafts"),
+    "the drafts are put in the shell",
+  );
+  assert.ok(!/<button[^>]*data-edit/.test(html), "no Edit to press first");
 });
 
 test("front matter written without its fences is still the line over and under the title", async () => {
@@ -692,4 +703,129 @@ test("a file's version moves with every write, and a page's names the revision i
   );
   assert.equal(await readFileVersion("artifacts/nothing-here.html"), null);
   assert.equal(await readFileVersion("../outside.txt"), null);
+});
+
+test("a page's words its file would not take are kept by the revision they were written on, until let go", async () => {
+  const source = await readFile(
+    join(
+      import.meta.dirname,
+      "..",
+      "skills",
+      "artifact",
+      "runtime",
+      "shell",
+      "drafts.js",
+    ),
+    "utf8",
+  );
+  type Draft = { base: string; html: string; at: number };
+  const drafts = new Function(`${source}\nreturn drafts;`)() as {
+    valid: (one: unknown) => boolean;
+    hold: (list: Draft[], one: Draft) => Draft[];
+    drop: (list: Draft[], base: string) => Draft[];
+    split: (
+      list: Draft[],
+      revision: string,
+    ) => { here: Draft | null; other: Draft[] };
+  };
+  let list: Draft[] = [];
+  list = drafts.hold(list, { base: "aaa", html: "<p>one</p>", at: 3 });
+  list = drafts.hold(list, { base: "bbb", html: "<p>two</p>", at: 1 });
+  // Later words on the same version replace the earlier: they hold them
+  list = drafts.hold(list, { base: "aaa", html: "<p>one more</p>", at: 5 });
+  assert.equal(list.length, 2);
+  const { here, other } = drafts.split(list, "aaa");
+  assert.equal(
+    here?.html,
+    "<p>one more</p>",
+    "words on the file as it is go back in place",
+  );
+  assert.deepEqual(
+    other.map((d) => d.base),
+    ["bbb"],
+    "words on another version are shown beside it",
+  );
+  assert.equal(drafts.split(list, "ccc").here, null);
+  assert.deepEqual(
+    drafts.split(list, "ccc").other.map((d) => d.at),
+    [1, 5],
+    "oldest first",
+  );
+  assert.deepEqual(
+    drafts.drop(list, "bbb").map((d) => d.base),
+    ["aaa"],
+  );
+  assert.ok(!drafts.valid({ base: "aaa", html: 1, at: 1 }));
+  assert.ok(!drafts.valid(null));
+});
+
+test("the app keeps a page's unsaved edits aside for its file, within its share of storage, and says when it cannot", async () => {
+  const { answerDrafts } = await import("../features/workspace/page-drafts.ts");
+  const { PAGE_DRAFTS } = await import("../config.ts");
+  const kept = new Map<string, string>();
+  const storage = {
+    getItem: (key: string) => kept.get(key) ?? null,
+    setItem: (key: string, value: string) => void kept.set(key, value),
+    removeItem: (key: string) => void kept.delete(key),
+  };
+  const path = "bots/Ada/artifacts/rent.html";
+  const draft = (base: string, html = "<p>mine</p>") => ({
+    base,
+    html,
+    at: Date.now(),
+  });
+  assert.deepEqual(answerDrafts(storage, path, {}), { drafts: [] });
+  const held = answerDrafts(storage, path, { hold: draft("a1b2c3d4e5f6") });
+  assert.ok("drafts" in held && held.drafts.length === 1);
+  // Another file's are its own
+  assert.deepEqual(answerDrafts(storage, "bots/Ada/artifacts/other.html", {}), {
+    drafts: [],
+  });
+  // The same version again replaces; another is kept beside it
+  answerDrafts(storage, path, { hold: draft("a1b2c3d4e5f6", "<p>more</p>") });
+  const two = answerDrafts(storage, path, { hold: draft("0f0f0f0f0f0f") });
+  assert.ok("drafts" in two);
+  assert.deepEqual(
+    two.drafts.map((d) => d.base),
+    ["a1b2c3d4e5f6", "0f0f0f0f0f0f"],
+  );
+  assert.equal(two.drafts[0].html, "<p>more</p>");
+  // Let go, one at a time; nothing left takes the key away
+  answerDrafts(storage, path, { drop: "a1b2c3d4e5f6" });
+  const none = answerDrafts(storage, path, { drop: "0f0f0f0f0f0f" });
+  assert.deepEqual(none, { drafts: [] });
+  assert.equal(kept.size, 0);
+  // What is not a page's edits is not kept
+  assert.ok(
+    "error" in
+      answerDrafts(storage, path, { hold: { base: "<x>", html: "", at: 1 } }),
+  );
+  // A page is held to its share: one set too many, or too large, is refused, and none let go for it
+  for (let n = 0; n < PAGE_DRAFTS.perFile; n++)
+    answerDrafts(storage, path, {
+      hold: draft(n.toString(16).padStart(12, "0")),
+    });
+  const over = answerDrafts(storage, path, { hold: draft("ffffffffffff") });
+  assert.ok("error" in over);
+  const still = answerDrafts(storage, path, {});
+  assert.ok("drafts" in still && still.drafts.length === PAGE_DRAFTS.perFile);
+  kept.clear();
+  assert.ok(
+    "error" in
+      answerDrafts(storage, path, {
+        hold: draft("abc", "x".repeat(PAGE_DRAFTS.chars + 1)),
+      }),
+  );
+  // A browser that keeps nothing, or has no room, is said so
+  assert.ok("error" in answerDrafts(null, path, { hold: draft("abc") }));
+  const full = {
+    ...storage,
+    setItem: () => {
+      throw new Error("QuotaExceededError");
+    },
+  };
+  assert.ok("error" in answerDrafts(full, path, { hold: draft("abc") }));
+  // What is not this file's writing reads as nothing kept
+  kept.set(`thursday-page-drafts:${path}`, "not json");
+  assert.deepEqual(answerDrafts(storage, path, {}), { drafts: [] });
 });

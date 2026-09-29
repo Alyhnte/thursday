@@ -12,7 +12,8 @@ that opens with no network, and its path is what you hand back. `S=<skill dir>/s
 ## To keep and look at
 
 Drawn by the app from what you write. You write the content; the app does the rest — the layout,
-the type, light and dark, a head that names it with Edit and Export, and the pictures.
+the type, light and dark, a head that names it with Export (and Edit on a deck or a sheet; a
+document is edited by clicking into it), and the pictures.
 
 | They will | Kind | Start | Read first |
 |---|---|---|---|

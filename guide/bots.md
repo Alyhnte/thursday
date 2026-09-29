@@ -23,11 +23,14 @@ bots. A ready-made bot differs only in its role, and some carry a skill of their
 
 - **Analyst** finds things out and answers with sources: what something costs, how a number moved
   and why, which one to pick, whether to buy now or wait.
-- **Curator** keeps the user up to date: a morning brief on the topics they follow, and anything
-  long — a video, a podcast, a talk, an article, a PDF — handed back short, each point linked to
-  where it is said.
-- **Concierge** takes trips and errands up to the step that pays: a trip laid out day by day,
-  flights and stays found and compared, a booking, an order or a form filled in. With the kiwi
+- **Curator** keeps the user up to date: a morning brief on the topics they follow — what changed
+  since the last one, why each story is theirs, the stories they are following as a line through
+  the days, the rest as headlines — and anything long — a video, a podcast, a talk, an article, a
+  PDF — handed back short, each point linked to where it is said.
+- **Concierge** takes trips and errands up to the step that pays: a trip laid out day by day —
+  pictures of every place that open large, what to do and watch for there, the cost and what is
+  still to price always in view, what to book by when — flights and stays found and compared, a
+  booking, an order or a form filled in. With the kiwi
   connector on (**Settings › Connectors**) it searches flights without opening a window.
 - **Designer** makes what gets looked at: two to four ways a screen or page could look side by
   side, a deck, a post or poster at its real size, a short film for a birthday or a thank-you.
@@ -232,12 +235,25 @@ A bot also reads an Excel file handed to it; an old .xls has to be saved as .xls
 
 A **page** is for reading — a report, a memo, a plan, meeting notes — with its contents beside it,
 tables, checklists, and numbered sources at the end. It prints as a document, and **Export › Word
-file** saves a .docx. **Edit** makes it editable in place: `/` on an empty line picks a block, and
-lines started with `#`, `-`, `1.`, `[]` or `>` become headings, lists, checklists or notes. Changes
-are saved as typed. A bot asked to change it starts from the page as edited.
+file** saves a .docx. Click anywhere in its words and type: there is no Edit button. While typing, a
+handle beside the block moves, copies or deletes it, selected words get bold, italic, a heading or a
+link, `/` on an empty line picks a block, and lines started with `#`, `-`, `1.`, `[]` or `>` become
+headings, lists, checklists or notes. Clicking a link shows where it goes, with **Open**, **Edit**
+and **Remove**; ⌘-click or Ctrl-click opens it straight away. In the app, changes are saved a moment
+after you stop typing, and the top bar says **Saving…** then **Saved**. A bot asked to change it
+starts from the page as edited.
 
-When a deck, sheet or page is changed elsewhere (by its bot, in Excel, or from another window)
-while it is being edited, nothing more is saved over it: the top bar says **Changed since it opened · not kept** and shows **Reload**.
+A page opened outside the app, as a file, is not saved into that file: the top bar says **Kept in
+this browser only**, your edits come back when the file is opened again in the same browser,
+**Discard edits** throws them away, and **Export › Download this file** saves a copy with them.
+
+When a page is changed elsewhere (by its bot, or from another window) while you have unsaved edits,
+they are not saved over it: the top bar says **Not saved: changed elsewhere** and shows **Load new
+version**. Your edits stay on the page and are kept aside; the new version then opens with them in a
+box above it, to **Copy** back, **Download** as a file of their own, or **Dismiss**.
+
+When a deck or sheet is changed elsewhere (by its bot, in Excel, or from another window) while it
+is being edited, nothing more is saved over it: the top bar says **Changed since it opened · not kept** and shows **Reload**.
 
 ## Routines: jobs that start by themselves
 

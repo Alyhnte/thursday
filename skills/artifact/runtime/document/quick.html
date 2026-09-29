@@ -21,13 +21,10 @@
   <span class="sh-sub" id="state"></span>
   <span class="sh-gap"></span>
   <span class="sh-tools">
-    <button type="button" class="sh-b sh-outline" data-reload title="Show the page as it is now" hidden>Reload</button>
+    <button type="button" class="sh-b sh-outline" data-reload title="Show the page as it is now, with your edits beside it" hidden>Load new version</button>
+    <button type="button" class="sh-b sh-outline" data-discard title="Throw away the edits this browser keeps, and show the file as it is" hidden>Discard edits</button>
     <button type="button" class="sh-b sh-icon" data-toc aria-label="Contents" title="Contents" hidden>
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
-    </button>
-    <button type="button" class="sh-b sh-outline" data-edit>
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-      <span class="sh-word">Edit</span>
     </button>
   </span>
   <i class="sh-rule"></i>
@@ -45,6 +42,7 @@
 <div class="pg-page">
   <nav class="sh-pane pg-toc" id="toc" aria-label="Contents"></nav>
   <div class="pg-read">
+    <div class="pg-kept-list" id="kept" hidden></div>
     <main class="pg-paper" id="paper">
 <!-- put: start -->
 {{body}}
@@ -73,6 +71,13 @@
   <i class="sh-rule"></i>
   <button type="button" class="sh-b sh-sm" data-table="drop-row" title="Delete this row">− Row</button>
   <button type="button" class="sh-b sh-sm" data-table="drop-column" title="Delete this column">− Column</button>
+</div>
+<div class="pg-bubble pg-link" id="link-card" hidden>
+  <span class="pg-link-to"></span>
+  <i class="sh-rule"></i>
+  <button type="button" class="sh-b sh-sm" data-link="open" title="Open the link (or press it with ⌘ or Ctrl)">Open</button>
+  <button type="button" class="sh-b sh-sm" data-link="edit" title="Change where it goes">Edit</button>
+  <button type="button" class="sh-b sh-sm" data-link="remove" title="Keep the words, without the link">Remove</button>
 </div>
 <div class="sh-list pg-popover" id="block-menu" hidden>
   <button type="button" class="sh-item" data-block="up">Move up</button>

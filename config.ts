@@ -371,6 +371,22 @@ export const WORKSPACE_VIEW = {
 };
 
 /**
+ * A page's edits its file would not take — the file changed under them, or the save
+ * failed — kept aside in this browser for that file until a later save or the reader lets
+ * them go (features/workspace/page-drafts.ts). Browser storage holds a few million
+ * characters for the whole app, so one page is held to a share of it.
+ * - `perFile`  how many sets of one file's edits, each written on another version of it,
+ *   are kept at once. One more is refused and the page says it could not keep them aside;
+ *   none is ever let go to make room.
+ * - `chars`    the most characters one file's kept edits may hold together. Larger
+ *   leaves a page more room and the rest of the app less.
+ */
+export const PAGE_DRAFTS = {
+  perFile: 8,
+  chars: 1_000_000,
+};
+
+/**
  * A file's face before it is opened (workspace file-thumb): a page in miniature, the
  * head of a text.
  * - `pageWidth`  the width an html page is laid out at before it is scaled into its

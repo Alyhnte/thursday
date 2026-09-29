@@ -1,20 +1,29 @@
 // What a document does for itself once it is written: an address on every heading, its
-// contents in the pane beside it, its tabs — and, when the reader asks, an editor: the
-// paper becomes editable in place, a block gets a handle, a selection gets its
-// formatting. What changes is kept by the app when the app is showing the page (the
-// shell asks it), and as a downloaded copy when nothing is. Nothing here is content: a
-// page runs this and shows no change.
+// contents in the pane beside it, its tabs — and an editor, with nothing to press first:
+// a press on the words puts the caret there, a block the caret or pointer is on gets a
+// handle while the words are being written, a selection gets its formatting, a link a
+// card that opens it. What changes is kept by the shell (shell.edits `rest`): into the
+// file when the app shows the page, in this browser when nothing saves it, and aside when
+// the file changed under it. Nothing here is content: a page runs this and shows no change.
 (() => {
   const paper = document.getElementById("paper");
   const toc = document.getElementById("toc");
   const tocButton = document.querySelector("[data-toc]");
-  const editButton = document.querySelector("[data-edit]");
+  const keptList = document.getElementById("kept");
+  const linkCard = document.getElementById("link-card");
   const grip = document.getElementById("grip");
   const bubble = document.getElementById("bubble");
   const tableBar = document.getElementById("table-bar");
   const blockMenu = document.getElementById("block-menu");
   const insertMenu = document.getElementById("insert-menu");
   if (!paper) return;
+
+  /** The element the caret is in, when it is on the paper. */
+  const caretIn = () => {
+    const at = getSelection()?.anchorNode;
+    const el = at instanceof Element ? at : at?.parentElement;
+    return el && paper.contains(el) ? el : null;
+  };
 
   /* ── headings, contents, tabs ────────────────────────────────────────────── */
 
@@ -132,23 +141,27 @@
       bar?.children[i]?.setAttribute("aria-selected", String(i === n));
     });
   };
-  for (const tabs of paper.querySelectorAll(".tabs")) {
-    const panels = [...tabs.querySelectorAll(":scope > [data-tab]")];
-    if (panels.length < 2) continue;
-    const bar = document.createElement("div");
-    bar.setAttribute("role", "tablist");
-    bar.contentEditable = "false";
-    for (const panel of panels) {
-      const tab = document.createElement("button");
-      tab.type = "button";
-      tab.setAttribute("role", "tab");
-      tab.textContent = panel.dataset.tab;
-      bar.append(tab);
-      panel.setAttribute("role", "tabpanel");
+  /** A bar of tabs on every `.tabs` block that has none. */
+  const tabsUp = () => {
+    for (const tabs of paper.querySelectorAll(".tabs")) {
+      const panels = [...tabs.querySelectorAll(":scope > [data-tab]")];
+      if (panels.length < 2 || tabs.querySelector(':scope > [role="tablist"]'))
+        continue;
+      const bar = document.createElement("div");
+      bar.setAttribute("role", "tablist");
+      bar.contentEditable = "false";
+      for (const panel of panels) {
+        const tab = document.createElement("button");
+        tab.type = "button";
+        tab.setAttribute("role", "tab");
+        tab.textContent = panel.dataset.tab;
+        bar.append(tab);
+        panel.setAttribute("role", "tabpanel");
+      }
+      tabs.prepend(bar);
+      pickTab(tabs, 0);
     }
-    tabs.prepend(bar);
-    pickTab(tabs, 0);
-  }
+  };
   paper.addEventListener("click", (event) => {
     const tab = event.target.closest?.(
       '.tabs > [role="tablist"] > [role="tab"]',
@@ -157,14 +170,13 @@
       pickTab(tab.closest(".tabs"), [...tab.parentNode.children].indexOf(tab));
   });
 
-  contents();
-  spy();
-
   /* ── reading: a column in order, a footnote in place, the time it takes ──── */
 
   // Each table's rows in the order they were written: a sort is a view of the page, and
-  // the file keeps that order (shell.clean puts it back in the copy it keeps)
+  // the file keeps that order (shell.clean puts it back in the copy it keeps). Its button
+  // stands in each heading, apart from the heading's words, which are written as any others
   const written = new WeakMap();
+  const dressed = new WeakSet();
   const collator = new Intl.Collator(undefined, { numeric: true });
   const numberIn = (text) => {
     const n = Number.parseFloat(text.replace(/[^\d.-]/g, ""));
@@ -174,23 +186,24 @@
     [...paper.querySelectorAll("table")].filter(
       (table) => table.tHead?.rows[0] && table.tBodies[0]?.rows.length > 1,
     );
-  for (const table of tables()) {
-    [...table.tBodies[0].rows].forEach((row, at) => {
-      written.set(row, at);
-    });
-    for (const th of table.tHead.rows[0].cells) {
-      th.dataset.sort = "";
-      th.tabIndex = 0;
-    }
-  }
-  /** Every table back in its written order, its headings unmarked. */
-  const unsort = () => {
+  const sortable = () => {
     for (const table of tables()) {
-      const rows = [...table.tBodies[0].rows];
-      rows.sort((a, b) => (written.get(a) ?? 0) - (written.get(b) ?? 0));
-      table.tBodies[0].append(...rows);
-      for (const th of table.tHead.rows[0].cells)
-        th.removeAttribute("aria-sort");
+      if (dressed.has(table)) continue;
+      dressed.add(table);
+      [...table.tBodies[0].rows].forEach((row, at) => {
+        written.set(row, at);
+      });
+      for (const th of table.tHead.rows[0].cells) {
+        th.dataset.sort = "";
+        if (th.querySelector(":scope > .pg-sort")) continue;
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "pg-sort";
+        button.contentEditable = "false";
+        button.title = "Sort by this column";
+        button.setAttribute("aria-label", "Sort by this column");
+        th.prepend(button);
+      }
     }
   };
   /** Up, down, then as written: one heading's column at a time. */
@@ -220,17 +233,22 @@
     } else rows.sort((a, b) => (written.get(a) ?? 0) - (written.get(b) ?? 0));
     body.append(...rows);
   };
-  const browsing = () => !document.body.classList.contains("pg-editing");
-  paper.addEventListener("click", (event) => {
-    const th = event.target.closest?.("th[data-sort]");
-    if (th && browsing()) sortBy(th);
+  paper.addEventListener("mousedown", (event) => {
+    if (event.target.closest?.(".pg-sort")) event.preventDefault(); // the caret stays
   });
-  paper.addEventListener("keydown", (event) => {
-    const th = event.target.closest?.("th[data-sort]");
-    if (!th || !browsing() || (event.key !== "Enter" && event.key !== " "))
-      return;
-    event.preventDefault();
-    sortBy(th);
+  paper.addEventListener("click", (event) => {
+    const button = event.target.closest?.(".pg-sort");
+    if (button) sortBy(button.closest("th"));
+  });
+  // An edit in a sorted table keeps it as it is shown: the order read is the order written
+  paper.addEventListener("input", () => {
+    const table = caretIn()?.closest("table");
+    if (!table?.querySelector("th[aria-sort]")) return;
+    [...(table.tBodies[0]?.rows ?? [])].forEach((row, at) => {
+      written.set(row, at);
+    });
+    for (const th of table.querySelectorAll("th[aria-sort]"))
+      th.removeAttribute("aria-sort");
   });
 
   // A footnote's note, beside the number that cites it, while the pointer or focus is there
@@ -255,21 +273,27 @@
   };
   paper.addEventListener("mouseover", (event) => {
     const link = event.target.closest?.("sup.fn a");
-    if (link && browsing()) showNote(link);
+    if (link) showNote(link);
   });
   paper.addEventListener("mouseout", (event) => {
     if (event.target.closest?.("sup.fn a")) hideNote();
   });
   paper.addEventListener("focusin", (event) => {
     const link = event.target.closest?.("sup.fn a");
-    if (link && browsing()) showNote(link);
+    if (link) showNote(link);
     else hideNote();
   });
   addEventListener("scroll", hideNote, { passive: true });
 
   // How long it reads, beside the other facts under the title, in the reader's language
-  const byline = paper.querySelector(".byline");
-  if (byline && typeof Intl.Segmenter === "function") {
+  const readTime = () => {
+    const byline = paper.querySelector(".byline");
+    if (
+      !byline ||
+      byline.querySelector(".chip.read") ||
+      typeof Intl.Segmenter !== "function"
+    )
+      return;
     let words = 0;
     const segmenter = new Intl.Segmenter(undefined, { granularity: "word" });
     for (const piece of segmenter.segment(paper.textContent))
@@ -277,12 +301,24 @@
     const minutes = Math.max(1, Math.round(words / 200));
     const chip = document.createElement("span");
     chip.className = "chip read";
+    chip.contentEditable = "false";
     chip.textContent = new Intl.NumberFormat(
       document.documentElement.lang || undefined,
       { style: "unit", unit: "minute", unitDisplay: "short" },
     ).format(minutes);
     byline.append(" ", chip);
-  }
+  };
+
+  /** What reading puts on the paper as written: tabs, sorting, the time it takes, the contents. */
+  const dress = () => {
+    tabsUp();
+    sortable();
+    readTime();
+    drawn = null;
+    contents();
+    spy();
+  };
+  dress();
 
   /* ── keeping it (shell.edits) ────────────────────────────────────────────── */
 
@@ -313,6 +349,8 @@
     for (const el of copy.querySelectorAll('#paper [style=""]'))
       el.removeAttribute("style");
     copy.querySelector("#toc")?.replaceChildren();
+    copy.querySelector("#kept")?.replaceChildren();
+    copy.querySelector("#kept")?.setAttribute("hidden", "");
     copy.querySelector("[data-toc]")?.setAttribute("hidden", "");
     for (const id of [
       "grip",
@@ -320,6 +358,7 @@
       "table-bar",
       "block-menu",
       "insert-menu",
+      "link-card",
     ]) {
       const el = copy.querySelector(`#${id}`);
       el?.setAttribute("hidden", "");
@@ -327,6 +366,8 @@
     }
     for (const el of copy.querySelectorAll(".pg-hot"))
       el.classList.remove("pg-hot");
+    for (const el of copy.querySelectorAll('#paper [class=""]'))
+      el.removeAttribute("class");
     // What reading put on the page: a column's order, the time it takes, a note shown
     const live = [...paper.querySelectorAll("table")];
     copy.querySelectorAll("#paper table").forEach((table, at) => {
@@ -347,9 +388,9 @@
       for (const th of table.querySelectorAll("th")) {
         th.removeAttribute("aria-sort");
         th.removeAttribute("data-sort");
-        th.removeAttribute("tabindex");
       }
     });
+    for (const el of copy.querySelectorAll("#paper .pg-sort")) el.remove();
     for (const el of copy.querySelectorAll(".chip.read, #fn-card")) el.remove();
     for (const tabs of copy.querySelectorAll(".tabs")) {
       tabs.querySelector('[role="tablist"]')?.remove();
@@ -383,7 +424,8 @@
 
   /* ── the editor ──────────────────────────────────────────────────────────── */
 
-  if (!editButton) return;
+  // A page drawn as a file's face is a picture of it, and takes no caret
+  if (shell.face) return;
   let block = null; // the block under the handle
   let placed = null; // what the editor itself selected in a block it just made
 
@@ -411,29 +453,29 @@
     }
   };
 
-  shell.edits.onToggle((on) => {
-    // Edits are made on the page as written: no column in order, no reading time among the chips
-    if (on) {
-      unsort();
-      hideNote();
-      for (const chip of paper.querySelectorAll(".chip.read")) chip.remove();
-    }
-    document.body.classList.toggle("pg-editing", on);
-    paper.contentEditable = on ? "true" : "false";
-    seal();
-    if (on) return;
+  // The words are editable as they are read. While the caret is in them the page is being
+  // written (`pg-editing`): a block gets its handle, and what edits it shows as it is useful
+  paper.contentEditable = "true";
+  seal();
+  paper.addEventListener("focusin", () => {
+    document.body.classList.add("pg-editing");
+  });
+  paper.addEventListener("focusout", (event) => {
+    if (paper.contains(event.relatedTarget)) return;
+    document.body.classList.remove("pg-editing");
     shut();
     hideAll();
-    contents();
-    spy();
   });
 
   addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && shell.edits.on) hideAll();
+    if (event.key === "Escape") hideAll();
   });
 
   paper.addEventListener("input", () => {
-    if (!shell.edits.on) return;
+    hideLink();
+    // A block split by Enter hands its mark to the new one: only the handle's block wears it
+    for (const el of paper.querySelectorAll(".pg-hot"))
+      if (el !== block) el.classList.remove("pg-hot");
     seal(); // a chip pasted in joins the others
     changed();
     contents();
@@ -444,7 +486,7 @@
   // the caret leaves it (selectionchange, below), or on Enter or Esc with the caret just
   // past it.
   addEventListener("pointerdown", (event) => {
-    const chip = shell.edits.on && event.target.closest?.("#paper .chip");
+    const chip = event.target.closest?.("#paper .chip:not(.read)");
     if (chip === open) return;
     shut();
     if (!chip) return;
@@ -474,11 +516,6 @@
 
   /* ── Tab, and what is pasted ─────────────────────────────────────────────── */
 
-  const caretIn = () => {
-    const at = getSelection()?.anchorNode;
-    const el = at instanceof Element ? at : at?.parentElement;
-    return el && paper.contains(el) ? el : null;
-  };
   const selectAll = (el) => {
     const range = document.createRange();
     range.selectNodeContents(el);
@@ -489,7 +526,7 @@
   // In a table Tab walks the cells and, past the last one, starts a row; in a list it
   // indents the item. Anywhere else it leaves the page, as Tab does.
   paper.addEventListener("keydown", (event) => {
-    if (!shell.edits.on || event.key !== "Tab") return;
+    if (event.key !== "Tab") return;
     if (event.metaKey || event.ctrlKey || event.altKey) return;
     const el = caretIn();
     const cell = el?.closest("td, th");
@@ -634,7 +671,6 @@
   // copied from this page is still a chip — and leaves another page's look and pictures
   // behind: a picture from the web would need the network the page opens without.
   paper.addEventListener("paste", (event) => {
-    if (!shell.edits.on) return;
     const html = event.clipboardData?.getData("text/html");
     if (!html) return;
     event.preventDefault();
@@ -645,7 +681,16 @@
     );
     const came = new DOMParser().parseFromString(html, "text/html").body;
     const kept = tidy(came, document.createElement("div"), own);
+    // The browser writes the look of the place it pastes into onto what it puts in, as
+    // inline styles: the handle's mark is off the block while it pastes, and what it put in
+    // loses them after (`tidy` let no style through, so any there is the browser's)
+    const marked = [...paper.querySelectorAll(".pg-hot")];
+    for (const el of marked) el.classList.remove("pg-hot");
+    const was = new Set(paper.querySelectorAll("*"));
     document.execCommand("insertHTML", false, kept.innerHTML);
+    for (const el of paper.querySelectorAll("[style]"))
+      if (!was.has(el)) el.removeAttribute("style");
+    for (const el of marked) if (el === block) el.classList.add("pg-hot");
   });
 
   /** The block `node` sits in: one of the paper's own children. */
@@ -665,6 +710,7 @@
   const hideAll = () => {
     grip.hidden = true;
     bubble.hidden = true;
+    hideLink();
     if (tableBar) tableBar.hidden = true;
     blockMenu.hidden = true;
     insertMenu.hidden = true;
@@ -674,9 +720,10 @@
     block = null;
   };
 
-  paper.addEventListener("pointermove", (event) => {
-    if (!shell.edits.on || !blockMenu.hidden || !insertMenu.hidden) return;
-    const here = blockOf(event.target);
+  /** A paragraph as typed, with no class of its own (the handle's mark is not one). */
+  const plain = (el) => [...el.classList].every((name) => name === "pg-hot");
+  /** The handle beside `here`, the block it now acts on. */
+  const hold = (here) => {
     if (!here || here === block) return;
     for (const el of paper.querySelectorAll(".pg-hot"))
       el.classList.remove("pg-hot");
@@ -684,7 +731,24 @@
     block.classList.add("pg-hot");
     const box = block.getBoundingClientRect();
     place(grip, box.left + scrollX - 64, box.top + scrollY - 2);
+  };
+  const writing = () => document.body.classList.contains("pg-editing");
+  const menuOpen = () => !blockMenu.hidden || !insertMenu.hidden;
+  // While the words are being written, the handle is at the block under the pointer, or,
+  // as the caret moves, at the caret's
+  paper.addEventListener("pointermove", (event) => {
+    if (writing() && !menuOpen()) hold(blockOf(event.target));
   });
+  document.addEventListener("selectionchange", () => {
+    if (!writing() || menuOpen() || !getSelection()?.isCollapsed) return;
+    const here = blockOf(caretIn());
+    // Only where the margin holds it: on a phone it would stand over the words being written
+    if (here && here.getBoundingClientRect().left >= 64) hold(here);
+  });
+  // A press on the handle, its menus or a bar keeps the caret where it is, and the words
+  // being written
+  for (const el of [grip, blockMenu, insertMenu, linkCard])
+    el?.addEventListener("mousedown", (event) => event.preventDefault());
 
   const openMenu = (menu, near) => {
     const box = near.getBoundingClientRect();
@@ -706,10 +770,11 @@
   addEventListener("pointerdown", (event) => {
     if (
       event.target.closest(
-        "#grip, #block-menu, #insert-menu, #bubble, #table-bar",
+        "#grip, #block-menu, #insert-menu, #bubble, #table-bar, #link-card",
       )
     )
       return;
+    hideLink();
     blockMenu.hidden = true;
     insertMenu.hidden = true;
     closeSlash();
@@ -794,8 +859,7 @@
   };
 
   addEventListener("keydown", (event) => {
-    if (!shell.edits.on || !(event.metaKey || event.ctrlKey) || event.altKey)
-      return;
+    if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
     const key = event.key.toLowerCase();
     const again = (key === "z" && event.shiftKey) || key === "y";
     if (key !== "z" && !again) return;
@@ -920,14 +984,13 @@
     }
   }
   paper.addEventListener("input", (event) => {
-    if (!shell.edits.on) return;
     const here = caretIn()?.closest("#paper > p");
     if (!slash) {
       if (
         event.inputType !== "insertText" ||
         event.data !== "/" ||
         !here ||
-        here.className ||
+        !plain(here) ||
         here.textContent !== "/"
       )
         return;
@@ -1000,15 +1063,10 @@
     [/^>$/, "note"],
   ];
   paper.addEventListener("input", (event) => {
-    if (
-      !shell.edits.on ||
-      event.inputType !== "insertText" ||
-      event.data !== " "
-    )
-      return;
+    if (event.inputType !== "insertText" || event.data !== " ") return;
     const sel = getSelection();
     const here = caretIn()?.closest("#paper > p");
-    if (!here || here.className || !sel?.isCollapsed) return;
+    if (!here || !plain(here) || !sel?.isCollapsed) return;
     const typed = document.createRange();
     typed.setStart(here, 0);
     typed.setEnd(sel.anchorNode, sel.anchorOffset);
@@ -1058,7 +1116,7 @@
    * after it, and deletes either. The table is changed as a copy put in its place, so
    * ⌘Z takes a whole change back.
    */
-  const cellIn = () => (shell.edits.on ? caretIn()?.closest("td, th") : null);
+  const cellIn = () => caretIn()?.closest("td, th");
   const tableChange = (how) => {
     const cell = cellIn();
     const table = cell?.closest("table");
@@ -1158,7 +1216,6 @@
     });
 
   document.addEventListener("selectionchange", () => {
-    if (!shell.edits.on) return;
     const sel = getSelection();
     if (open && !open.contains(sel?.anchorNode ?? null)) shut();
     const range = sel?.rangeCount ? sel.getRangeAt(0) : null;
@@ -1190,5 +1247,227 @@
       box.left + scrollX + box.width / 2 - bubble.offsetWidth / 2,
       box.top + scrollY - bubble.offsetHeight - 8,
     );
+  });
+
+  /*
+   * A link in the words is not followed by a press, which puts the caret in it like in any
+   * other word: a card beside it names where it goes and opens it, changes it or takes it
+   * off. ⌘ or Ctrl with the press opens it at once. A link into the page itself — a
+   * footnote, a heading — is shown there; any other opens beside the page.
+   */
+  let linked = null; // the link the card is for
+  const linkTo = linkCard?.querySelector(".pg-link-to");
+  function hideLink() {
+    if (!linkCard) return;
+    linkCard.hidden = true;
+    linked = null;
+  }
+  /** Where `a` goes, followed: in the page, or beside it. False when it is nowhere a page may send one. */
+  const follow = (a) => {
+    const href = a.getAttribute("href") ?? "";
+    if (href.startsWith("#")) {
+      const to = document.getElementById(decodeURIComponent(href.slice(1)));
+      to?.scrollIntoView({ block: "center" });
+      return Boolean(to);
+    }
+    if (!/^(https?|mailto|tel|file):$/.test(a.protocol)) return false;
+    window.open(a.href, "_blank", "noopener");
+    return true;
+  };
+  const showLink = (a) => {
+    if (!linkCard || !linkTo) return;
+    linked = a;
+    const href = a.getAttribute("href") ?? "";
+    linkTo.textContent = href;
+    linkTo.title = href.startsWith("#") ? href : a.href;
+    const box = a.getBoundingClientRect();
+    place(linkCard, box.left + scrollX, box.bottom + scrollY + 6);
+  };
+  paper.addEventListener("click", (event) => {
+    const a = event.target.closest?.("a[href]");
+    if (!a || !paper.contains(a)) return;
+    event.preventDefault();
+    if (event.metaKey || event.ctrlKey) {
+      follow(a);
+      return;
+    }
+    // A drag that ends on a link picked words; it asked for no card
+    if (getSelection()?.isCollapsed) showLink(a);
+  });
+  /** The caret over the whole of `a`'s words, so the browser's own editing acts on it. */
+  const pickLink = (a) => {
+    paper.focus({ preventScroll: true });
+    selectAll(a);
+  };
+  for (const button of linkCard?.querySelectorAll("[data-link]") ?? [])
+    button.addEventListener("click", () => {
+      const a = linked;
+      if (!a?.isConnected) return hideLink();
+      const how = button.dataset.link;
+      if (how === "open") {
+        if (!follow(a)) shell.say(button, "Can't open");
+        else hideLink();
+        return;
+      }
+      if (how === "edit") {
+        const href = prompt("Link to", a.getAttribute("href") ?? "");
+        if (href === null) return;
+        pickLink(a);
+        document.execCommand(
+          href.trim() ? "createLink" : "unlink",
+          false,
+          href.trim(),
+        );
+      } else if (how === "remove") {
+        pickLink(a);
+        document.execCommand("unlink");
+      }
+      // The caret after the words, as it would be having typed them
+      getSelection()?.collapseToEnd();
+      hideLink();
+      changed();
+    });
+  paper.addEventListener("keydown", hideLink);
+
+  /*
+   * Words kept aside from another version of this file: written on the page before it
+   * changed (a bot's put, another window's save), so they could not be saved over it. Each
+   * set stands over the paper with the blocks it holds that this version does not, to copy
+   * back where they belong, until the reader lets it go. Downloading it keeps that whole
+   * version as a file of its own.
+   */
+  // A block's words without their spaces, which a copy's layout moves: a set that changed
+  // only spacing holds nothing to copy back
+  const keyOf = (el) =>
+    [
+      el.tagName,
+      el.textContent.replace(/\s+/g, ""),
+      ...[...el.querySelectorAll('input[type="checkbox"]')].map((box) =>
+        box.hasAttribute("checked") ? "x" : "o",
+      ),
+    ].join("|");
+  const blocksOf = (html) => {
+    const box = document.createElement("template");
+    box.innerHTML = html;
+    return [...box.content.children];
+  };
+  /** The page's words as the file would keep them. */
+  const words = () => {
+    const copy = document.documentElement.cloneNode(true);
+    shell.clean(copy);
+    return copy.querySelector("#paper")?.innerHTML.trim() ?? "";
+  };
+  const showKept = (list) => {
+    if (!keptList) return;
+    const now = new Set(blocksOf(words()).map(keyOf));
+    const when = new Intl.DateTimeFormat(
+      document.documentElement.lang || undefined,
+      { dateStyle: "medium", timeStyle: "short" },
+    );
+    for (const one of list) {
+      const missing = blocksOf(one.html).filter(
+        (el) => el.tagName !== "SCRIPT" && !now.has(keyOf(el)),
+      );
+      const set = document.createElement("section");
+      set.className = "pg-kept";
+      const head = set.appendChild(document.createElement("div"));
+      head.className = "pg-kept-head";
+      const said = head.appendChild(document.createElement("p"));
+      said.append(
+        Object.assign(document.createElement("b"), {
+          textContent: "Not saved",
+        }),
+        ` · Your edits from ${when.format(one.at)}, made before this page changed. ${
+          missing.length
+            ? "What they hold that this version does not is below, to copy back."
+            : "Nothing written there is missing here: they only took things out or ticked boxes."
+        }`,
+      );
+      const tools = head.appendChild(document.createElement("span"));
+      tools.className = "pg-kept-tools";
+      const button = (how, text, title) => {
+        const b = tools.appendChild(document.createElement("button"));
+        b.type = "button";
+        b.className = "sh-b sh-sm sh-outline";
+        b.dataset.kept = how;
+        b.textContent = text;
+        b.title = title;
+        return b;
+      };
+      const body = document.createElement("div");
+      body.className = "pg-paper pg-kept-words";
+      for (const el of missing) {
+        for (const inner of [el, ...el.querySelectorAll("[id]")])
+          inner.removeAttribute("id");
+        for (const script of el.querySelectorAll("script")) script.remove();
+        body.append(el);
+      }
+      if (missing.length) {
+        const copy = button(
+          "copy",
+          "Copy",
+          "Copy these words, to paste into the page",
+        );
+        copy.addEventListener("click", () => {
+          getSelection().selectAllChildren(body);
+          shell.say(
+            copy,
+            document.execCommand("copy") ? "Copied" : "Select and copy",
+          );
+        });
+      }
+      button(
+        "download",
+        "Download",
+        "Download the page as it was with these edits, as a file of its own",
+      ).addEventListener("click", () => {
+        const page = shell.serialize((copy) => {
+          shell.clean(copy);
+          const into = copy.querySelector("#paper");
+          if (into) into.innerHTML = one.html;
+        });
+        shell.download(
+          shell.fileName().replace(/(\.html?)?$/i, " (not saved).html"),
+          page,
+        );
+      });
+      const drop = button(
+        "dismiss",
+        "Dismiss",
+        "Let these edits go: they are in no version of the page",
+      );
+      drop.addEventListener("click", async () => {
+        if (!confirm("Let these edits go? They are not in the page.")) return;
+        try {
+          await shell.edits.letGo(one.base);
+          set.remove();
+          keptList.hidden = !keptList.children.length;
+        } catch {
+          shell.say(drop, "Not let go");
+        }
+      });
+      if (missing.length) set.append(body);
+      keptList.append(set);
+    }
+    keptList.hidden = !keptList.children.length;
+  };
+  // Its words are there to be read and copied: a link in them goes nowhere
+  keptList?.addEventListener("click", (event) => {
+    if (event.target.closest?.("a")) event.preventDefault();
+  });
+
+  shell.edits.rest({
+    words,
+    restore(html) {
+      paper.innerHTML = html;
+      done.length = 0;
+      undone.length = 0;
+      block = null;
+      open = null;
+      hideAll();
+      dress();
+      seal();
+    },
+    aside: showKept,
   });
 })();

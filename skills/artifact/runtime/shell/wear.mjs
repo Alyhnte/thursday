@@ -184,7 +184,9 @@ export function wear(html) {
       () => `${fontFaces()}\n${read("shell.css")}\n${makerRule()}`,
     )
     .replace("// shell.theme", () => read("theme.js"))
-    .replace("// shell.js", () => read("shell.js"))
+    .replace("// shell.js", () =>
+      read("shell.js").replace("// shell.drafts", () => read("drafts.js")),
+    )
     .replaceAll("{{shell.meta}}", () =>
       part.meta.replace("{{revision}}", revision()),
     )

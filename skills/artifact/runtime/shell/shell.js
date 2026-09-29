@@ -3,6 +3,7 @@
 // miniature of an element, whether a picture sits beside the file, a copy of the page to
 // keep. Runs before the kind's own script and leaves `shell` on the window for it.
 window.shell = (() => {
+  // shell.drafts
   const THEME = "thursday-shell-theme";
   const root = document.documentElement;
   const face = root.classList.contains("sh-face");
@@ -84,8 +85,12 @@ window.shell = (() => {
     for (const el of copy.querySelectorAll("details.sh-menu[open]"))
       el.removeAttribute("open");
     // Where editing stood when the copy was made
-    copy.querySelector("#state")?.replaceChildren();
+    const state = copy.querySelector("#state");
+    state?.replaceChildren();
+    state?.removeAttribute("title");
+    state?.removeAttribute("data-warn");
     copy.querySelector("[data-reload]")?.setAttribute("hidden", "");
+    copy.querySelector("[data-discard]")?.setAttribute("hidden", "");
     copy.querySelector("[data-edit]")?.classList.remove("sh-on");
     const word = copy.querySelector("[data-edit] .sh-word");
     if (word) word.textContent = "Edit";
@@ -117,6 +122,11 @@ window.shell = (() => {
    * while the page is open, with the revision the file now holds. The same revision as the
    * page's is its own save come back; any other is someone else's write, which the page
    * shows (`edits` below) — the app cannot tell from outside whether anyone is editing.
+   *
+   * It also says the page asks for `drafts`: words the file could not take — a save
+   * refused or failed — which the app keeps aside for the file until a later save or the
+   * reader lets them go (drafts.js; the app's features/workspace/page-drafts.ts). The
+   * page cannot keep them itself, since a page the app serves keeps nothing.
    */
   const host = (() => {
     const parent = window.parent !== window ? window.parent : null;
@@ -160,6 +170,13 @@ window.shell = (() => {
         one.ok();
         return;
       }
+      if (said.thursday === "drafts") {
+        one.ok(
+          Array.isArray(said.drafts) ? said.drafts.filter(drafts.valid) : [],
+        );
+        return;
+      }
+      // `not-saved`, or `not-held` for words the app could not keep aside
       const error = new Error(
         said.changed
           ? "changed since it was opened"
@@ -172,20 +189,26 @@ window.shell = (() => {
     // and only the app answers it
     const ask = () => {
       if (parent)
-        parent.postMessage({ thursday: "hello", can: ["changed"] }, "*");
+        parent.postMessage(
+          { thursday: "hello", can: ["changed", "drafts"] },
+          "*",
+        );
     };
     ask();
-    const send = (html) =>
+    const now = () => revision?.getAttribute("content") ?? "";
+    /** A message to the app, answered by the one that carries its id back. */
+    const send = (said) =>
       new Promise((ok, fail) => {
         const id = ++next;
         waiting.set(id, { ok, fail });
-        const base = revision?.getAttribute("content") ?? "";
-        parent.postMessage({ thursday: "save", as, id, html, base }, app);
+        parent.postMessage({ ...said, as, id }, app);
       });
     return {
       get keeps() {
         return keeps;
       },
+      /** The revision of the file this page shows: as it opened, then as its last save left it. */
+      revision: now,
       ask,
       /** `fn` runs once the app has said it keeps edits (at once if it already has). */
       onKeeps(fn) {
@@ -196,12 +219,33 @@ window.shell = (() => {
       onWritten(fn) {
         written.add(fn);
       },
-      save(html) {
+      /**
+       * The page into its file. `words`, a document's, go with it so the app keeps them aside
+       * itself when the save does not land — the frame may be gone by then (a dialog closed
+       * on a save in flight), with no page left to ask.
+       */
+      save(html, words) {
         if (!keeps)
           return Promise.reject(new Error("nothing is keeping this page"));
-        const done = line.then(() => send(html));
+        const done = line.then(() =>
+          send({
+            thursday: "save",
+            html,
+            base: now(),
+            ...(words === undefined ? {} : { words }),
+          }),
+        );
         line = done.catch(() => {});
         return done;
+      },
+      /**
+       * The words the app keeps aside for this file (drafts.js), after it holds `hold` in
+       * place of any kept for the same revision, or lets go of what was kept for `drop`.
+       */
+      drafts({ hold, drop } = {}) {
+        if (!keeps)
+          return Promise.reject(new Error("nothing is keeping this page"));
+        return send({ thursday: "drafts", hold, drop });
       },
     };
   })();
@@ -218,47 +262,195 @@ window.shell = (() => {
    * file as it is now, and Export still downloads this copy. Told by the app that the file
    * was written, a page nobody is working on reloads itself; one being worked on stops
    * keeping in the same way.
+   *
+   * A kind whose page is edited where it is read — a document — has no Edit to press
+   * (`rest`). Its words are never let go unkept: the app saves them a moment after the
+   * last key and as the page is left; a save that does not land keeps them aside with the
+   * app (host.drafts) and says why; a page nothing saves keeps them in this browser for its
+   * file, where the browser allows it. The line never says saved of words not in the file.
    */
   const edits = (() => {
     const button = document.querySelector("[data-edit]");
     const state = document.getElementById("state");
     const reload = document.querySelector("[data-reload]");
+    const discard = document.querySelector("[data-discard]");
     const toggles = [];
     let on = false;
     let dirty = false;
     let timer = 0;
     let saving = 0; // saves on their way to the app
     let stale = false; // the file was written after this page was opened: nothing more is kept
+    let kind = null; // a kind edited at rest (`rest`): how its words are taken, put back, shown
+    let edition = 0; // changes made so far, so a keeping knows whether words came after it
+    let aside = 0; // the edition last kept aside, with the app or in this browser
+    let going = false; // the page is being left on the reader's word: nothing to ask
+    const mine = new Set(); // revisions this page's words were kept aside on
+    let holds = 0; // how many times its words were kept aside, to tell a save's from later ones
 
     // The line's own text changes in place: a node put in its stead while someone types
-    // would end their run of typing
-    const say = (text) => {
+    // would end their run of typing. `why` is the whole of it, on a pointer's rest; a line
+    // that `warn`s stays in the head on a phone, where the others give way to the title.
+    const say = (text, why = "", warn = false) => {
       if (!state) return;
       const line = state.firstChild;
       if (line?.nodeType === Node.TEXT_NODE) line.data = text;
       else state.textContent = text;
+      if (state.title !== why) state.title = why;
+      state.toggleAttribute("data-warn", warn);
+    };
+    const WHY = {
+      here: "Not saved into the file: nothing saves this page where it was opened, outside the app. Your edits are kept in this browser and come back when this file is opened here again. Export › Download this file saves a copy with them.",
+      nowhere:
+        "Not saved: nothing saves this page where it was opened, outside the app, and this browser keeps nothing for it. Export › Download this file saves a copy with your edits.",
+      stale:
+        "This page was changed elsewhere after you opened it (by a bot, or in another window), so your edits are not saved over that. They are still here and kept aside: Load new version shows the page as it is now, with your edits beside it.",
+      newer:
+        "This page was changed elsewhere after you opened it (by a bot, or in another window). Load new version shows it; anything written here meanwhile is kept aside, not saved over it.",
+    };
+    /** The line for a page whose file moved on: whether words written here wait to be kept aside. */
+    const sayStale = () =>
+      dirty
+        ? say("Not saved: changed elsewhere", WHY.stale, true)
+        : say("Changed elsewhere", WHY.newer, true);
+    const reason = (error) => String(error?.message || error).slice(0, 80);
+
+    /** Words kept in this browser for this file (drafts.js); `list` is null where it keeps nothing. */
+    const here = (() => {
+      const key = `thursday-page-drafts:${location.pathname}`;
+      const read = () => {
+        let raw = null;
+        try {
+          raw = localStorage.getItem(key);
+        } catch {
+          return null;
+        }
+        try {
+          const list = JSON.parse(raw ?? "[]");
+          return Array.isArray(list) ? list.filter(drafts.valid) : [];
+        } catch {
+          return [];
+        }
+      };
+      const write = (list) => {
+        try {
+          if (list.length) localStorage.setItem(key, JSON.stringify(list));
+          else localStorage.removeItem(key);
+          return true;
+        } catch {
+          return false;
+        }
+      };
+      return {
+        list: read,
+        hold(one) {
+          const list = read();
+          return list !== null && write(drafts.hold(list, one));
+        },
+        drop(base) {
+          const list = read();
+          return list !== null && write(drafts.drop(list, base));
+        },
+      };
+    })();
+
+    const draftNow = () => ({
+      base: host.revision(),
+      html: kind.words(),
+      at: Date.now(),
+    });
+
+    /** Keeps the words as they stand in this browser, for a page nothing saves; true when kept. */
+    const keepHere = () => {
+      clearTimeout(timer);
+      timer = 0;
+      const at = edition;
+      if (!here.hold(draftNow())) {
+        say("Not saved", WHY.nowhere, true);
+        return false;
+      }
+      aside = at;
+      say("Kept in this browser only", WHY.here);
+      if (discard) discard.hidden = false;
+      return true;
     };
 
-    reload?.addEventListener("click", () => location.reload());
+    /** Keeps the words as they stand aside with the app, for a save that did not land; true when held. */
+    const holdAside = async () => {
+      clearTimeout(timer);
+      timer = 0;
+      const at = edition;
+      const one = draftNow();
+      try {
+        await host.drafts({ hold: one });
+        mine.add(one.base);
+        holds++;
+        aside = Math.max(aside, at);
+        return true;
+      } catch (error) {
+        say(
+          stale ? "Not saved: changed elsewhere" : "Not saved",
+          `Your edits are still on this page, but could not be kept aside (${reason(error)}). Export › Download this file saves a copy with them.`,
+          true,
+        );
+        return false;
+      }
+    };
+
+    reload?.addEventListener("click", async () => {
+      if (
+        kind &&
+        dirty &&
+        aside < edition &&
+        !(await holdAside()) &&
+        !confirm(
+          "Your edits could not be kept aside. Load the new version anyway, and lose them?",
+        )
+      )
+        return;
+      going = true;
+      location.reload();
+    });
+    discard?.addEventListener("click", () => {
+      if (!confirm("Discard your edits, and show the file as it is?")) return;
+      clearTimeout(timer);
+      timer = 0;
+      if (!here.drop(host.revision()))
+        return say(
+          "Not discarded",
+          "This browser would not let go of the edits it keeps for this file.",
+          true,
+        );
+      going = true;
+      location.reload();
+    });
     const goneStale = () => {
       stale = true;
       clearTimeout(timer);
       timer = 0;
-      say("Changed since it opened · not kept");
       if (reload) reload.hidden = false;
+      if (!kind) return say("Changed since it opened · not kept");
+      sayStale();
+      if (dirty) holdAside();
     };
     // Written by someone else while open: shown as it is now, unless someone is working on
     // this copy, which a reload would throw away — then it says so, as a refused save does
     host.onWritten(() => {
-      if (on || dirty || saving || stale) goneStale();
+      if (
+        kind
+          ? dirty || saving || timer || stale
+          : on || dirty || saving || stale
+      )
+        goneStale();
       else location.reload();
     });
 
-    /** Keeps the page now: into the file when the app holds it, as a copy otherwise. */
+    /** Keeps the page now: into the file when the app holds it, as a copy (or, at rest, in this browser) otherwise. */
     const keep = async () => {
       clearTimeout(timer);
       timer = 0;
+      if (kind && stale) return holdAside();
       if (stale) return;
+      if (kind && !host.keeps) return keepHere();
       const text = serialize(window.shell?.clean);
       if (!host.keeps) {
         download(fileName(), text);
@@ -269,13 +461,32 @@ window.shell = (() => {
       dirty = false;
       say("Saving…");
       saving++;
+      // Kept-aside words the file takes with this save: only those set aside before it was sent.
+      // Words set aside while it was on its way (a write landed meanwhile) are newer than it
+      const held = holds;
+      const taken = [...mine];
       try {
-        await host.save(text);
-        if (!dirty) say(on ? "Saved" : "");
+        await host.save(text, kind ? kind.words() : undefined);
+        // Saved, though the file may have moved on since (a write the app told of meanwhile)
+        if (kind && stale) sayStale();
+        else if (!dirty) say(on ? "Saved" : "");
+        // What was kept aside of this page before the save is in the file now
+        if (!stale && holds === held)
+          for (const base of taken)
+            host.drafts({ drop: base }).then(
+              () => mine.delete(base),
+              () => {}, // tried again after the next save
+            );
       } catch (error) {
         dirty = true;
         if (error.changed) goneStale();
-        else say(`Not saved: ${String(error.message || error).slice(0, 60)}`);
+        else if (!kind) say(`Not saved: ${reason(error).slice(0, 60)}`);
+        else if (await holdAside())
+          say(
+            "Not saved",
+            `Not saved into the file: ${reason(error)}. Your edits are still here and kept aside; the next key or leaving the page tries again.`,
+            true,
+          );
       } finally {
         saving--;
       }
@@ -283,21 +494,33 @@ window.shell = (() => {
 
     const changed = () => {
       dirty = true;
+      edition++;
+      clearTimeout(timer);
+      if (kind) {
+        // `keep` asks as it runs whether the app holds the page: it may answer meanwhile
+        if (stale) sayStale();
+        else if (host.keeps) say("Saving…");
+        timer = setTimeout(keep, 1200);
+        return;
+      }
       if (stale) return;
       if (!host.keeps) {
         if (on) say("Unsaved · Done keeps a copy");
         return;
       }
       say("Unsaved…");
-      clearTimeout(timer);
       timer = setTimeout(keep, 1200);
     };
 
     addEventListener("keydown", (event) => {
-      if ((event.metaKey || event.ctrlKey) && event.key === "s" && on) {
-        event.preventDefault();
-        keep();
-      }
+      if (!((event.metaKey || event.ctrlKey) && event.key === "s" && on))
+        return;
+      event.preventDefault();
+      if (!kind || host.keeps) return keep();
+      // Nothing saves this page: the key keeps a copy, and the file stays as it was
+      const kept = keepHere();
+      download(fileName(), serialize(window.shell?.clean));
+      say("Copy downloaded", kept ? WHY.here : WHY.nowhere, !kept);
     });
 
     // Leaving the page keeps what waits at once rather than a moment later: a dialog closed
@@ -308,7 +531,17 @@ window.shell = (() => {
     };
     addEventListener("blur", leaving);
     root.addEventListener("pointerleave", leaving);
+    addEventListener("pagehide", leaving);
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) leaving();
+    });
     addEventListener("beforeunload", (event) => {
+      if (kind) {
+        leaving();
+        if (!going && (saving || (dirty && aside < edition)))
+          event.preventDefault();
+        return;
+      }
       if (saving || (dirty && (on || host.keeps))) event.preventDefault();
     });
 
@@ -334,8 +567,69 @@ window.shell = (() => {
     button?.addEventListener("click", () => set(!on));
     // The app may answer after Edit was pressed: the line catches up
     host.onKeeps(() => {
-      if (on && !dirty && !stale) say("Editing · saved as you go");
+      if (on && !kind && !dirty && !stale) say("Editing · saved as you go");
     });
+
+    /**
+     * Words kept aside, as the page opens: those written on the file as it is go back in
+     * place, unless the reader has started typing; those written on another version are
+     * the kind's to show beside it (`aside`).
+     */
+    const take = (list) => {
+      const { here: same, other } = drafts.split(list, host.revision());
+      if (!same || dirty)
+        return { back: false, other: same ? [same, ...other] : other };
+      kind.restore(same.html);
+      mine.add(same.base);
+      return { back: true, other };
+    };
+
+    /**
+     * A kind whose page is edited where it is read, with no Edit to press. `words()` is
+     * what of the page is the reader's, as the file would keep it; `restore(html)` puts
+     * kept words back in its place; `aside(list)` shows words kept from another version of
+     * the file, each let go with `letGo(base)`.
+     */
+    const rest = (given) => {
+      kind = given;
+      on = true;
+      const found = here.list();
+      if (found?.length) {
+        const { back, other } = take(found);
+        if (back) {
+          dirty = true;
+          aside = edition;
+          say("Edits restored · in this browser only", WHY.here);
+          if (discard) discard.hidden = false;
+        }
+        if (other.length) kind.aside(other);
+      }
+      host.onKeeps(async () => {
+        let list = [];
+        try {
+          list = await host.drafts();
+        } catch (error) {
+          return say(
+            "Kept edits unread",
+            `Edits kept aside for this page could not be read: ${reason(error)}`,
+            true,
+          );
+        }
+        const { back, other } = take(list);
+        if (back) {
+          changed();
+          say("Edits restored · saving…");
+        }
+        if (other.length) kind.aside(other);
+      });
+    };
+
+    /** Lets go of the words kept aside for revision `base`: the app's, or this browser's. */
+    const letGo = async (base) => {
+      if (host.keeps) await host.drafts({ drop: base });
+      else if (!here.drop(base))
+        throw new Error("this browser would not let go of them");
+    };
 
     return {
       get on() {
@@ -346,6 +640,8 @@ window.shell = (() => {
         toggles.push(fn);
       },
       changed,
+      rest,
+      letGo,
     };
   })();
 

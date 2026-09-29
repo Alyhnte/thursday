@@ -436,6 +436,7 @@ const REQUIRED = [
   "skills/artifact/runtime/shell/head.html",
   "skills/artifact/runtime/shell/shell.css",
   "skills/artifact/runtime/shell/shell.js",
+  "skills/artifact/runtime/shell/drafts.js",
   "skills/artifact/runtime/shell/theme.js",
   // A ready-made bot's own skills, read where they ship (skills.discover seedSkills)
   "seed-skills/writer/marketing/SKILL.md",

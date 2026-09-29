@@ -196,6 +196,15 @@ body {
 .sh-sub:empty {
   display: none;
 }
+/* A line that says the page's words are not where the reader would think: kept in view */
+.sh-sub[data-warn] {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--sh-warn);
+  font-weight: 500;
+}
 .sh-gap {
   flex: 1;
 }
@@ -222,7 +231,7 @@ body {
   background: var(--sh-line);
 }
 @media (max-width: 720px) {
-  .sh-head .sh-sub,
+  .sh-head .sh-sub:not([data-warn]),
   .sh-head .sh-word {
     display: none;
   }

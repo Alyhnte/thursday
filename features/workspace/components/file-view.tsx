@@ -38,6 +38,7 @@ import {
   viewKindOf,
   workspaceRelative,
 } from "@/features/workspace/file-kind";
+import { answerDrafts } from "@/features/workspace/page-drafts";
 import {
   openFileAction,
   revealFileAction,
@@ -382,7 +383,9 @@ export function FilePreview({ path, bytes }: { path: string; bytes: number }) {
  * file, or closes, lands in the file it was written from. One listener hears every frame
  * for that reason: a dialog closing takes its component away before the save its page
  * sent on the way out has arrived. A save also carries the revision the page was opened
- * at, and one the file has moved past is answered as `changed`, never written.
+ * at, and one the file has moved past is answered as `changed`, never written. What such a
+ * page, or one whose save failed, could not get into its file it asks to keep aside
+ * (`drafts`, page-drafts.ts), and a page of that file asks for them as it opens.
  */
 const pages = {
   /** A file → the name its pages are answered with, one per file. */
@@ -427,6 +430,19 @@ async function hearPages(event: MessageEvent) {
     if (path) from.postMessage(hostFor(path), "*");
     return;
   }
+  if (said.thursday === "drafts") {
+    const path = pages.opened.get(said.as);
+    if (!path) return;
+    const kept = answerDrafts(browserStorage(), path, said);
+    const answer = { as: said.as, id: said.id };
+    from.postMessage(
+      "error" in kept
+        ? { ...answer, thursday: "not-held", error: kept.error }
+        : { ...answer, thursday: "drafts", drafts: kept.drafts },
+      "*",
+    );
+    return;
+  }
   const path = said.thursday === "save" && pages.opened.get(said.as);
   if (!path || typeof said.html !== "string") return;
   const kept = await savePageAction(
@@ -437,6 +453,16 @@ async function hearPages(event: MessageEvent) {
   const answer = { as: said.as, id: said.id };
   if (isResultOk(kept) && !kept.data.changed)
     pages.saves.set(path, kept.data.version);
+  // A document's words its file did not take are kept aside here too: the frame that sent
+  // them may be gone (a dialog closed on a save in flight), with no page left to ask
+  else if (typeof said.words === "string")
+    answerDrafts(browserStorage(), path, {
+      hold: {
+        base: typeof said.base === "string" ? said.base : "",
+        html: said.words,
+        at: Date.now(),
+      },
+    });
   from.postMessage(
     !isResultOk(kept)
       ? { ...answer, thursday: "not-saved", error: kept.message }
@@ -445,6 +471,15 @@ async function hearPages(event: MessageEvent) {
         : { ...answer, thursday: "saved", revision: kept.data.revision },
     "*",
   );
+}
+
+/** This browser's storage for the app, or null where it keeps nothing (a private window may refuse it). */
+function browserStorage() {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
 }
 
 /** The file was written while it is shown: `n` counts writes, `revision` is what a page the shell dressed now names. */
