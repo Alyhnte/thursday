@@ -1,13 +1,19 @@
 "use client";
 
+import { Redo2, Undo2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Swatch } from "@/components/ui/swatch";
 import { toast } from "@/components/ui/toast";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { DRAW_PAD } from "@/config";
 import { MARK_INK } from "@/features/bot/mark.const";
-import { useEscape } from "@/hooks/use-hotkey";
+import { useCommandLabel, useEscape } from "@/hooks/use-hotkey";
 import { useIsDark } from "@/hooks/use-theme";
 import { errorToString } from "@/lib/utils";
 import { ORB_INK } from "../ascii.const";
@@ -19,7 +25,8 @@ import { ORB_INK } from "../ascii.const";
  * backend's conversation as it lands (use-thursday putDown), in writing with the words
  * (thursday.text readPictures). The write line holds it, opened from its paperclip or from the
  * call's line (writeLine.draw). What is drawn stays while the pad is closed, until it is handed
- * over or cleared.
+ * over or cleared. Undo and Redo walk it back and forth a stroke at a time, a Clear included,
+ * by their buttons or the system's keys.
  */
 
 /** The pens: her ink, which follows the theme, then the colours bots' marks are drawn in (bot/mark.const). */
@@ -86,7 +93,14 @@ export function DrawPad({
 }) {
   const strokes = useRef<Stroke[]>([]);
   const drawing = useRef<Stroke | null>(null);
+  /** What the pad held before each stroke or Clear, and what Undo took back, newest last. */
+  const undos = useRef<Stroke[][]>([]);
+  const redos = useRef<Stroke[][]>([]);
   const [count, setCount] = useState(0);
+  /** Bumped on every step of the history, so the buttons follow it. */
+  const [, setStep] = useState(0);
+  const undoKey = useCommandLabel("KeyZ");
+  const redoKey = useCommandLabel("KeyZ", true);
   const [pen, setPen] = useState(0);
   const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null);
   const [size, setSize] = useState<{ width: number; height: number } | null>(
@@ -150,12 +164,41 @@ export function DrawPad({
     );
   };
 
+  /** The pad drawn again from its strokes, after a step of the history. */
+  const redraw = () => {
+    setCount(strokes.current.length);
+    setStep((step) => step + 1);
+    const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx || !size) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    paint(ctx, size.width, size.height, strokes.current, inkOf);
+  };
+
+  /** Keeps what the pad holds now for Undo, before a stroke or a Clear changes it. */
+  const remember = () => {
+    undos.current.push([...strokes.current]);
+    redos.current = [];
+    setStep((step) => step + 1);
+  };
+
   const clear = () => {
+    remember();
     strokes.current = [];
     drawing.current = null;
-    setCount(0);
-    canvas?.getContext("2d")?.clearRect(0, 0, canvas.width, canvas.height);
+    redraw();
   };
+
+  /** One step back or forward: what the pad held goes to the other side. */
+  const walk = (from: typeof undos, to: typeof undos) => {
+    const was = from.current.pop();
+    if (!was) return;
+    drawing.current = null;
+    to.current.push(strokes.current);
+    strokes.current = was;
+    redraw();
+  };
+  const undo = () => walk(undos, redos);
+  const redo = () => walk(redos, undos);
 
   /**
    * The drawing alone, cropped to it with a little room, on the pad's own colour, handed
@@ -202,9 +245,14 @@ export function DrawPad({
       if (!blob) throw new Error("This browser could not keep the drawing.");
       const drawn = strokes.current.length;
       if (await onDone(new File([blob], "drawing.png", { type: "image/png" })))
-        if (strokes.current.length === drawn)
-          // Drawn on again while it went: that stays
-          clear();
+        if (strokes.current.length === drawn) {
+          // Drawn on again while it went: that stays. Handed over, it is gone, and so is its history
+          strokes.current = [];
+          drawing.current = null;
+          undos.current = [];
+          redos.current = [];
+          redraw();
+        }
     } catch (cause) {
       toast.add({
         type: "error",
@@ -220,6 +268,19 @@ export function DrawPad({
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
       <DialogContent
         showCloseButton={false}
+        // The system's own keys for undo and redo; the pad has no field for them to type into
+        onKeyDown={(event) => {
+          if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
+          const key = event.key.toLowerCase();
+          if (key === "z") {
+            event.preventDefault();
+            if (event.shiftKey) redo();
+            else undo();
+          } else if (key === "y" && event.ctrlKey && !event.metaKey) {
+            event.preventDefault();
+            redo();
+          }
+        }}
         // twice as wide as it is tall, as large as the window lets it be
         className="w-[min(72rem,calc(100vw-2rem),calc((100dvh-7rem)*2))] max-w-none gap-3 p-3 sm:max-w-none"
       >
@@ -230,6 +291,7 @@ export function DrawPad({
           className="block aspect-[2/1] w-full cursor-crosshair touch-none rounded-lg bg-background ring-1 ring-foreground/10"
           onPointerDown={(event) => {
             event.currentTarget.setPointerCapture(event.pointerId);
+            remember();
             const stroke: Stroke = { pen, points: [pointOf(event)] };
             drawing.current = stroke;
             strokes.current.push(stroke);
@@ -265,6 +327,55 @@ export function DrawPad({
               />
             ))}
           </div>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Undo"
+                  disabled={!undos.current.length}
+                  onClick={undo}
+                />
+              }
+            >
+              <Undo2 />
+            </TooltipTrigger>
+            <TooltipContent>
+              Undo
+              <kbd
+                data-slot="kbd"
+                className="bg-background/20 px-1.5 font-mono text-[10px]"
+              >
+                {undoKey}
+              </kbd>
+            </TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Redo"
+                  disabled={!redos.current.length}
+                  onClick={redo}
+                />
+              }
+            >
+              <Redo2 />
+            </TooltipTrigger>
+            <TooltipContent>
+              Redo
+              <kbd
+                data-slot="kbd"
+                className="bg-background/20 px-1.5 font-mono text-[10px]"
+              >
+                {redoKey}
+              </kbd>
+            </TooltipContent>
+          </Tooltip>
+          <span aria-hidden className="h-4.5 w-px bg-border" />
           <Button variant="ghost" disabled={!count} onClick={clear}>
             Clear
           </Button>

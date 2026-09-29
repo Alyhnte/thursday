@@ -58,7 +58,9 @@ System Settings › Privacy & Security — its reason shows, and nothing is show
 **Draw**, beside them, opens a pad over the call: pick a colour, draw, and **Show her** gives her
 the drawing the moment it is pressed. She looks at it and says what she makes of it, and you can go
 on from there — "what do you think of this logo?" It goes to her alone, not onto the write line.
-**Esc** closes the pad and keeps what is on it for next time; **Clear** wipes it.
+**Esc** closes the pad and keeps what is on it for next time; **Clear** wipes it. **Undo** and
+**Redo** beside it (⌘Z and ⇧⌘Z, or Ctrl+Z and Ctrl+Shift+Z) take back or bring back one stroke at a
+time, a Clear too.
 
 ## Ending it
 

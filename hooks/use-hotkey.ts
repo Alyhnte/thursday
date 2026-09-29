@@ -150,6 +150,17 @@ export function useHotkeyLabel(combo: string | null): string | null {
   return combo ? hotkeyLabel(combo, mac) : null;
 }
 
+/** A command key as this system writes it: `⌘Z` / `⇧⌘Z` on a Mac, `Ctrl + Z` / `Ctrl + Shift + Z` elsewhere. */
+export function useCommandLabel(code: string, shift = false): string {
+  const [mac, setMac] = useState(false);
+  useEffect(() => setMac(/mac/i.test(navigator.userAgent)), []);
+  const held = mac ? ["shift", "meta"] : ["ctrl", "shift"];
+  return hotkeyLabel(
+    [...held.filter((part) => shift || part !== "shift"), code].join("+"),
+    mac,
+  );
+}
+
 export function useHotkey({
   enabled,
   combo,
