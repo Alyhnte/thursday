@@ -848,13 +848,18 @@ test("an older build refuses a database this one opened, instead of sending a se
     name.endsWith("_seal_secrets"),
   );
   assert.ok(seal, "no seal_secrets migration");
-  // An older build is this one without the migration: its folder is all a build reads them from
+  // An older build is this one before the migration: without it and every one made after it
+  // (their names start with when they were made). Its folder is all a build reads them from
+  const since = (await readdir(migrations)).filter(
+    (name) => /^\d{14}_/.test(name) && name.slice(0, 14) >= seal.slice(0, 14),
+  );
   const older = await mkdtemp(join(tmpdir(), "thursday-older-"));
   try {
     await cp(migrations, join(older, "database/migrations"), {
       recursive: true,
     });
-    await rm(join(older, "database/migrations", seal), { recursive: true });
+    for (const name of since)
+      await rm(join(older, "database/migrations", name), { recursive: true });
     // Its boot, as far as the migrations: in a process of its own, as a second start is
     const start = join(older, "start.mts");
     await writeFile(
@@ -873,9 +878,14 @@ test("an older build refuses a database this one opened, instead of sending a se
     assert.equal(run.stdout.trim(), "refused", run.stderr);
 
     // And the build that ships the migration opens it as it was
-    await cp(join(migrations, seal), join(older, "database/migrations", seal), {
-      recursive: true,
-    });
+    for (const name of since)
+      await cp(
+        join(migrations, name),
+        join(older, "database/migrations", name),
+        {
+          recursive: true,
+        },
+      );
     const now = spawnSync(process.execPath, ["--import", "tsx", start], {
       cwd: ROOT,
       env: { ...process.env, THURSDAY_HOME: home, THURSDAY_APP_DIR: older },
