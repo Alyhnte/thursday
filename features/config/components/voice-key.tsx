@@ -154,6 +154,12 @@ export function CallLines({
   return (
     // Left-aligned wherever it stands: the call screen centres what is under her face
     <div className="flex w-full flex-col gap-2 text-left">
+      {/* Two rows read as two things to do; a voice needs one of them */}
+      {!planSet && !keySet && (
+        <p className="font-mono text-[11px] text-muted-foreground/70">
+          Either one is enough.
+        </p>
+      )}
       {/* Rows as Settings › API keys draws an account, the plan first: in the first run's
           narrow column two cards side by side left each button no room (09-28) */}
       <LineRow
@@ -179,7 +185,8 @@ export function CallLines({
           <LineSet>Signed in</LineSet>
         ) : (
           <ChatGptSignIn
-            variant={noCalls ? "outline" : "brand"}
+            // with the key saved she has her voice, and a blue button asked for a second one
+            variant={noCalls || keySet ? "outline" : "brand"}
             size="sm"
             // Both rows' buttons round like the brand one (button.tsx), whichever of them is brand
             className="w-full rounded-full"

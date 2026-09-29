@@ -330,18 +330,26 @@ export function AccountsSetup({
           </Popover>
         )}
       </div>
-      {entries("search").map((entry) => (
-        <KeyRow
-          key={entry.key}
-          card
-          narrow
-          entry={entry}
-          set={isSet(entry.key)}
-          lost={isLost(entry.key)}
-          env={isEnv(entry.key)}
-          needed={false}
-        />
-      ))}
+      {/* Named, or it reads as one more model under "what they think with" (09-29); what
+          runs without it is config.const `EXA_API_KEY` */}
+      <div className="flex flex-col gap-2">
+        <p className="font-mono text-[11px] text-muted-foreground/70">
+          Web search, if you want it: without a key, a bot searches only when
+          its own model can.
+        </p>
+        {entries("search").map((entry) => (
+          <KeyRow
+            key={entry.key}
+            card
+            narrow
+            entry={entry}
+            set={isSet(entry.key)}
+            lost={isLost(entry.key)}
+            env={isEnv(entry.key)}
+            needed={false}
+          />
+        ))}
+      </div>
     </div>
   );
 }

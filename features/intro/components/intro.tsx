@@ -276,7 +276,7 @@ export function Intro({
           edge below about 820px (09-26), and the column scrolls */}
       <div
         className={cn(
-          "flex h-full flex-col items-center justify-center gap-5 pt-[7vh]",
+          "flex h-full flex-col items-center justify-center gap-5 pt-[7vh] [--face-w:min(20rem,52vw,37.5vh)]",
           stacked &&
             "max-[900px]:justify-start max-[900px]:overflow-y-auto max-[900px]:pb-20",
         )}
@@ -286,7 +286,7 @@ export function Intro({
         <div
           ref={faceBox}
           className={cn(
-            "relative w-[min(20rem,52vw,37.5vh)] [--face-bleed:19.5%]",
+            "relative w-(--face-w) [--face-bleed:19.5%]",
             stacked &&
               "max-[900px]:flex max-[900px]:w-full max-[900px]:flex-col max-[900px]:items-center max-[900px]:gap-7",
           )}
@@ -357,8 +357,16 @@ export function Intro({
         </div>
 
         {/* Positioned, as the call screen's column is: her canvas draws `--face-bleed` past her
-            box, and the box is positioned, so a column that is not lies under what she draws */}
-        <div className="relative flex w-full max-w-3xl flex-col items-center gap-4 px-6 text-center">
+            box, and the box is positioned, so a column that is not lies under what she draws.
+            On the first screen it stands a bleed lower, moving nothing else: listening and
+            speaking in the loop she fills her canvas, and it covered the line under her (09-29);
+            0.195 is `--face-bleed` read off her box's width */}
+        <div
+          className={cn(
+            "relative flex w-full max-w-3xl flex-col items-center gap-4 px-6 text-center transition-transform duration-700 ease-out",
+            step === "hello" && "translate-y-[calc(var(--face-w)*0.195)]",
+          )}
+        >
           {/* One slot of one height for her first words or the step's state, and the rows
               under the button keep theirs: her face and the button stand still from step to step */}
           <div className="flex h-14 items-center gap-2 text-[13px] text-muted-foreground">
@@ -387,7 +395,9 @@ export function Intro({
             <div className="h-12" />
           ) : (
             <Button
-              variant="brand"
+              // Without a voice the key step asks for one in its rows, and this button only
+              // goes on without it: black, so the step's blue is the sign-in (button.tsx brand)
+              variant={step === "key" && !callable ? "default" : "brand"}
               // Asked from the button the eye is already on: a second, smaller one beside her
               // was the one that went unpressed (09-26). On once, it goes on as every step does
               loading={step === "mic" && mic.asking}
@@ -402,7 +412,7 @@ export function Intro({
               }}
               // on the first screen it follows her line up, once
               className={cn(
-                "h-12 px-7 pl-8 text-[15px]",
+                "h-12 rounded-full px-7 pl-8 text-[15px]",
                 step === "mic" && !mic.on && "pl-6",
                 step === "hello" &&
                   "animate-in delay-300 duration-700 fill-mode-backwards fade-in slide-in-from-bottom-2",
@@ -780,7 +790,7 @@ function BotsTurn({
           return (
             <label
               key={seed.name}
-              className="flex h-9.5 cursor-pointer items-center gap-2.75"
+              className="flex min-h-9.5 cursor-pointer items-center gap-2.75 py-1"
             >
               <BotMark
                 size={24}
@@ -800,7 +810,8 @@ function BotsTurn({
               >
                 {seed.name}
               </span>
-              <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+              {/* Wrapped, not cut: a hint is the one thing that tells two bots apart */}
+              <span className="min-w-0 flex-1 text-xs leading-snug text-pretty text-muted-foreground">
                 {seed.hint}
               </span>
               <Switch
@@ -837,25 +848,26 @@ function StyleTurn() {
       persona: PERSONAS[(at + by + PERSONAS.length) % PERSONAS.length].id,
     });
 
+  // `about` alone: `lines` is written to the model about her, in the third person (persona.ts)
   return (
-    <div className="flex w-full max-w-md flex-col gap-4">
+    <>
+      <Mine>Pick how she talks</Mine>
       <div className="space-y-1">
         <div className="text-2xl font-semibold">{one.label}</div>
-        <p className="text-sm text-muted-foreground">{one.about}</p>
+        <p className="min-h-10 text-sm text-muted-foreground">{one.about}</p>
       </div>
-      <p className="min-h-20 text-left text-sm leading-relaxed text-foreground/80">
-        {one.lines}
-      </p>
-      <div className="flex items-center justify-center gap-2">
+      <div className="flex items-center gap-2">
         <Button variant="outline" size="sm" onClick={() => step(-1)}>
-          Someone else
+          <ChevronLeft />
+          Previous
         </Button>
         <Button variant="outline" size="sm" onClick={() => step(1)}>
           Next
+          <ChevronRight />
         </Button>
       </div>
       {/* Which one is showing is which one is set: there is nothing to confirm */}
-      <div className="flex justify-center gap-1.5">
+      <div className="flex gap-1.5">
         {PERSONAS.map((each, index) => (
           <span
             key={each.id}
@@ -866,7 +878,7 @@ function StyleTurn() {
           />
         ))}
       </div>
-    </div>
+    </>
   );
 }
 
