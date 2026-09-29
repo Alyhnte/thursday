@@ -39,7 +39,9 @@ import {
   type Thread,
   type ThreadLine,
   type ThreadPending,
+  type ThreadSpeaker,
   type ThreadStatus,
+  speakerOf,
   untagSpeaker,
 } from "./bot.schema";
 import { messageKey } from "./room.query";
@@ -61,6 +63,7 @@ const threadView = {
   pending: threadTable.pending,
   seen: threadTable.seen,
   routineId: threadTable.routineId,
+  startedBy: threadTable.startedBy,
   inputTokens: threadTable.inputTokens,
   outputTokens: threadTable.outputTokens,
   contextTokens: threadTable.contextTokens,
@@ -79,6 +82,7 @@ type ThreadRow = {
   pending: ThreadPending | null;
   seen: boolean;
   routineId: string | null;
+  startedBy: ThreadSpeaker | null;
   inputTokens: number;
   outputTokens: number;
   contextTokens: number;
@@ -100,6 +104,8 @@ export async function insertThread(input: {
   callId?: string | null;
   /** The routine that opened it (features/routine); a run carries its mark on every row. */
   routineId?: string | null;
+  /** Who handed it over; none for a routine's run. */
+  startedBy?: ThreadSpeaker | null;
   opening: Extract<ModelMessage, { role: "user" }>["content"];
 }) {
   const { opening, ...row } = input;
@@ -930,7 +936,16 @@ function linesOf(message: StoredMessage, addressee: string): ThreadLine[] {
       return [{ ...base, id: id(0), kind: "stop", text: why }];
     }
     // Tagged with who said it for the bot (bot.schema tagSpeaker); the screen draws the words
-    return [{ ...base, id: id(0), kind: "user", text: untagSpeaker(text) }];
+    // under whoever that was
+    return [
+      {
+        ...base,
+        id: id(0),
+        kind: "user",
+        text: untagSpeaker(text),
+        by: speakerOf(text),
+      },
+    ];
   }
 
   if (message.role === "assistant") {

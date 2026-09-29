@@ -14,6 +14,7 @@ import {
   botIconSchema,
   type OwnLine,
   type ThreadPending,
+  type ThreadSpeaker,
   type ThreadStatus,
 } from "@/features/bot/bot.schema";
 import type { RelayKind, WorkState } from "@/features/bot/room.schema";
@@ -188,6 +189,11 @@ export const threadTable = sqliteTable(
     seen: int("seen", { mode: "boolean" }).notNull().default(false),
     /** The call that opened the job; null when started from the screen. A later call's prompt finds the job under it. */
     callId: text("call_id"),
+    /**
+     * Who handed the job over: the user on screen, or Thursday. Null for a routine's run
+     * and for a job from before it was kept; the screen draws those as hers.
+     */
+    startedBy: text("started_by").$type<ThreadSpeaker>(),
     /**
      * The routine that opened the job; null for one a person or a bot started. Not a foreign
      * key: a run outlives the routine it came from, the way a job outlives its bot.

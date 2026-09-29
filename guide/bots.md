@@ -88,7 +88,8 @@ brings it back. Her face fades out as the office comes and back in as it goes,
 and a call that is on shows her last words at the top; the corner of finished jobs stays quiet
 while a thread is open. **Office** and **Chat**, beside the ✕ of an open thread, pick how every
 thread is shown: beside its office, or as the conversation alone with her face kept. The choice
-is kept on this computer.
+is kept on this computer. In the conversation, what you wrote yourself — a job from the write
+line, a step-in — is under **You**; what she handed over or passed on from a call is under her name.
 
 A long thread summarizes itself when it fills up. The small bar at the top right of an open thread
 shows how full it is; pressing it has the bot summarize at its next step, which makes every later

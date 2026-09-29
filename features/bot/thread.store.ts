@@ -10,13 +10,14 @@ import {
   isUnread,
   type ResultPart,
   type Thread,
+  type ThreadSpeaker,
   type TokenUsage,
 } from "@/features/bot/bot.schema";
 import { type DateLike, toDate } from "@/lib/date-like";
 import { unwrapResult } from "@/lib/protocol/result";
 import { revalidate } from "@/lib/protocol/use-server-route";
 import { errorToString } from "@/lib/utils";
-import { ROOM_THURSDAY, type RoomView } from "./room.schema";
+import { ROOM_THURSDAY, ROOM_USER, type RoomView } from "./room.schema";
 
 /**
  * Client mirror of threads, keyed by thread rather than as one message stream so
@@ -63,6 +64,8 @@ export type Chatter = {
   questionId?: string;
   /** Only for kind `user`: the words landed between the bot's steps, so the user stepped in on a running turn. */
   steppedIn?: boolean;
+  /** Only for kind `user`: who wrote them, the user on screen or Thursday; null for words from before it was kept. */
+  by?: ThreadSpeaker | null;
   /** Only for kind `tool`. */
   tool?: ToolUse;
   /** Only for kind `ask`: the exchange the send opened (thread.query), which the recipient's lines for it carry as `parent`. */
@@ -106,6 +109,8 @@ export type ThreadView = {
   seen: boolean;
   /** The routine that opened it, if one did (Thread `routineId`). */
   routineId: string | null;
+  /** Who handed it over (Thread `startedBy`); none for a routine's run, older jobs and a drawn one (the intro's). */
+  startedBy?: ThreadSpeaker | null;
   /** Burned so far. */
   tokens: TokenUsage;
   /** Context read on the last step and the compaction threshold; the header meter is their ratio. Both 0 means no step ran yet. */
@@ -174,6 +179,7 @@ export function threadFromRow(row: Thread, bots?: Bot[]): ThreadView {
           to: line.to ? ref(line.to) : null,
           text: line.text,
           kind: "user",
+          by: line.by,
           ...when,
         });
         break;
@@ -336,6 +342,7 @@ export function threadFromRow(row: Thread, bots?: Bot[]): ThreadView {
     ask: row.ask,
     seen: row.seen,
     routineId: row.routineId,
+    startedBy: row.startedBy,
     tokens: row.tokens,
     contextTokens: row.contextTokens,
     contextBudget: row.contextBudget,
@@ -729,9 +736,14 @@ const isOutcome = (line: Chatter) => line.kind === "result";
 export const messageOf = (line: Chatter) =>
   line.id.slice(0, line.id.lastIndexOf("-"));
 
-/** Who says a line. The user's words carry the bot that heard them as `bot`. */
+/**
+ * Who says a line. A person's words carry the bot that heard them as `bot`, and are the
+ * user's own when they wrote them, else Thursday's, who stands for the user in a thread.
+ */
 const speakerOf = (line: Chatter): BotRef =>
-  line.kind === "user" ? { name: ROOM_THURSDAY } : line.bot;
+  line.kind === "user"
+    ? { name: line.by === "user" ? ROOM_USER : ROOM_THURSDAY }
+    : line.bot;
 
 /** Who a line reached: the bot that heard the user's words, else whom it names. */
 export const heardBy = (line: Chatter): BotRef | null =>

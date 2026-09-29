@@ -36,7 +36,7 @@ import {
   plainText,
   WAITING_INK,
 } from "@/lib/utils";
-import { ROOM_THURSDAY } from "../room.schema";
+import { ROOM_THURSDAY, ROOM_USER } from "../room.schema";
 import {
   type BotRef,
   type Chatter,
@@ -466,7 +466,7 @@ function SpeakerTurn({
   const mine = turn.speaker.name === self;
   const surface: Surface = mine
     ? "none"
-    : turn.speaker.name === THURSDAY.name
+    : isPerson(turn.speaker)
       ? "dark"
       : "secondary";
   let named: string | null = null;
@@ -474,7 +474,7 @@ function SpeakerTurn({
     <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
       <Turn
         side={mine ? "start" : "end"}
-        name={turn.speaker.name}
+        name={nameOf(turn.speaker)}
         mark={<TurnMark bot={turn.speaker} />}
       >
         {turn.entries.map((entry) => {
@@ -502,7 +502,7 @@ function SpeakerTurn({
             to &&
             to.name !== turn.speaker.name &&
             to.name !== self &&
-            to.name !== THURSDAY.name &&
+            !isPerson(to) &&
             to.name !== named
               ? to
               : null;
@@ -799,12 +799,13 @@ export function stepOf(line: Chatter): string {
   return plainText(line.text).replace(/\s+/g, " ").trim();
 }
 
-/** The delegated request, folded to three lines (FoldedText). */
+/** The delegated request, folded to three lines (FoldedText); the user's own when they wrote it. */
 function Request({ thread }: { thread: ThreadView }) {
+  const by = thread.startedBy === "user" ? YOU : THURSDAY;
   return (
     <>
-      <Invite from={THURSDAY} to={thread.bot} />
-      <Turn side="end" name={THURSDAY.name} mark={<TurnMark bot={THURSDAY} />}>
+      <Invite from={by} to={thread.bot} />
+      <Turn side="end" name={nameOf(by)} mark={<TurnMark bot={by} />}>
         <Said dark className="py-2 pr-2 pl-3.5">
           <FoldedText
             text={thread.request}
@@ -818,10 +819,24 @@ function Request({ thread }: { thread: ThreadView }) {
 }
 
 /**
- * The user's side of a thread, which Thursday stands for; she is not a bot and has
- * no row to read a face from. Her face is always ThursdayMark (features/thursday).
+ * Thursday's side of a thread, which also stands for the user's where who wrote the words
+ * was not kept; she is not a bot and has no row to read a face from. Her face is always
+ * ThursdayMark (features/thursday).
  */
 export const THURSDAY: BotRef = { name: ROOM_THURSDAY };
+
+/**
+ * The user, where the words are theirs: a job they wrote to a bot, what they typed into a
+ * thread. Named "You" and drawn with no face, as a chat draws your own side.
+ */
+export const YOU: BotRef = { name: ROOM_USER };
+
+/** The room's two people rather than bots: their side is the dark one. */
+const isPerson = (bot: BotRef) =>
+  bot.name === THURSDAY.name || bot.name === YOU.name;
+
+/** A speaker's name as the room writes it. */
+const nameOf = (bot: BotRef) => (bot.name === YOU.name ? "You" : bot.name);
 
 /**
  * A bot joining the room. It is not a message — nobody said it — so it takes no
@@ -832,7 +847,9 @@ function Invite({ from, to }: { from: BotRef; to: BotRef }) {
     <div className="flex animate-in justify-center fade-in duration-300">
       <span className="flex max-w-full items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 font-mono text-[10px] text-muted-foreground">
         <Face bot={from} />
-        <span className="shrink-0 text-muted-foreground/70">invited</span>
+        <span className="shrink-0 text-muted-foreground/70">
+          {from.name === YOU.name ? "asked" : "invited"}
+        </span>
         <Face bot={to} />
       </span>
     </div>
@@ -841,6 +858,7 @@ function Invite({ from, to }: { from: BotRef; to: BotRef }) {
 
 /** One name behind its own face, so the line reads as a sentence. */
 function Face({ bot }: { bot: BotRef }) {
+  if (bot.name === YOU.name) return <span className="shrink-0">You</span>;
   return (
     <span className="flex min-w-0 items-center gap-1.5">
       {bot.name === THURSDAY.name ? (
@@ -862,8 +880,9 @@ function Face({ bot }: { bot: BotRef }) {
   );
 }
 
-/** A turn's face: the user's side draws Thursday's, a bot its own. */
+/** A turn's face: Thursday's for hers, none for the user's own words, a bot its own. */
 function TurnMark({ bot }: { bot: BotRef }) {
+  if (bot.name === YOU.name) return null;
   return bot.name === THURSDAY.name ? (
     <ThursdayMark size={26} className="mt-1 shrink-0" />
   ) : (

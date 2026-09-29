@@ -313,12 +313,16 @@ const SPEAKER_TAGS: Record<ThreadSpeaker, string> = {
 export const tagSpeaker = (from: ThreadSpeaker, text: string): string =>
   `${SPEAKER_TAGS[from]} ${text}`;
 
+/** Whose words these are, read off the tag they were stored under; null for untagged words. */
+export const speakerOf = (text: string): ThreadSpeaker | null =>
+  (Object.keys(SPEAKER_TAGS) as ThreadSpeaker[]).find((from) =>
+    text.startsWith(`${SPEAKER_TAGS[from]} `),
+  ) ?? null;
+
 /** The words without their tag, as the screen draws a person's line (thread.query linesOf). */
 export const untagSpeaker = (text: string): string => {
-  for (const tag of Object.values(SPEAKER_TAGS)) {
-    if (text.startsWith(`${tag} `)) return text.slice(tag.length + 1);
-  }
-  return text;
+  const from = speakerOf(text);
+  return from ? text.slice(SPEAKER_TAGS[from].length + 1) : text;
 };
 
 /**
@@ -402,7 +406,12 @@ const LineBase = z.object({
 
 const ThreadLineSchema = z.discriminatedUnion("kind", [
   /** What the user said (via Thursday): request, answer. */
-  LineBase.extend({ kind: z.literal("user"), text: z.string() }),
+  LineBase.extend({
+    kind: z.literal("user"),
+    text: z.string(),
+    /** Who wrote them: the user on screen, or Thursday passing them on; null before tags. */
+    by: z.enum(["thursday", "user"]).nullable(),
+  }),
   /** Bot text; the last one is the answer. */
   LineBase.extend({ kind: z.literal("text"), text: z.string() }),
   /** Compaction summary (bot.run compact). The model resumes from here; the screen draws it as a divider. */
@@ -496,6 +505,8 @@ const ThreadSchema = z.object({
   seen: z.boolean(),
   /** The routine that opened it (features/routine); null for a job a person or a bot started. */
   routineId: z.string().nullable(),
+  /** Who handed it over (`thread` `startedBy`); null for a routine's run and older jobs. */
+  startedBy: z.enum(["thursday", "user"]).nullable(),
   /** Burned so far, across every participant. */
   tokens: TokenUsageSchema,
   /** Context size the model read on the last step (not a sum) and the compaction threshold (BOT_RUN.compactAt). 0 means no step ran yet. */

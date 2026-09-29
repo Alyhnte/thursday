@@ -115,6 +115,8 @@ export async function startThread(input: {
   const thread = await insertThread({
     ...row,
     routineId: routine?.id ?? null,
+    // A routine's run was handed over by nobody there
+    startedBy: routine ? null : from,
     opening,
   });
   await pump(thread.id);
