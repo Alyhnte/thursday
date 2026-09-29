@@ -439,7 +439,8 @@ function handedOver(text: string, talk: string): string {
  * One hand-over, a step of her backend at a time, each a response of the page's wire: what
  * the step called goes to the page, which runs it and asks for the next response; a call the
  * sdk could not take is answered by it, and she reads its error in the next step. What she
- * says at the end goes back to the voice to say; a step that fails tells the voice so. A run
+ * says at the end goes back to the voice to say; a step that fails tells the voice so, and so
+ * does running out of steps before an answer. A run
  * the page asked for is the same with no hand-over, on what it put down and what was said
  * since she last worked: its end goes into the voice to say. One whose put-down a turn before
  * it already took runs nothing, or she answered the same picture twice.
@@ -530,6 +531,10 @@ async function respond(line: PlanLine, handed: Handed) {
     // Put down while her calls ran: after their results, as a key's call puts it
     takeGiven(line);
   }
+  // Every step one answer may take is gone with no answer: said, as a failed step is, or the
+  // voice waits on a hand-over that never comes back
+  if (!line.over)
+    tell("That failed: it ran out of steps before it had an answer.");
 }
 
 /** What the page put down, into her conversation in the order it sent it: each fact, then the pictures it names. */

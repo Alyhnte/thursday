@@ -881,7 +881,7 @@ test("a drawing shown while her call is answered by the sdk is in her next step,
   assert.equal(steps.length, 0);
 });
 
-test("a backend that keeps calling what she lacks stops at the steps one answer may take", async (t) => {
+test("a backend that keeps calling what she lacks stops at the steps one answer may take, and the voice is told it failed", async (t) => {
   const line = await openLineFor(t, "call-endless");
   const asked = prompts.length;
   for (let call = 0; call <= TEXT_CALL.maxSteps; call += 1)
@@ -904,6 +904,12 @@ test("a backend that keeps calling what she lacks stops at the steps one answer 
   assert.equal(prompts.length, asked + TEXT_CALL.maxSteps);
   assert.equal(steps.length, 1, "the step past the bound never ran");
   assert.deepEqual(handedCalls(line.events), []);
+  // Out of steps with no answer, the hand-over is answered with that, not left waiting
+  for (let waited = 0; waited < 2_000 && !wire.said.length; waited += 5)
+    await new Promise((settle) => setTimeout(settle, 5));
+  assert.equal(wire.said.length, 1);
+  assert.equal(wire.said[0]?.delegation, "del_endless");
+  assert.match(wire.said[0]?.text ?? "", /^That failed: it ran out of steps/);
 });
 
 test("a step that fails tells the page and the voice in the provider's words", async () => {
