@@ -192,7 +192,7 @@ const { BOT_RUN } = await import("../config.ts");
 BOT_RUN.retryMs = 1;
 const { eq } = await import("drizzle-orm");
 const { threadFromRow } = await import("../features/bot/thread.store.ts");
-const { officeOf, plateOf, reportAt, sceneOf, seatAt, signOf, watch } =
+const { officeOf, plateOf, reportAt, sceneOf, seatAt, signOf, watch, wordsOf } =
   await import("../features/bot/office.ts");
 /** A thread as the office reads it at a first look, off the view the screen gets (features/bot/office.ts). */
 const officeNow = async (id: string) => {
@@ -753,6 +753,8 @@ test("the office holds a hand-off in its tray and walks it out with the answer w
     assert.deepEqual(plate("Beta"), { tone: "work", words: "working" });
     assert.equal(plate("Gamma"), null);
     assert.equal(plate("Alpha"), null);
+    // and a held bot has nothing of its own to show yet
+    assert.equal(wordsOf(held.scene, "Gamma", 10), null);
     assert.equal(signOf(held.scene), "work");
     assert.deepEqual(
       held.scene.events.find(
@@ -825,6 +827,15 @@ test("the office holds a hand-off in its tray and walks it out with the answer w
   assert.deepEqual(plateOf(done.scene, "Alpha", 30), {
     tone: "report",
     words: "report ready",
+  });
+  // Opened over them: the coordinator's report, a helper's last answer
+  assert.deepEqual(wordsOf(done.scene, "Alpha", 30), {
+    kind: "report",
+    text: "Card made.",
+  });
+  assert.deepEqual(wordsOf(done.scene, "Gamma", 30), {
+    kind: "answer",
+    text: "Card says $40",
   });
   assert.equal(signOf(done.scene), "done");
   // Seen done: everyone leaps as the report reaches your counter, and Gamma hopped as the card it
@@ -2422,6 +2433,7 @@ test("a bot waiting on the user holds other messages until the answer", async ()
     tone: "you",
     words: "needs you",
   });
+  assert.equal(wordsOf(asking.scene, "Alpha", 60)?.kind, "question");
   assert.equal(seatAt(asking.scene, "Gamma").label, "Answered");
   const alpha = (await listRoomWork(id)).filter((row) => row.bot === "Alpha");
   assert.ok(

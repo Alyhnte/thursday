@@ -14,6 +14,7 @@ import {
   useState,
 } from "react";
 import { queryKey } from "@/app/api/query-key";
+import { Markdown } from "@/components/ui/markdown";
 import { ShinyText } from "@/components/ui/shiny-text";
 import { BotMark, iconProps } from "@/features/bot/components/bot-mark";
 import {
@@ -22,11 +23,13 @@ import {
   type OfficeScene,
   type Plate,
   plateOf,
+  reportAt,
   type SeatKey,
   type SeatState,
   type Sign,
   seatAt,
   signOf,
+  wordsOf,
 } from "@/features/bot/office";
 import {
   type Moment,
@@ -57,10 +60,13 @@ import { cn } from "@/lib/utils";
  * well around the building to near enough to read a desk. The wheel goes between them.
  */
 const ZOOMS = [
-  0.3, 0.4, 0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4,
+  0.3, 0.4, 0.5, 0.7, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4,
 ];
-/** The zoom the office opens at, and comes back to: a little under the fit, so the building has room around it. */
-const ZOOM_START = 0.9;
+/**
+ * The zoom the office opens at, and comes back to, of the fit to its box: well under it, so the
+ * building has room around it for the plates and the words opened over its bots.
+ */
+const ZOOM_START = 0.7;
 
 type View = { z: number; x: number; y: number };
 
@@ -137,11 +143,11 @@ const ink = (percent: number) =>
 /**
  * The office: a sketch of the thread's rooms, its bots at their desks and on the move, pan and
  * zoom like a canvas. It builds itself as it opens, and its bots leap now and then (office.scene
- * tricksOf). Over each bot a plate says in one line what it is on, what it asks or what it handed
- * back; a bot that is not at work folds to the mark of how it stands until pointed at, and
- * pressing a plate opens it where it is to what the bot was asked and how far it has come. The
- * job's name heads it at the top left, how the job stands is written on the ground beside the
- * building, and the wall clock says how long it has run.
+ * tricksOf). A plate stands over a bot only with something to say — at work, wanting the user,
+ * its report ready — and the coordinator's report stands open over it; pressing a bot opens its
+ * own words there instead (Reads) and its tab in the room. The job's name heads it at the top
+ * left, how the job stands is written on the ground beside the building, and the wall clock says
+ * how long it has run.
  */
 export function OfficeStage({
   scene,
@@ -219,14 +225,32 @@ export function OfficeStage({
     y: number;
     from: View;
     moved: boolean;
+    /** Down on a plate or its bot, where a tap is theirs. */
+    onPlate: boolean;
   } | null>(null);
   const [dragging, setDragging] = useState(false);
+  // Whose words stand open over it (office wordsOf): the coordinator's report while it stands,
+  // unless put away (null); a bot pressed; or none once put away (false). A new report opens again
+  const coord = scene.office.coord;
+  const report = reportAt(scene, t)?.id ?? null;
+  const [opened, setOpened] = useState<{
+    bot: string | null | false;
+    report: string | null;
+  }>({ bot: null, report });
+  const shown = opened.report === report ? opened.bot : null;
+  const reading = shown === null ? (report ? coord : null) : shown || null;
+  const pick = (bot: string) => {
+    setOpened({ bot: reading === bot ? false : bot, report });
+    onBot?.(bot);
+  };
 
   // The wheel zooms where the pointer is, as a canvas does; not passive, so the page stays put
   useEffect(() => {
     const node = box.current;
     if (!node) return;
     const onWheel = (event: WheelEvent) => {
+      // Words opened over a bot scroll as a page does
+      if ((event.target as HTMLElement).closest("[data-reads]")) return;
       event.preventDefault();
       const rect = node.getBoundingClientRect();
       const fx = event.clientX - rect.left;
@@ -247,16 +271,14 @@ export function OfficeStage({
   }, []);
 
   const down = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (
-      event.button !== 0 ||
-      (event.target as HTMLElement).closest("button, a")
-    )
-      return;
+    const target = event.target as HTMLElement;
+    if (event.button !== 0 || target.closest("button, a, [data-reads]")) return;
     drag.current = {
       x: event.clientX,
       y: event.clientY,
       from: view,
       moved: false,
+      onPlate: !!target.closest("[data-plate]"),
     };
     event.currentTarget.setPointerCapture(event.pointerId);
   };
@@ -271,8 +293,12 @@ export function OfficeStage({
     setView({ ...was.from, x: was.from.x + dx, y: was.from.y + dy });
   };
   const up = () => {
+    const was = drag.current;
     drag.current = null;
     setDragging(false);
+    // A tap on the floor, not a drag, puts the open words away
+    if (was && !was.moved && !was.onPlate && reading)
+      setOpened({ bot: false, report });
   };
 
   const world = `translate(${view.x}px, ${view.y}px) scale(${view.z})`;
@@ -459,7 +485,10 @@ export function OfficeStage({
                 size={stage.botSize * view.z}
                 width={size.w}
                 hush={moment.hush}
-                onPick={() => onBot?.(tag.bot)}
+                words={
+                  reading === tag.bot ? wordsOf(scene, tag.bot, t) : undefined
+                }
+                onPick={() => pick(tag.bot)}
               />
             ))}
           </div>
@@ -1418,9 +1447,10 @@ function useCrowding(
  * A bot's plate over its head, only while there is something to say (office plateOf): the bot at
  * work, the one that wants the user in ember, the coordinator with its report. Every other bot
  * stands as it is; pointed at or focused, its plate shows the mark of how it stands and its name.
- * Pressing the bot or its plate opens its tab in the room (`onPick`), where what it did reads in
- * full. By an edge a plate is held by its mark and unfolds inward; one that would lie over
- * another folds to its mark (useCrowding). While sheets fly at the report the plates step back.
+ * Opened (`words`), its words stand over it in place of the plate (Reads). Pressing the bot or its
+ * plate opens or puts them away (`onPick`) and opens its tab in the room. By an edge a plate is
+ * held by its mark and unfolds inward; one that would lie over another folds to its mark
+ * (useCrowding). While sheets fly at the report the plates step back.
  */
 function PlateAt({
   plate,
@@ -1434,6 +1464,7 @@ function PlateAt({
   size,
   width,
   hush,
+  words,
   onPick,
 }: {
   plate: Plate | null;
@@ -1448,6 +1479,8 @@ function PlateAt({
   size: number;
   width: number;
   hush: boolean;
+  /** Its words opened over it (office wordsOf; null: it has none yet), or left shut. */
+  words?: ReturnType<typeof wordsOf>;
   onPick: () => void;
 }) {
   const top = head.y - 6 - lift;
@@ -1483,9 +1516,11 @@ function PlateAt({
       data-plate
       className={cn(
         "group/plate absolute size-0 transition-opacity duration-500",
-        folded
-          ? "z-10 hover:z-30 has-[:focus-visible]:z-30"
-          : "z-20 hover:z-30 has-[:focus-visible]:z-30",
+        words !== undefined
+          ? "z-40"
+          : folded
+            ? "z-10 hover:z-30 has-[:focus-visible]:z-30"
+            : "z-20 hover:z-30 has-[:focus-visible]:z-30",
         hush && "opacity-15",
       )}
       style={{ left: head.x, top }}
@@ -1504,8 +1539,20 @@ function PlateAt({
           height: Math.max(12, foot - top - 4),
         }}
       />
+      {words !== undefined && (
+        <Reads
+          words={words}
+          state={state}
+          bot={bot}
+          top={top}
+          x={head.x}
+          width={width}
+          onPick={onPick}
+        />
+      )}
       <div
         ref={pill}
+        hidden={words !== undefined}
         style={anchor ?? undefined}
         className={cn(
           "pointer-events-auto absolute bottom-0 flex h-6.5 items-center whitespace-nowrap rounded-full bg-background pr-2.25 text-[12px] shadow-md transition-opacity duration-200",
@@ -1549,6 +1596,87 @@ function PlateAt({
           )}
         </button>
       </div>
+    </div>
+  );
+}
+
+/** How wide words opened over a bot stand; past `max-h-56` they scroll. */
+const READS_WIDE = 300;
+
+/** What each kind of words is called at their head. */
+const READS_KIND = { report: "Report", question: "Asks you", answer: "Answer" };
+
+/**
+ * A bot's words opened over it, in place of its plate (office wordsOf): the coordinator's report,
+ * a question it waits on you with, or the last answer it handed back, as the room writes them;
+ * a bot that has said none of these shows how it stands. Kept inside the office, above the bot or
+ * below its plate when the window's top is too near; long words scroll within it, and the wheel
+ * there scrolls them rather than zooming the office. Its head puts it away, as pressing the bot does.
+ */
+function Reads({
+  words,
+  state,
+  bot,
+  top,
+  x,
+  width,
+  onPick,
+}: {
+  words: ReturnType<typeof wordsOf>;
+  state: SeatState;
+  bot: string;
+  top: number;
+  x: number;
+  width: number;
+  onPick: () => void;
+}) {
+  const card = useRef<HTMLDivElement>(null);
+  const [tall, setTall] = useState(0);
+  useLayoutEffect(() => {
+    const height = card.current?.offsetHeight ?? 0;
+    setTall((was) => (was === height ? was : height));
+  });
+  const down = tall > 0 && top - tall < 8;
+  const asks = words?.kind === "question";
+  return (
+    <div
+      ref={card}
+      data-reads
+      style={{
+        left: Math.min(
+          Math.max(-READS_WIDE / 2, PLATE_EDGE - x),
+          width - PLATE_EDGE - READS_WIDE - x,
+        ),
+        width: READS_WIDE,
+        ...(down ? { top: -PLATE_TALL } : { bottom: 0 }),
+      }}
+      className={cn(
+        "pointer-events-auto absolute flex animate-in cursor-auto select-text flex-col rounded-2xl bg-background shadow-lg fade-in zoom-in-95 duration-150",
+        down ? "origin-top" : "origin-bottom",
+        asks ? "ring-[1.5px] ring-waiting" : "ring-1 ring-border",
+      )}
+    >
+      <button
+        type="button"
+        onClick={onPick}
+        aria-expanded
+        aria-label={`${bot} · ${state.label}`}
+        className="flex h-8 shrink-0 items-center gap-1.5 rounded-t-2xl px-3 text-left text-[12px] outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+      >
+        <StateGlyph state={state.key} />
+        <span className="font-semibold">{bot}</span>
+        <span className={asks ? "text-waiting" : "text-muted-foreground"}>
+          {words ? READS_KIND[words.kind] : state.label}
+        </span>
+      </button>
+      {words && (
+        // Its last lines fade into the card's foot, so words that go on below read as more
+        <div className="max-h-56 overflow-y-auto overscroll-contain px-3 pb-4 [mask-image:linear-gradient(to_bottom,#000_calc(100%-14px),transparent)]">
+          <Markdown className="min-w-0 text-[12.5px] leading-relaxed wrap-anywhere break-keep [&_h1]:text-[14px] [&_h2]:text-[13.5px] [&_h3]:text-[13px] [&_li]:my-0.5 [&_table]:text-[11.5px] [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+            {words.text}
+          </Markdown>
+        </div>
+      )}
     </div>
   );
 }

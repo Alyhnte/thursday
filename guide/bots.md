@@ -73,8 +73,10 @@ paused waiting on **Continue**, has its eyes crossed out, in the office and on i
 Only a bot with something to say has a plate over its head: the one at work (**working**), the one
 that wants you (**needs you**, in orange, for a question or **Continue**), and the thread's bot once
 its report is ready (**report ready**). Every other bot just stands there; pointing at it shows its
-name. Pressing a bot or its plate opens its tab in the room, where what it did reads in full. The
-office's top left names the job, and once the job is done, says how many bots worked on it and
+name. Once the report is ready its words stand open over the thread's bot, scrolling when they are
+long. Pressing another bot opens its last answer there instead, or the question it asks, and its
+tab in the room; pressing it again, or tapping the floor, puts it away. The office's top left
+names the job, and once the job is done, says how many bots worked on it and
 lists the files it handed over; pressing one opens it. Past three, the rest fold under **+N
 more**, which opens them in place. The clock on the wall says how long the job has run, and how it
 stands is written in large letters on the ground beside the building: at work, your turn, paused,

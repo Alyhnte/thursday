@@ -650,7 +650,35 @@ export function plateOf(
 }
 
 /**
- * How the job stands as a whole, stamped on the ground beside the building (office-stage
+ * What a bot has to show of its work, opened over it in the office: the coordinator's report
+ * while it stands, a question it waits on the user with, or the last answer a helper handed back.
+ * Null when it has said none of these yet.
+ */
+export function wordsOf(
+  scene: OfficeScene,
+  bot: string,
+  t: number,
+): { kind: "report" | "question" | "answer"; text: string } | null {
+  if (bot === scene.office.coord) {
+    const report = reportAt(scene, t);
+    if (report) return { kind: "report", text: report.text };
+  }
+  const said = scene.events.findLast(
+    (event) =>
+      event.from === bot &&
+      event.at <= t &&
+      (event.kind === "return" ||
+        (event.kind === "question" && seatAt(scene, bot).key === "asking")),
+  );
+  if (!said) return null;
+  return {
+    kind: said.kind === "question" ? "question" : "answer",
+    text: said.text,
+  };
+}
+
+/**
+ * How the job stands as a whole, written on the ground beside the building (office-stage
  * GroundSign): at work, the user's turn (a bot asks them something), paused (the app stopped a
  * run and waits on Continue), stopped, or done.
  */
