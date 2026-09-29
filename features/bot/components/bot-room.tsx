@@ -29,11 +29,12 @@ import {
   roomOffice,
   roomOpen,
   roomOpens,
+  roomThread,
+  type ThreadView,
   type ThreadViewStatus,
   threadFromRow,
   useBotThreads,
   useCallWaits,
-  useRingingThreads,
   useSeenOnDetail,
   writeLine,
 } from "../thread.store";
@@ -75,6 +76,31 @@ const OfficeBackdrop = dynamic(
 const OFFICE_MIN_WIDTH = 1280;
 
 /**
+ * How long the room and its office take to go (their fades, `duration-250`): what folds or steps
+ * back is drawn that long, fading, so her face comes back through it rather than after a cut.
+ */
+const LEAVE_MS = 250;
+
+/**
+ * What is on screen, kept a moment after it goes so it can fade rather than vanish: the value
+ * while there is one, then the last one, `leaving`, for `ms`, then nothing.
+ */
+function useLeaving<T>(value: T | null, ms: number) {
+  const [kept, setKept] = useState(value);
+  if (value !== null && value !== kept) setKept(value);
+  const away = value === null;
+  const [gone, setGone] = useState(away);
+  if (!away && gone) setGone(false);
+  useEffect(() => {
+    if (!away) return;
+    const out = setTimeout(() => setGone(true), ms);
+    return () => clearTimeout(out);
+  }, [away, ms]);
+  const shown = value ?? kept;
+  return gone || shown === null ? null : { value: shown, leaving: away };
+}
+
+/**
  * The thread room and inbox in the corner of the call screen: what is running, what is
  * asking, and what just finished (thread.query listInboxThreads). It only projects server
  * state.
@@ -92,6 +118,8 @@ export const BotRoom = memo(function BotRoom() {
   const waiting = useWaitingRows();
   const { data: bots } = useServerRoute<Bot[]>(queryKey.bot);
   const [open, setOpen] = useState(false);
+  /** Folding by hand: still drawn while it fades down and out, then folded (`fold`). */
+  const [closing, setClosing] = useState(false);
   /** Open thread; null shows the list. */
   const [picked, setPicked] = useState<string | null>(null);
   // A thread is read at nearly the window's height and lies over the call; only the write
@@ -162,14 +190,22 @@ export const BotRoom = memo(function BotRoom() {
   // A listed thread that carries its lines opens at once and the whole one
   // takes over; one that does not waits, rather than flashing an empty room.
   const current = alone ?? (listed?.lines.length ? listed : null);
-  // The thread being read is drawn as its office where her face stands, unless she is
-  // ringing, which takes the middle of the screen (use-call-ring); the call screen puts her
-  // face away meanwhile (thursday)
+  /** A thread stands in the room, or is on its way: the room is its frame, not the list's. */
+  const threadShown = picked !== null && (current !== null || fetching);
+  // The thread being read is drawn as its office where her face stands, from the moment it is
+  // picked: her face gives way at once (thursday) and the office builds itself as the thread
+  // arrives. Nothing takes it down while it is read, since what she would ring for waits
+  // meanwhile (use-call-ring roomThread); once it goes, it fades out as her face comes back
   const roomy = useWide(OFFICE_MIN_WIDTH);
-  const ringing = useRingingThreads().length > 0;
-  const office = current !== null && reading && roomy && !ringing;
+  const office = reading && roomy && !closing && (current !== null || fetching);
   useEffect(() => roomOffice.set(office), [office]);
   useEffect(() => () => roomOffice.set(false), []);
+  const drawn = useLeaving<ThreadView>(office ? current : null, LEAVE_MS);
+  useEffect(
+    () => roomThread.set(open && !closing ? picked : null),
+    [open, closing, picked],
+  );
+  useEffect(() => () => roomThread.set(null), []);
 
   const [moment, handoff] = useHandoff();
   // A moment passes; words that wait on a bot stay up under it until they are read
@@ -244,6 +280,7 @@ export const BotRoom = memo(function BotRoom() {
   useAppEvent({
     showThread: (event) => {
       setPicked(event.threadId);
+      setClosing(false);
       setOpen(true);
     },
   });
@@ -254,6 +291,7 @@ export const BotRoom = memo(function BotRoom() {
       roomOpens.subscribe((id) => {
         setPicked(id);
         setTab("now");
+        setClosing(false);
         setOpen(true);
       }),
     [],
@@ -272,22 +310,31 @@ export const BotRoom = memo(function BotRoom() {
   // on the pill, and a History one would not be found once its pages stop being read.
   const fold = () => {
     setOpen(false);
+    setClosing(false);
     setPicked(null);
     setTab("now");
     scroll.current = 0;
   };
+  // Folded by hand, the room fades down and out with its office, and her face comes back
+  // through them; the write line asking for the foot folds it at once (below)
+  const close = () => setClosing(true);
+  const foldRef = useRef(fold);
+  foldRef.current = fold;
+  useEffect(() => {
+    if (!closing) return;
+    const out = setTimeout(() => foldRef.current(), LEAVE_MS);
+    return () => clearTimeout(out);
+  }, [closing]);
 
   // Her call in writing is still on behind the room, its line put away (write-line)
   const callWaits = useCallWaits();
 
   // Esc walks back the way the header's own two buttons do: a thread returns to the
   // list it was picked from, and the list folds away.
-  useEscape(open, () => (reading ? setPicked(null) : fold()));
+  useEscape(open && !closing, () => (reading ? setPicked(null) : close()));
 
   // Asking for the write line folds the room, whoever asks: its own "+", `/`, a file put
   // down elsewhere. The two never share the screen.
-  const foldRef = useRef(fold);
-  foldRef.current = fold;
   useEffect(() => writeLine.subscribe(() => foldRef.current()), []);
 
   // With a thread open `/` is still the way to the message box, and the one on screen is
@@ -326,9 +373,10 @@ export const BotRoom = memo(function BotRoom() {
         open ? "col-span-3 row-start-1 self-stretch" : "col-span-3 row-start-2",
       )}
     >
-      {open && office && current && (
+      {open && drawn && (
         <OfficeBackdrop
-          thread={current}
+          thread={drawn.value}
+          leaving={drawn.leaving}
           className="pointer-events-auto mr-4 min-h-0 min-w-0 flex-1 self-stretch"
         />
       )}
@@ -337,17 +385,24 @@ export const BotRoom = memo(function BotRoom() {
           ref={panel}
           // what is dropped on the room is the open thread's (given-files roomDrop)
           data-room
-          className="pointer-events-auto flex max-h-full w-160 max-w-full shrink-0 animate-in flex-col overflow-hidden rounded-3xl bg-background/75 shadow-2xl shadow-black/6 ring-1 ring-border/50 backdrop-blur-xl fade-in slide-in-from-bottom-1 duration-200"
+          className={cn(
+            "pointer-events-auto flex max-h-full w-160 max-w-full shrink-0 animate-in flex-col overflow-hidden rounded-3xl bg-background/75 shadow-2xl shadow-black/6 ring-1 ring-border/50 backdrop-blur-xl fade-in slide-in-from-bottom-1 duration-200",
+            // A thread is read in a frame of one height, so its head stays where it is while
+            // lines arrive, a question docks or the box grows: the conversation takes the difference
+            threadShown && "h-[calc(64vh+11rem)]",
+            closing &&
+              "pointer-events-none translate-y-1 opacity-0 transition-[opacity,translate] duration-250 ease-in",
+          )}
         >
-          {callWaits && <CallWaits onBack={fold} />}
+          {callWaits && <CallWaits onBack={close} />}
           {!current && picked && fetching ? (
-            <ThreadLoading onBack={() => setPicked(null)} onClose={fold} />
+            <ThreadLoading onBack={() => setPicked(null)} onClose={close} />
           ) : current ? (
             <>
               <ThreadHeader
                 thread={current}
                 onBack={() => setPicked(null)}
-                onClose={fold}
+                onClose={close}
               />
               <Conversation
                 thread={current}
@@ -355,7 +410,7 @@ export const BotRoom = memo(function BotRoom() {
                 onTab={(bot) =>
                   setSides((was) => ({ ...was, [current.id]: bot }))
                 }
-                className="min-h-0 flex-1"
+                className="max-h-none min-h-0 flex-1"
               />
               <ThreadReply
                 thread={{
@@ -379,7 +434,7 @@ export const BotRoom = memo(function BotRoom() {
                 tab={tab}
                 current={now.length}
                 onTab={setTab}
-                onClose={fold}
+                onClose={close}
               />
               {tab === "history" ? (
                 <HistoryList
@@ -403,7 +458,7 @@ export const BotRoom = memo(function BotRoom() {
                 bubble={null}
                 playing={playing}
                 label="Fold the room away"
-                onClick={fold}
+                onClick={close}
                 onWrite={writeLine.open}
                 side={
                   bubble ? (
@@ -431,10 +486,14 @@ export const BotRoom = memo(function BotRoom() {
           pending={pending}
           onPick={(id) => {
             setPicked(id);
+            setClosing(false);
             setOpen(true);
           }}
           // Always the list: a thread opens from its row, or when Thursday opens it.
-          onOpen={() => setOpen(true)}
+          onOpen={() => {
+            setClosing(false);
+            setOpen(true);
+          }}
         />
       )}
     </div>

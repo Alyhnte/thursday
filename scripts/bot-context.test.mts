@@ -192,9 +192,8 @@ const { BOT_RUN } = await import("../config.ts");
 BOT_RUN.retryMs = 1;
 const { eq } = await import("drizzle-orm");
 const { threadFromRow } = await import("../features/bot/thread.store.ts");
-const { officeOf, reportAt, sceneOf, seatAt, watch } = await import(
-  "../features/bot/office.ts"
-);
+const { officeOf, plateOf, progressOf, reportAt, sceneOf, seatAt, watch } =
+  await import("../features/bot/office.ts");
 /** A thread as the office reads it at a first look, off the view the screen gets (features/bot/office.ts). */
 const officeNow = async (id: string) => {
   const office = officeOf(threadFromRow((await findThreadView(id))!));
@@ -748,6 +747,29 @@ test("the office holds a hand-off in its tray and walks it out with the answer w
       seatAt(held.scene, "Alpha").label,
       "Waiting on Beta and Gamma",
     );
+    // Each bot's plate: the one at work says its step and stays unfolded; the others fold to
+    // their names, their lines saying whom they wait for
+    const plate = (bot: string) => plateOf(held.scene, bot, 10, () => false);
+    assert.deepEqual(
+      [plate("Beta").line.kind, plate("Beta").folded],
+      ["step", false],
+    );
+    assert.deepEqual(
+      [plate("Gamma").line, plate("Gamma").folded],
+      [{ kind: "quiet", text: "after Beta" }, true],
+    );
+    assert.deepEqual(
+      [plate("Alpha").line, plate("Alpha").folded],
+      [{ kind: "quiet", text: "waiting on Beta and Gamma" }, true],
+    );
+    assert.deepEqual(progressOf(held.scene), {
+      seats: [
+        { bot: "Beta", key: "run" },
+        { bot: "Gamma", key: "held" },
+      ],
+      word: "0 of 2 back",
+      you: false,
+    });
     assert.deepEqual(
       held.scene.events.find(
         (event) => event.kind === "give" && event.to === "Gamma",
@@ -812,6 +834,22 @@ test("the office holds a hand-off in its tray and walks it out with the answer w
   assert.equal(seatAt(done.scene, "Gamma").label, "Answered");
   assert.equal(seatAt(done.scene, "Alpha").label, "Reported");
   assert.equal(reportAt(done.scene, 30)?.text, "Card made.");
+  // Done, a helper's plate says what it handed back and how long its part took, by when each was
+  // written; the report is the counter's, so the coordinator's plate only says it reported
+  const answered = plateOf(done.scene, "Gamma", 30, () => false);
+  assert.deepEqual(
+    [answered.line, answered.folded, answered.took !== null],
+    [{ kind: "quiet", text: "Card says $40" }, true, true],
+  );
+  assert.deepEqual(
+    plateOf(done.scene, "Beta", 30, (path) => path === "price.md").line,
+    { kind: "quiet", text: "Red chair: $40." },
+  );
+  assert.deepEqual(plateOf(done.scene, "Alpha", 30, () => false).line, {
+    kind: "quiet",
+    text: "Reported to you",
+  });
+  assert.equal(progressOf(done.scene).word, "Done");
   // A first look at the finished room draws the card as sent: nothing it can read says it was held
   const late = await officeNow(id);
   assert.ok(!late.scene.events.some((event) => event.kind === "release"));
@@ -1024,13 +1062,14 @@ test("a stop leaves the bots it cut off stopped and their questions closed, and 
     (event) => event.text === "Go on without the research.",
   );
   assert.equal(words?.kind, "tell");
-  const end = scene.events.at(-1)?.at ?? 0;
-  assert.deepEqual(
-    (({ open, answered }) => [open, answered])(
-      (await import("../features/bot/office.ts")).questionAt(scene, end),
-    ),
-    [null, null],
+  // The question the stop withdrew is taken back from your counter, with no answer on it
+  const { stageOf, tripsOf } = await import("../features/bot/office.scene.ts");
+  const stage = stageOf(scene, { w: 1200, h: 800 });
+  const question = tripsOf(scene, stage.plan).find(
+    (trip) => trip.out === "question",
   );
+  assert.ok(question && Number.isFinite(question.back));
+  assert.equal(question.answer, undefined);
 });
 
 test("the turn limit parks the room, and the office says so seat by seat", async () => {
@@ -1065,7 +1104,7 @@ test("the turn limit parks the room, and the office says so seat by seat", async
 });
 
 test("the office reads any bot name, whatever a plain object already holds by it", async () => {
-  const { momentOf, stageOf, tripsOf } = await import(
+  const { momentOf, motionOf, restAt, stageOf, tripsOf } = await import(
     "../features/bot/office.scene.ts"
   );
   const at = new Date(Date.now() - 60_000);
@@ -1157,8 +1196,20 @@ test("the office reads any bot name, whatever a plain object already holds by it
     seatAt(scene, "constructor").label,
     "Waiting on toString and __proto__",
   );
-  const stage = stageOf(scene, { w: 1200, h: 800 }, "Names");
-  const moment = momentOf(scene, stage, tripsOf(scene, stage.plan), 61, null);
+  const stage = stageOf(scene, { w: 1200, h: 800 });
+  const trips = tripsOf(scene, stage.plan);
+  const moment = momentOf(scene, stage, trips, 61, null);
+  // The held one waits on the one at work: a line over the floor from it to the held bot
+  assert.deepEqual(
+    moment.links.map((link) => link.id),
+    ["toString>__proto__"],
+  );
+  // The clock rests between movements: nothing walks once the hand-offs have landed
+  const spans = motionOf(scene, stage, trips);
+  assert.ok(spans.length > 0);
+  assert.equal(restAt(spans, 1e6), Number.POSITIVE_INFINITY);
+  assert.equal(restAt([[2, 3]], 2.5), 0);
+  assert.equal(restAt([[2, 3]], 1), 1);
   assert.deepEqual(moment.tags.map((tag) => tag.bot).sort(), [
     "__proto__",
     "constructor",

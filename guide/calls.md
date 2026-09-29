@@ -173,6 +173,9 @@ the wake phrase picks up; **Esc** is "not now". A missed ring stays on screen wi
 until called back or cleared with Esc. She cannot switch this on herself: when asked to call back,
 say where it is.
 
+Nothing rings while a thread is open in the corner: what that thread asks is answered there, and
+what another job asked or finished meanwhile rings once the thread is closed.
+
 ## History
 
 **Settings › Thursday › History** has two tiles. **Call history** lists every kept call, each with

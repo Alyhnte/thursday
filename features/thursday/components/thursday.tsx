@@ -48,6 +48,7 @@ import { BotRoom } from "@/features/bot/components/bot-room";
 import { toolIcon } from "@/features/bot/components/bot-tool";
 import { useAnswerThread } from "@/features/bot/components/thread-reply";
 import {
+  officeCaption,
   useRoomOffice,
   useRoomOpen,
   writeLine,
@@ -234,9 +235,13 @@ function CallScreen({
   // the first-run intro lies over the call screen and draws a face of its own
   const covered = useCallHeld();
   // A thread open in the room is drawn as its office where her face stands (bot-room): her face
-  // is put away meanwhile, and a call on says so in her words at the top
+  // gives way to it in a fade rather than a cut, and a call on says so in her words at the top
   const office = useRoomOffice();
+  const away = useAwayAfter(office, FACE_YIELD_MS);
   const reading = useRoomOpen() === "thread";
+  const captioned = office && status !== "idle" && !writing;
+  useEffect(() => officeCaption.set(captioned), [captioned]);
+  useEffect(() => () => officeCaption.set(false), []);
   return (
     // Out of reach while the intro lies over it: a Tab or a click past the intro reached her
     // face here and placed a real call (call-signal holds only the wake word and the hotkey)
@@ -250,8 +255,8 @@ function CallScreen({
         <ShownPreview />
       </div>
 
-      {office && status !== "idle" && !writing && (
-        <p className="absolute top-5 left-6 z-20 line-clamp-2 max-w-[calc(100%-45rem)] text-[17px] leading-relaxed">
+      {captioned && (
+        <p className="absolute top-5 left-6 z-20 line-clamp-2 max-w-[calc(100%-45rem)] animate-in text-[17px] leading-relaxed fade-in duration-500">
           <span
             aria-hidden
             className={cn(
@@ -261,15 +266,23 @@ function CallScreen({
                 : "opacity-55",
             )}
           />
-          {hers || (busy ? "Calling" : "On a call")}
+          {hers ||
+            (status === "connecting"
+              ? "Calling"
+              : status === "ending"
+                ? "Hanging up"
+                : "On a call")}
         </p>
       )}
 
-      {/* Top padding in vh, like the face itself, so the face+text column sits below center */}
+      {/* Top padding in vh, like the face itself, so the face+text column sits below center.
+          While the office has her place she fades back a little and is out of reach; once
+          gone she is not drawn at all, and she arrives again as it goes */}
       <div
+        inert={office}
         className={cn(
-          "flex min-h-0 flex-1 flex-col items-center justify-center gap-5 pt-[7vh]",
-          office && "invisible",
+          "flex min-h-0 flex-1 flex-col items-center justify-center gap-5 pt-[7vh] transition-[opacity,scale] duration-500 ease-out motion-reduce:transition-none",
+          office && "pointer-events-none scale-[0.97] opacity-0",
         )}
       >
         {/* The face is the control. It reacts to the agent's own voice. */}
@@ -313,7 +326,7 @@ function CallScreen({
                 word={ringWord ?? faceWord}
                 getSpectrum={getSpectrum}
                 // once it covers her she is not drawn under it
-                covered={covered || moment?.phase === "world"}
+                covered={covered || moment?.phase === "world" || away}
                 className="-m-(--face-bleed) w-[calc(100%+2*var(--face-bleed))] max-w-none"
               />
             </span>
@@ -443,8 +456,14 @@ function CallScreen({
 
       <CallFoot>
         {/* Documents a finished thread produced; opens itself on the artifact event. Kept
-            quiet while a thread is read, which has the screen */}
-        <div className={cn("contents", reading && "*:invisible")}>
+            quiet while a thread is read, which has the screen, and eased out and back */}
+        <div
+          inert={reading}
+          className={cn(
+            "contents *:transition-opacity *:duration-300",
+            reading && "*:pointer-events-none *:opacity-0",
+          )}
+        >
           <ArtifactView />
         </div>
         {/* Whatever is typed or handed over instead of said */}
@@ -507,6 +526,23 @@ function CornerDot({ alert }: { alert: SectionAlert }) {
  * (24vw) and her lines a few words each, so the call draws her last line under her face.
  */
 const SIDES_MIN_WIDTH = 1000;
+
+/** How long her face takes to give way to the office (its fade, `duration-500`): from then she is not drawn. */
+const FACE_YIELD_MS = 500;
+
+/** True once `on` has held for `ms`, and false again the moment it drops. */
+function useAwayAfter(on: boolean, ms: number) {
+  const [away, setAway] = useState(false);
+  useEffect(() => {
+    if (!on) {
+      setAway(false);
+      return;
+    }
+    const out = setTimeout(() => setAway(true), ms);
+    return () => clearTimeout(out);
+  }, [on, ms]);
+  return on && away;
+}
 
 function SettingsCorner() {
   const alerts = useSectionAlerts();

@@ -584,7 +584,6 @@
   --animate-office-drop: office-drop 0.34s both;
   --animate-office-pop: office-pop 0.36s cubic-bezier(0.3, 0.7, 0.3, 1) both;
   --animate-office-fade: office-fade 0.4s ease both;
-  --animate-office-blink: office-blink 1s steps(1, end) infinite;
   --animate-office-sand-top: office-sand-top 2.4s linear infinite;
   --animate-office-sand-bottom: office-sand-bottom 2.4s linear infinite;
 
@@ -629,18 +628,6 @@
     }
   }
 
-  /* The wall clock's colon while the job runs. */
-  @keyframes office-blink {
-    0%,
-    49.9% {
-      opacity: 1;
-    }
-    50%,
-    100% {
-      opacity: 0.12;
-    }
-  }
-
   /* The hourglass over a held hand-off. */
   @keyframes office-sand-top {
     from {
@@ -679,7 +666,6 @@
   [data-building] .office-drop,
   [data-building] .office-pop,
   [data-building] .office-fade,
-  .animate-office-blink,
   .animate-office-sand-top,
   .animate-office-sand-bottom {
     animation: none !important;

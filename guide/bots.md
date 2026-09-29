@@ -59,15 +59,20 @@ arrow steps back one level, and the ✕ folds the room away.
 
 An open thread is also drawn as an office where her face stands, beside the room, when the window
 is wide enough: each bot at its desk, the work walked from desk to desk as it happens, a hand-off
-that waits for another bot's answer held in a tray under an hourglass, and questions and the
-final report brought to your counter. Once the job is done, the report at your counter lists the
-files it handed over, each under the bot that made it; pressing one opens it. A bot's tag opens a
-card with what it is doing and why; pressing the tag keeps it open. The clock on the wall is how
-long the job has run, and the job's name lies on the floor. A file dropped on the office goes to
-the thread, as one dropped on the room does. The office pans by dragging and zooms with the wheel
-or the buttons at its bottom left. While it is up her face is put away, and a call that is on
-shows her last words at the top; closing the thread brings her face back, and the corner of
-finished jobs stays quiet while a thread is open.
+that waits for another bot's answer held in a tray under an hourglass, with a dashed line on the
+floor from the bot it waits for, and questions and the final report brought to your counter.
+Over each bot a plate says in one line where it stands: the step it is on while it works, what it
+asks while it waits on the user, or the file it handed back once it answered. A bot that is not
+working and wants nothing of the user folds its plate to its name; pointing at the plate unfolds
+it, and pressing it opens a card with what the bot was given, what it gave and why it stands
+where it stands. The office's top left names the job, marks each bot brought in (filled once it
+answered, orange while it waits on the user) and says how long the job has run. Once the job is
+done, the final report lies in front of your counter with the files it handed over, each under
+the bot that made it; pressing one opens it. A file dropped on the office goes to the thread, as
+one dropped on the room does. The office pans by dragging and zooms with the wheel or the buttons
+at its bottom left. Her face fades out as the office comes and back in as it goes, and a call that
+is on shows her last words at the top; the corner of finished jobs stays quiet while a thread is
+open.
 
 A long thread summarizes itself when it fills up. The small bar at the top right of an open thread
 shows how full it is; pressing it has the bot summarize at its next step, which makes every later

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { OfficeStage } from "@/features/bot/components/office-stage";
 import {
   type OfficeThread,
@@ -11,36 +11,46 @@ import {
 import type { ThreadView } from "@/features/bot/thread.store";
 import { FileViewer } from "@/features/workspace/components/file-view";
 import { toDate } from "@/lib/date-like";
+import { cn } from "@/lib/utils";
 
 /**
  * The thread open in the room, drawn as an office beside it where her face stands (bot-room):
  * its bots at their desks, the work walked across the floor as it happens, and once it is done,
  * the report and its files at your counter. The room beside it is the thread's words and box.
+ * It fades in as it builds itself, and out while `leaving`, as her face comes back through it.
  */
 export function OfficeBackdrop({
   thread,
+  leaving = false,
   className,
 }: {
   thread: ThreadView;
+  /** On its way out: drawn a moment longer, fading, and out of reach (bot-room useLeaving). */
+  leaving?: boolean;
   className?: string;
 }) {
-  // Another thread builds its own office from the start
-  return <Office key={thread.id} thread={thread} className={className} />;
+  return (
+    <div
+      inert={leaving}
+      className={cn(
+        "flex animate-in fade-in duration-300",
+        className,
+        leaving &&
+          "pointer-events-none opacity-0 transition-opacity duration-250 ease-in",
+      )}
+    >
+      {/* Another thread builds its own office from the start */}
+      <Office key={thread.id} thread={thread} />
+    </div>
+  );
 }
 
-function Office({
-  thread,
-  className,
-}: {
-  thread: ThreadView;
-  className?: string;
-}) {
+function Office({ thread }: { thread: ThreadView }) {
   const [selected, setSelected] = useState<string | null>(null);
   const start = toDate(thread.createdAt).getTime();
   const office = useMemo(() => officeOf(thread), [thread]);
   const memory = useWatched(office, start);
   const scene = useMemo(() => sceneOf(office, memory), [office, memory]);
-  const { t, built, setBuilt } = useOfficeClock(start);
   const pick = useCallback(
     (bot: string) => setSelected((was) => (was === bot ? null : bot)),
     [],
@@ -51,18 +61,13 @@ function Office({
     <FileViewer>
       <OfficeStage
         scene={scene}
-        t={t}
-        building={!built}
+        start={start}
         label={thread.label}
         faces={thread.roster}
         from={thread.id}
         selected={selected}
         onSelect={pick}
-        // The wall clock stops where the thread was seen to end
-        seconds={scene.ended ?? t}
-        running={scene.ended === null}
-        onBuilt={setBuilt}
-        className={className}
+        className="min-h-0 min-w-0 flex-1"
       />
     </FileViewer>
   );
@@ -84,21 +89,4 @@ function useWatched(office: OfficeThread, start: number) {
   };
   setSeen(next);
   return next.memory;
-}
-
-/** The office's clock: the seconds since the handover, moving once the office has built itself. */
-function useOfficeClock(start: number) {
-  const [t, setT] = useState(() => (Date.now() - start) / 1000);
-  const [built, setBuilt] = useState(false);
-  useEffect(() => {
-    if (!built) return;
-    let frame = 0;
-    const tick = () => {
-      setT((Date.now() - start) / 1000);
-      frame = requestAnimationFrame(tick);
-    };
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
-  }, [start, built]);
-  return { t, built, setBuilt: useCallback(() => setBuilt(true), []) };
 }

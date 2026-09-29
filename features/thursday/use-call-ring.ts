@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CALL_BACK } from "@/config";
 import type { Thread } from "@/features/bot/bot.schema";
-import { ringingThreads } from "@/features/bot/thread.store";
+import { ringingThreads, useRoomThread } from "@/features/bot/thread.store";
 import { useEscape } from "@/hooks/use-hotkey";
 import { toDate } from "@/lib/date-like";
 import { ringOnce } from "@/lib/live/ring";
@@ -65,6 +65,18 @@ export function useCallRing({
   const isRinging = ringingFor.length > 0;
 
   const callBack = useThursdayStore((state) => state.callBack);
+  /**
+   * A thread open in the room is being read, so what it asks or how it ends is seen there:
+   * nothing rings while one is open, and what that thread did while it was read never rings.
+   * Anything else rings once the reader looks up from it (bot-room roomThread).
+   */
+  const reading = useRoomThread();
+  const readUpTo = useRef(new Map<string, number>());
+  useEffect(() => {
+    const thread = reading && threads?.find((one) => one.id === reading);
+    if (thread)
+      readUpTo.current.set(thread.id, toDate(thread.updatedAt).getTime());
+  }, [reading, threads]);
   useEffect(() => {
     if (!threads) return;
     const wanted = new Set(
@@ -77,11 +89,13 @@ export function useCallRing({
         ? ids
         : ids.filter((id) => wanted.has(id)),
     );
-    if (!resting || writing) return;
+    if (!resting || writing || reading) return;
     const after = ringAfter.current;
     const fresh = threads.filter(
       (thread) =>
-        wanted.has(thread.id) && toDate(thread.updatedAt).getTime() > after,
+        wanted.has(thread.id) &&
+        toDate(thread.updatedAt).getTime() >
+          Math.max(after, readUpTo.current.get(thread.id) ?? 0),
     );
     if (!fresh.length) return;
 
@@ -97,7 +111,7 @@ export function useCallRing({
       ...ids,
       ...fresh.map((thread) => thread.id).filter((id) => !ids.includes(id)),
     ]);
-  }, [threads, callBack, resting, writing]);
+  }, [threads, callBack, resting, writing, reading]);
 
   // Writing to her answers a ring as calling her does, and what came up while they wrote
   // was that call's to tell: nothing from before its end rings afterwards

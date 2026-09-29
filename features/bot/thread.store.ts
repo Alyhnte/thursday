@@ -378,10 +378,18 @@ export type ScreenAct =
 /** Drafts and selected recipients survive switching threads, independently for each participant. */
 const drafts = new Map<string, Map<string, string>>();
 const recipients = new Map<string, string>();
+/** The tab a thread's box last followed, so a bot picked on it since outlives the box. */
+const tabs = new Map<string, string>();
 
 export const threadDrafts = {
   recipient: (id: string) => recipients.get(id),
   select: (id: string, bot: string) => {
+    recipients.set(id, bot);
+  },
+  tab: (id: string) => tabs.get(id),
+  /** A bot's tab opened: the box is addressed to it, as a pick in RecipientPicker would. */
+  follow: (id: string, bot: string) => {
+    tabs.set(id, bot);
     recipients.set(id, bot);
   },
   get: (id: string, bot: string, question?: string) =>
@@ -475,6 +483,58 @@ export function useRoomOffice(): boolean {
       return () => officeListeners.delete(listener);
     },
     () => officeUp,
+    () => false,
+  );
+}
+
+/**
+ * The thread being read in the room, by id (bot-room). It is handled on screen: the call-back
+ * does not ring over it, nor for what it asks while it is read there (use-call-ring).
+ */
+let readId: string | null = null;
+const readListeners = new Set<() => void>();
+
+export const roomThread = {
+  set(id: string | null) {
+    if (id === readId) return;
+    readId = id;
+    for (const listener of readListeners) listener();
+  },
+};
+
+export function useRoomThread(): string | null {
+  return useSyncExternalStore(
+    (listener) => {
+      readListeners.add(listener);
+      return () => readListeners.delete(listener);
+    },
+    () => readId,
+    () => null,
+  );
+}
+
+/**
+ * Whether her words stand at the top of the office while a call is on (thursday): the office's
+ * own head steps down under them rather than being written over.
+ */
+let captioned = false;
+const captionListeners = new Set<() => void>();
+
+export const officeCaption = {
+  set(up: boolean) {
+    if (up === captioned) return;
+    captioned = up;
+    for (const listener of captionListeners) listener();
+  },
+};
+
+export function useOfficeCaption(): boolean {
+  return useSyncExternalStore(
+    (listener) => {
+      captionListeners.add(listener);
+      return () => captionListeners.delete(listener);
+    },
+    () => captioned,
     () => false,
   );
 }

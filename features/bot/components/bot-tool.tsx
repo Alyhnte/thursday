@@ -57,7 +57,7 @@ type ToolProps = {
   tool: ToolUse;
   /** Half of the key for fetching the full result. */
   threadId?: string;
-  /** Start folded to the title line. A running tool is always expanded regardless. */
+  /** Start folded to the title line; only a press opens it, running or not. */
   collapsed?: boolean;
 };
 
@@ -431,8 +431,10 @@ function GenericTool({ tool, threadId, collapsed }: ToolProps) {
 
 /**
  * The shell every tool view sits in: a one-line step (what it did, its words, what it touched,
- * state) with the body below it. A running tool is always expanded; a finished one
- * that returned anything gets "Everything" at the bottom.
+ * state) with the body below it. A step opens only when pressed: one that opened itself while it
+ * ran and shut as it finished made the conversation jump at every step of a bot at work, and its
+ * line already shines while it runs. A finished one that returned anything gets "Everything" at
+ * the bottom.
  */
 function Frame({
   tool,
@@ -444,7 +446,7 @@ function Frame({
   const face = stepFace(tool);
   const Did = face.icon;
   const [open, setOpen] = useState(!collapsed);
-  const shown = open || running;
+  const shown = open;
   // The glance is text only and clipped, so any output can be opened whole
   const whole =
     threadId && tool.callId && ((tool.results?.length ?? 0) > 0 || tool.more);

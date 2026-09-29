@@ -1,14 +1,13 @@
 /**
  * The office drawn as an isometric sketch: rooms and desks for however many bots a thread holds,
  * the lines of each piece run past its corners, and who walks where carrying what at any moment.
- * No React: office-view draws what this returns. Every fill is a token from app/globals.css, so
+ * No React: office-stage draws what this returns. Every fill is a token from app/globals.css, so
  * the drawing turns with the theme.
  */
 
 import {
   type OfficeEvent,
   type OfficeScene,
-  questionAt,
   reportAt,
   seatAt,
   YOU,
@@ -141,19 +140,11 @@ type Fit = {
   points: (list: [number, number, number][]) => string;
 };
 
-/** Room the fitted building leaves on screen: the caption above it, the zoom buttons below. */
-const MARGIN = { top: 48, side: 20, bottom: 16 };
+/** Room the fitted building leaves on screen: the office's head above it (office-stage OfficeHead), the zoom buttons below. */
+const MARGIN = { top: 96, side: 20, bottom: 16 };
 
-/** How deep the name's first row (THE JOB) and each of its lines lie on the ground, in ground units. */
-const NAME_DEEP = 2.6;
-const NAME_LINE = 8.6;
-
-/** The building, and the ground its job's name lies on, fitted into a box on screen. */
-function fitOf(
-  width: number,
-  box: { w: number; h: number },
-  name: { x0: number; x1: number; y0: number; y1: number },
-): Fit {
+/** The building fitted into a box on screen. */
+function fitOf(width: number, box: { w: number; h: number }): Fit {
   let a0 = Number.POSITIVE_INFINITY;
   let a1 = Number.NEGATIVE_INFINITY;
   let b0 = Number.POSITIVE_INFINITY;
@@ -169,8 +160,6 @@ function fitOf(
   for (const x of [-4, width + 3])
     for (const y of [-4, DEPTH + 3])
       for (const z of [-6, WALL + 2]) reach(x, y, z);
-  for (const x of [name.x0, name.x1])
-    for (const y of [name.y0, name.y1]) reach(x, y, -5);
   const w = Math.max(1, box.w - 2 * MARGIN.side);
   const h = Math.max(1, box.h - MARGIN.top - MARGIN.bottom);
   const s = Math.min(w / (a1 - a0), h / (b1 - b0), 7.4);
@@ -345,9 +334,6 @@ export type Stage = {
   /** Shadows under the furniture; `of` names the piece that casts one. */
   shades: { points: string; delay: number; of: string | null }[];
   pieces: Piece[];
-  /** The clock on the coordinator's wall, and the job's name on the ground at four o'clock. */
-  clock: { matrix: string; w: number; h: number };
-  mission: { matrix: string; w: number; h: number; line: number };
   /** Size a bot is drawn at. */
   botSize: number;
   /** When the bots pop in, and when the whole opening build is over, in ms. */
@@ -378,44 +364,13 @@ export function joinsOf(scene: OfficeScene) {
 export function stageOf(
   scene: OfficeScene,
   size: { w: number; h: number },
-  label: string,
 ): Stage {
   const { helpers, at: joinAt } = joinsOf(scene);
   const plan = planOf(scene.office.coord, helpers);
   const W = plan.width;
   const D = DEPTH;
   const Z0 = -5;
-  // The job's name runs along the building's right side, centred a little behind its middle,
-  // where the view has room; its length is read off the letters, as the text is not laid out yet
-  const LETTERS = 84;
-  const ems = [...label].reduce(
-    (sum, ch) =>
-      sum +
-      // wide scripts (CJK and after) take about an em, Latin about half
-      ((ch.codePointAt(0) ?? 0) >= 0x2e80
-        ? 0.92
-        : /[A-Z]/.test(ch)
-          ? 0.66
-          : /[a-z0-9]/.test(ch)
-            ? 0.56
-            : ch === " "
-              ? 0.28
-              : 0.5),
-    0,
-  );
-  // A line runs three quarters of the building's length at most (a ground unit is ten of the
-  // name's pixels); a longer name wraps under it, up to three lines, and is fitted in view with
-  // the building rather than run off past it
-  const nameLine = Math.min(ems * LETTERS, D * 7.5);
-  const nameLines = Math.min(3, Math.ceil((ems * LETTERS) / (D * 7.5)));
-  const span = nameLine / 10;
-  const nameAt = clamp(D * 0.45 + span / 2, span, D + 12);
-  const fit = fitOf(plan.width, size, {
-    x0: W + 9,
-    x1: W + 9 + NAME_DEEP + nameLines * NAME_LINE,
-    y0: nameAt,
-    y1: nameAt - span,
-  });
+  const fit = fitOf(plan.width, size);
   const faces: Face[] = [];
   const lines: Stroke[] = [];
   const shades: Stage["shades"] = [];
@@ -820,17 +775,6 @@ export function stageOf(
   const built = cue;
   for (const desk of plan.desks) deskAt(desk, joinAt.get(desk.bot) ?? 0, false);
 
-  // a box on the back wall (x along it, z down it), and one lying on the ground reading rightward
-  const onWall = (x: number, y: number, z: number, px: number) => {
-    const [tx, ty] = fit.at(x, y, z);
-    const k = fit.s / px;
-    return `matrix(${[UX * k, UY * k, 0, UZ * k, tx, ty].map(r2).join(",")})`;
-  };
-  const onGround = (x: number, y: number, z: number, px: number) => {
-    const [tx, ty] = fit.at(x, y, z);
-    const k = fit.s / px;
-    return `matrix(${[UX * k, -UY * k, UX * k, UY * k, tx, ty].map(r2).join(",")})`;
-  };
   const popAt = built + 90;
   return {
     plan,
@@ -840,13 +784,6 @@ export function stageOf(
     lines,
     shades,
     pieces,
-    clock: { matrix: onWall(23.8, 0.2, 14.6, 6.4), w: 150, h: 64 },
-    mission: {
-      matrix: onGround(W + 9, nameAt, Z0, 10),
-      w: Math.round(nameLine + 160),
-      h: 66 + nameLines * 88,
-      line: Math.round(nameLine),
-    },
     botSize: Math.round(clamp(fit.s * 10.8, 36, 64)),
     popAt,
     built: popAt + 420,
@@ -1106,12 +1043,26 @@ export type Moment = {
   trail: { id: string; x: number; y: number; opacity: number }[];
   shades: Stage["shades"];
   /** Hourglasses over trays holding a hand-off until others answer. */
-  glasses: { x: number; y: number; opacity: number; waits: string[] }[];
-  counter: {
-    kind: "question" | "answered" | "report";
+  glasses: { x: number; y: number; opacity: number }[];
+  /** From each bot a held hand-off waits on to the bot it is for, over the floor. */
+  links: {
+    id: string;
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+    opacity: number;
+  }[];
+  /**
+   * The final report, once it lies at your counter (x, y), and where its card is laid: on the
+   * ground in front of the building, below the counter (gx, gy).
+   */
+  report: {
     event: OfficeEvent;
     x: number;
     y: number;
+    gx: number;
+    gy: number;
   } | null;
   /** A send turned down, and the room's words for why. */
   stamp: { x: number; y: number; scale: number; text: string } | null;
@@ -1475,19 +1426,37 @@ export function momentOf(
         release && t >= release.arrive
           ? r2(clamp((release.arrive + 0.4 - t) / 0.4, 0, 1))
           : 1,
-      waits: hold.event.after,
     });
   }
-  // what floats over your counter: the question being asked, the answer given, or the report
+  // who a held hand-off waits on: a line over the floor from each of them to the bot it is for
+  const links: Moment["links"] = [];
+  const standing = new Map(walkers.map((walker) => [walker.bot, walker]));
+  for (const bot of scene.office.bots) {
+    const state = seatAt(scene, bot);
+    const to = standing.get(bot);
+    if (state.key !== "held" || !to) continue;
+    for (const one of state.waits) {
+      const from = standing.get(one);
+      if (from)
+        links.push({
+          id: `${one}>${bot}`,
+          x1: from.x,
+          y1: from.y,
+          x2: to.x,
+          y2: to.y,
+          opacity: Math.min(from.opacity, to.opacity),
+        });
+    }
+  }
+  // the final report, once it lies at your counter; a question stays with its bot's plate and
+  // the room's box, where it is answered
   const [kx, ky] = fit.at(26, 77, 8.2);
-  const { open, answered: lastAnswer } = questionAt(scene, t);
-  let counter: Moment["counter"] = null;
-  if (open) counter = { kind: "question", event: open, x: kx, y: ky };
-  else if (lastAnswer && t < lastAnswer.answer.at + 1.6)
-    counter = { kind: "answered", event: lastAnswer.answer, x: kx, y: ky };
-  const report = reportAt(scene, t);
-  if (report && reported && t >= reported.arrive)
-    counter = { kind: "report", event: report, x: kx, y: ky };
+  const [gx, gy] = fit.at(24, DEPTH + 8, -5);
+  const final = reportAt(scene, t);
+  const report =
+    final && reported && t >= reported.arrive
+      ? { event: final, x: kx, y: ky, gx, gy }
+      : null;
   const refused = scene.events.findLast(
     (event) =>
       event.kind === "refused" &&
@@ -1515,5 +1484,41 @@ export function momentOf(
     : refused && sender
       ? stampedAt(sender[0], sender[1], refused.at, refused)
       : null;
-  return { sprites, pins, trail, shades, glasses, counter, stamp, tags };
+  return { sprites, pins, trail, shades, glasses, links, report, stamp, tags };
+}
+
+/** How long after a walk ends a paper it left still settles: a copy's 0.4 and a fade's 0.35. */
+const SETTLE = 0.8;
+
+/**
+ * When the drawing moves by itself, in scene seconds: a walk and the papers it leaves settling, a
+ * desk drawn in as its bot joins, a send stamped. Outside these it stands still, so what drives
+ * it rests until the next one begins (office-stage useSceneClock).
+ */
+export function motionOf(
+  scene: OfficeScene,
+  stage: Stage,
+  trips: Trip[],
+): [number, number][] {
+  const spans: [number, number][] = [];
+  for (const trip of trips) {
+    spans.push([trip.leave, trip.arrive + SETTLE]);
+    if (Number.isFinite(trip.back)) spans.push([trip.stay, trip.back + SETTLE]);
+  }
+  for (const piece of stage.pieces)
+    if (piece.appear !== null) spans.push([piece.appear, piece.appear + DRAW]);
+  for (const event of scene.events)
+    if (event.kind === "refused")
+      spans.push([event.at, event.at + STAMPED + 0.1]);
+  return spans;
+}
+
+/** Seconds until the drawing next moves: 0 while it moves at `t`, and infinite once nothing is to come. */
+export function restAt(spans: [number, number][], t: number) {
+  let next = Number.POSITIVE_INFINITY;
+  for (const [from, to] of spans) {
+    if (t >= from && t < to) return 0;
+    if (from > t) next = Math.min(next, from - t);
+  }
+  return next;
 }

@@ -297,13 +297,15 @@ export function Conversation({
   }, [thread.lines, thread.status, side]);
 
   // A page or a picture under a message is drawn a moment after the words and grows the
-  // turn it is under: without this the last tiles end up behind the composer
+  // turn it is under, and a question docking in the box under the conversation shrinks it:
+  // either way the end stays in view, rather than the last lines going behind the composer
   useEffect(() => {
     const box = scroller.current;
     if (!box) return;
     const watch = new ResizeObserver(() => {
       if (following.current) box.scrollTop = box.scrollHeight;
     });
+    watch.observe(box);
     for (const child of Array.from(box.children)) watch.observe(child);
     return () => watch.disconnect();
   }, [items.length, thread.lines, side]);
@@ -602,8 +604,7 @@ function WorkRow({
               run.lines.map(
                 (line) =>
                   line.tool && (
-                    // All start collapsed but the one a tile opened; a running call
-                    // expands itself (bot-tool Frame)
+                    // All start collapsed but the one a tile opened (bot-tool Frame)
                     <BotTool
                       key={line.id}
                       tool={line.tool}
@@ -658,12 +659,17 @@ function OwnWork({
           run.lines.map((line) => <Line key={line.id} line={line} />)
         ),
       )}
-      {standing && !calling && (
+      {standing && (
+        // While a call is mid-way it shines on its own row, and this line keeps its place
+        // unseen, so the turn does not grow and shrink by a line at every step
         <ShinyText
           text={standing === "asking" ? "waiting on you" : "on the next step…"}
           tone={standing === "asking" ? "waiting" : "muted"}
           speed={2.2}
-          className="block px-1 font-mono text-[10px]"
+          className={cn(
+            "block px-1 font-mono text-[10px]",
+            calling && "invisible",
+          )}
         />
       )}
     </>

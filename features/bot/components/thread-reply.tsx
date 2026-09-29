@@ -101,10 +101,12 @@ export function ThreadReply({
     setSelected(undefined);
     setStepping(false);
   }
-  // Opening a bot's tab addresses the composer to it, kept like a pick in RecipientPicker.
+  // Opening a bot's tab addresses the composer to it, kept like a pick in RecipientPicker. The
+  // same tab drawn again, as when the thread is opened again from the list, keeps a bot picked
+  // on it since.
   useEffect(() => {
-    if (!to) return;
-    threadDrafts.select(thread.id, to);
+    if (!to || threadDrafts.tab(thread.id) === to) return;
+    threadDrafts.follow(thread.id, to);
     setRecipient(to);
   }, [thread.id, to]);
 
