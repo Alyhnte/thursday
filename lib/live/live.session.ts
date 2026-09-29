@@ -808,7 +808,12 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
             if (response.calls.size && !salvaging) {
               salvaging = true;
               void continueResponse(response);
-            } else void endResponse(response);
+            } else {
+              // The row ends here, as a terminal event's does: left set, the next turn cut
+              // off was not continued, and its hand-over went unanswered
+              salvaging = false;
+              void endResponse(response);
+            }
             break;
           }
           on.turn({

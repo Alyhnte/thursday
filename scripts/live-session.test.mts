@@ -622,6 +622,42 @@ test("a call completed before one the output cap cut off still has its result co
   assert.equal(count("response.create"), 1);
 });
 
+test("a turn cut off after two in a row were is continued once, as the first was", async () => {
+  await connect();
+  const cutOff = (call_id: string) =>
+    nested({
+      type: "response.output_item.done",
+      item: {
+        type: "function_call",
+        id: `item-${call_id}`,
+        call_id,
+        name: "thread_start",
+        arguments: '{"bot":"Ana',
+        status: "incomplete",
+      },
+    });
+  nested({ type: "response.created", response: { id: "r1" } });
+  functionCall("a");
+  cutOff("cut-1");
+  await tick();
+  await tick();
+  nested({ type: "response.created", response: { id: "r2" } });
+  functionCall("b");
+  cutOff("cut-2");
+  await tick();
+  await tick();
+  assert.equal(count("response.create"), 1);
+  // The next turn cut off the same way: the bound is once in a row, so it is continued again,
+  // or its result goes in and nothing answers the hand-over
+  nested({ type: "response.created", response: { id: "r3" } });
+  functionCall("c");
+  cutOff("cut-3");
+  await tick();
+  await tick();
+  assert.equal(count("response.item.create"), 3);
+  assert.equal(count("response.create"), 2);
+});
+
 /** What the page puts down for a drawing shown to her: its fact, the picture, then the run (put-down). */
 function showDrawing(session: ReturnType<typeof createLiveSession>) {
   session.brief("The user showed you a drawing, kept at inbox/drawing.png.");
