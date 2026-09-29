@@ -1,4 +1,5 @@
 import animate from "tailwindcss-animate";
+import defaultTheme from "tailwindcss/defaultTheme";
 
 // Only the page being built, plus the shared components, feed its CSS.
 const page = process.env.PAGE ?? "*";
@@ -16,6 +17,11 @@ export default {
   },
   theme: {
     extend: {
+      // The app's own type first (src/index.css), then what every system has
+      fontFamily: {
+        sans: ["Geist", ...defaultTheme.fontFamily.sans],
+        mono: ['"Geist Mono"', ...defaultTheme.fontFamily.mono],
+      },
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",

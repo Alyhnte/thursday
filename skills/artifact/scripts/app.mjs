@@ -33,6 +33,8 @@ import {
 
 const SKILL = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const TEMPLATE = join(SKILL, "runtime", "app", "kit");
+// The app's own type, which the shell carries too: copied into the kit, where its CSS finds it
+const FONTS = join(SKILL, "runtime", "shell", "fonts");
 const PAGE_TEMPLATE = join(SKILL, "runtime", "app", "page");
 const SCRIPT = join(SKILL, "scripts", "app.mjs");
 
@@ -72,6 +74,8 @@ function templateStamp() {
     }
   };
   walk(TEMPLATE);
+  for (const name of readdirSync(FONTS).sort())
+    hash.update(`fonts/${name}\0`).update(readFileSync(join(FONTS, name)));
   return hash.digest("hex");
 }
 
@@ -140,6 +144,7 @@ function ensureKit() {
     );
     mkdirSync(KIT, { recursive: true });
     cpSync(TEMPLATE, KIT, { recursive: true, force: true });
+    cpSync(FONTS, join(KIT, "src", "fonts"), { recursive: true, force: true });
     npm(["ci"]);
     if (extras.length) npm(["install", ...extras]);
     const shipped = dependencies(join(TEMPLATE, "package.json"));
