@@ -18,6 +18,8 @@ const RULES = ".claude/rules";
 const MAX_CHARS: Record<string, number> = {
   "AGENTS.md": 9500,
   "taste.md": 2000,
+  // Four ways into one call — a key, the plan, in writing, a phone — each with its own traps
+  "call.md": 5000,
 };
 const MAP_MAX = 4200;
 
