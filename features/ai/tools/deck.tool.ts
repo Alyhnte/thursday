@@ -425,15 +425,20 @@ async function prepare(
       );
     let name = taken.get(source);
     if (!name) {
-      name =
-        dirname(source) === folder
-          ? basename(source)
-          : free(basename(source), new Set(taken.values()));
-      taken.set(source, name);
-      if (dirname(source) !== folder) {
-        await mkdir(folder, { recursive: true });
-        await copyFile(source, join(folder, name));
+      if (dirname(source) === folder) name = basename(source);
+      else {
+        const beside = await nameBeside(
+          folder,
+          source,
+          new Set(taken.values()),
+        );
+        name = beside.name;
+        if (!beside.there) {
+          await mkdir(folder, { recursive: true });
+          await copyFile(source, join(folder, name));
+        }
       }
+      taken.set(source, name);
     }
     return name;
   };
@@ -470,14 +475,28 @@ async function prepare(
   return out;
 }
 
-/** `name`, or a variant of it no other picture in this deck has and no slide's picture will take. */
-function free(name: string, used: Set<string>): string {
-  const ext = extname(name);
-  const stem = basename(name, ext);
-  const base = SHOT.test(name) ? `picture-${stem}` : stem;
-  let candidate = `${base}${ext}`;
-  for (let n = 2; used.has(candidate); n++) candidate = `${base}-${n}${ext}`;
-  return candidate;
+/**
+ * The name beside the deck a picture copied in from `source` takes: its own, or a variant of
+ * it that no other picture of this deck takes in this call and no file already beside the
+ * deck holds — a picture another slide still shows by that name would be written over. A
+ * file there that holds this very picture is it already (`there`), and nothing is copied.
+ */
+async function nameBeside(
+  folder: string,
+  source: string,
+  used: Set<string>,
+): Promise<{ name: string; there: boolean }> {
+  const ext = extname(source);
+  const stem = basename(source, ext);
+  const base = SHOT.test(basename(source)) ? `picture-${stem}` : stem;
+  const picture = await readFile(source);
+  for (let n = 1; ; n++) {
+    const name = n === 1 ? `${base}${ext}` : `${base}-${n}${ext}`;
+    if (used.has(name)) continue;
+    const held = await readFile(join(folder, name)).catch(() => null);
+    if (!held) return { name, there: false };
+    if (held.equals(picture)) return { name, there: true };
+  }
 }
 
 const run = promisify(execFile);

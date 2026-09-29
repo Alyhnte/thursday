@@ -265,6 +265,77 @@ test("pictures are copied beside the deck, and never under a name a slide's pict
   assert.match(String(missing), /no file at nowhere\.png/);
 });
 
+test("a new picture named as one beside the deck takes a name of its own, and the one a slide shows is kept", async () => {
+  const first = join(WORKSPACE, "scratch", "first");
+  const later = join(WORKSPACE, "scratch", "later");
+  await mkdir(first, { recursive: true });
+  await mkdir(later, { recursive: true });
+  await writeFile(join(first, "web-01.jpg"), "the first photo");
+  await writeFile(join(later, "web-01.jpg"), "a newer photo");
+  const said = await make({
+    deck: "renamed",
+    title: "Renamed",
+    slides: [
+      {
+        layout: "image",
+        title: "A",
+        image: "scratch/first/web-01.jpg",
+        alt: "a",
+      },
+    ],
+  });
+  const dir = join(WORKSPACE, "artifacts", "Tester", "renamed");
+  // Revised: a new slide points at a newer photo of the same name, placed first, while the
+  // old slide still names the one beside the deck
+  const again = await make({
+    deck: "renamed",
+    title: "Renamed",
+    revision: revisionIn(said),
+    slides: [
+      {
+        layout: "image",
+        title: "New",
+        image: "scratch/later/web-01.jpg",
+        alt: "n",
+      },
+      { layout: "image", title: "A", image: "web-01.jpg", alt: "a" },
+    ],
+  });
+  assert.equal(
+    await readFile(join(dir, "web-01.jpg"), "utf8"),
+    "the first photo",
+  );
+  assert.equal(
+    await readFile(join(dir, "web-01-2.jpg"), "utf8"),
+    "a newer photo",
+  );
+  const deck = await held(join(dir, "renamed.html"));
+  assert.deepEqual(
+    deck.slides.map((slide: { image: string }) => slide.image),
+    ["web-01-2.jpg", "web-01.jpg"],
+  );
+  // The same photo handed again is the one already there: no second copy
+  await make({
+    deck: "renamed",
+    title: "Renamed",
+    revision: revisionIn(again),
+    slides: [
+      {
+        layout: "image",
+        title: "A",
+        image: "scratch/first/web-01.jpg",
+        alt: "a",
+      },
+    ],
+  });
+  const last = await held(join(dir, "renamed.html"));
+  assert.deepEqual(
+    last.slides.map((slide: { image: string }) => slide.image),
+    ["web-01.jpg"],
+  );
+  assert.ok(!existsSync(join(dir, "web-01-3.jpg")));
+});
+
 test("a table's short rows are filled out and a long one is refused", async () => {
   const table = (rows: string[][]) => ({
     deck: "table",
