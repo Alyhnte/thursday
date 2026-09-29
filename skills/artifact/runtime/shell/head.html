@@ -1,6 +1,7 @@
 <!-- The parts of the head every kind has, put in by wear.mjs where a kind's page writes
      {{shell.meta}}, {{shell.who}}, {{shell.theme}}, {{shell.export}}, {{shell.download}}
-     or {{shell.sign}}, the maker's name at the end of a page that is read.
+     or {{shell.sign}}, the maker's name at the end of a page that is read, then the app's
+     name and its author's, each leading to where it is made.
      The generator names a page the shell dressed. The app's own tab looks for it in a page's
      first bytes and leaves its bar off (app/artifact), so it stands near the top. The
      revision is new on every write, from a bot's put or a reader's save: a save that names
@@ -45,7 +46,7 @@
 </header>
 
 <!-- part: sign -->
-<footer class="sh-sign" data-bot="{{bot}}">{{mark}}<span>Made by <b>{{bot}}</b> · Thursday</span></footer>
+<footer class="sh-sign" data-bot="{{bot}}"><span class="sh-by">{{mark}}<b>{{bot}}</b></span><span>made this with <a href="https://github.com/cgoinglove/thursday" target="_blank" rel="noopener">Thursday</a> · by <a href="https://github.com/cgoinglove" target="_blank" rel="noopener">cgoinglove</a></span></footer>
 
 <!-- part: download -->
 <button type="button" class="sh-item" data-export="html">Download this file<small>HTML</small></button>

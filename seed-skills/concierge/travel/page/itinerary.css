@@ -1,27 +1,23 @@
 /* The itinerary's own look, under the artifact shell's head and type (put on by
    itinerary.mjs): one file that opens offline, light and dark, phone to print. The
-   day-by-day plan is what the page is for; everything above it stays quiet. Its colours are
-   the shell's, on the app's grey ground (app/globals.css), and its one accent is the colour
-   of the bot that made it (--sh-maker), so the theme button and the maker reach it too. */
+   day-by-day plan is what the page is for; everything above it stays quiet. It reads as a
+   page, not a stack of boxes: the cover a banner over the title, the facts a list of
+   properties, a card only for a thing that stands on its own (the flights, the stay), a
+   list as rows with a hairline between, and each day a line through its stops. Its colours
+   are the shell's (app/globals.css); its one accent is the colour of the bot that made it
+   (--sh-maker), so the theme button and the maker reach it too. */
 :root {
-  --bg: var(--sh-ground);
-  --card: var(--sh-card);
+  --bg: var(--sh-paper);
+  --card: var(--sh-paper);
   --fg: var(--sh-ink);
-  --muted: var(--sh-ink-3);
+  --muted: color-mix(in srgb, var(--sh-ink) 60%, var(--sh-paper));
   --line: var(--sh-line);
   --soft: var(--sh-sunk);
+  /* A quiet ground for a note set apart, a step off the paper in either theme */
+  --callout: color-mix(in srgb, var(--sh-ink) 4.5%, var(--sh-paper));
   --accent: var(--sh-maker-text);
-  --accent-soft: color-mix(in srgb, var(--sh-maker) 12%, var(--card));
-  --sun: var(--sh-warn);
-  --shade: 0 1px 2px rgb(13 13 13 / 0.05), 0 4px 16px rgb(13 13 13 / 0.04);
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --shade: none;
-  }
-}
-:root[data-theme="dark"] {
-  --shade: none;
+  --accent-soft: color-mix(in srgb, var(--sh-maker) 12%, var(--sh-paper));
+  --round: 12px;
 }
 * {
   box-sizing: border-box;
@@ -37,13 +33,15 @@ body {
   text-wrap: pretty;
 }
 main {
-  max-width: 54rem;
+  max-width: 46rem;
   margin: 0 auto;
-  padding: 0 1rem 5rem;
+  padding: 0 1rem 4rem;
 }
+/* A link is the ink, underlined in the maker's colour */
 a {
-  color: var(--accent);
-  text-decoration-thickness: 1px;
+  color: inherit;
+  text-decoration-color: var(--sh-maker);
+  text-decoration-thickness: 1.5px;
   text-underline-offset: 3px;
 }
 img {
@@ -58,165 +56,164 @@ small {
   color: var(--muted);
 }
 
-/* Cover: the place itself, with the title set on it */
+/* The place as a banner over the page, and the title under it on the paper */
 .cover {
-  position: relative;
-  margin: 1rem 0 0;
-  border-radius: 1.25rem;
-  overflow: hidden;
-  min-height: 15rem;
-  background: var(--soft);
+  margin: 1.25rem 0 0;
 }
 .cover img {
   width: 100%;
-  height: clamp(15rem, 42vw, 24rem);
+  height: clamp(11rem, 30vw, 17rem);
+  border-radius: calc(var(--round) + 4px);
+  background: var(--soft);
   object-fit: cover;
 }
+.cover {
+  position: relative;
+}
 .cover .over {
-  position: absolute;
-  inset: auto 0 0 0;
-  padding: 3.5rem 1.5rem 1.3rem;
-  color: #fff;
-  background: linear-gradient(to top, rgb(0 0 0 / 0.62), rgb(0 0 0 / 0));
+  padding: 1.75rem 0 0;
 }
 .cover.plain .over {
-  position: static;
-  color: var(--fg);
-  background: none;
-  padding: 2.5rem 1.5rem 1.5rem;
+  padding-top: 2.5rem;
 }
 h1 {
   margin: 0;
-  font-size: clamp(1.8rem, 5vw, 2.6rem);
-  line-height: 1.12;
-  letter-spacing: -0.025em;
+  font-size: clamp(2rem, 5.5vw, 2.75rem);
+  font-weight: 700;
+  line-height: 1.06;
+  letter-spacing: -0.04em;
+  text-wrap: balance;
 }
 .lede {
-  margin: 0.35rem 0 0;
-  font-size: 1.05rem;
-  opacity: 0.92;
+  margin: 0.5rem 0 0;
+  color: var(--muted);
+  font-size: 1.0625rem;
 }
 .credit {
   position: absolute;
   top: 0.6rem;
   right: 0.8rem;
-  font-size: 0.7rem;
-  color: rgb(255 255 255 / 0.85);
-  text-shadow: 0 1px 2px rgb(0 0 0 / 0.5);
+  padding: 0.0625rem 0.5rem;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 45%);
+  color: rgb(255 255 255 / 90%);
+  font: 400 10.5px / 1.6 var(--sh-mono);
 }
 .credit a {
   color: inherit;
+  text-decoration: none;
 }
 
-/* The trip at a glance */
+/* The trip at a glance: its properties, a name and a value a line */
 .facts {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
-  gap: 0.6rem;
-  margin: 1rem 0 0;
+  gap: 0.125rem;
+  margin: 1.25rem 0 0;
 }
 .fact {
-  padding: 0.8rem 1rem;
-  border-radius: 0.9rem;
-  background: var(--card);
-  border: 1px solid var(--line);
-}
-.fact b {
-  display: block;
-  font-size: 1.15rem;
-  letter-spacing: -0.01em;
+  display: grid;
+  grid-template-columns: minmax(7rem, 11rem) 1fr;
+  gap: 1rem;
+  align-items: baseline;
+  padding: 0.3125rem 0;
 }
 .fact span {
-  font-size: 0.82rem;
+  order: -1;
   color: var(--muted);
+  font: 400 12.5px / 1.5 var(--sh-mono);
+}
+.fact b {
+  font-size: 0.9375rem;
+  font-weight: 600;
 }
 .fact.total b {
   color: var(--accent);
-  font-size: 1.4rem;
 }
 
 h2 {
-  margin: 2.8rem 0 0.9rem;
-  font-size: 1.3rem;
-  letter-spacing: -0.015em;
+  margin: 2.75rem 0 0.875rem;
+  font-size: 1.375rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
 }
+/* A thing that stands on its own — the flights, the stay — is a card: an edge and a corner */
 .panel {
+  overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 1rem;
+  border-radius: var(--round);
   background: var(--card);
-  box-shadow: var(--shade);
 }
 
-/* Flights: a leg reads like a boarding pass line */
+/* Flights: a leg reads like a line of a boarding pass */
 .leg {
   display: grid;
   grid-template-columns: 5.5rem 1fr auto;
   gap: 0.2rem 1rem;
   align-items: center;
-  padding: 1rem 1.2rem;
+  padding: 1rem 1.25rem;
 }
 .leg + .leg {
-  border-top: 1px dashed var(--line);
+  border-top: 1px solid var(--line);
 }
 .leg .when {
-  font-size: 0.82rem;
   color: var(--muted);
+  font-size: 0.8125rem;
   line-height: 1.3;
 }
 .leg .when b {
   display: block;
   color: var(--fg);
-  font-size: 0.95rem;
+  font-size: 0.9375rem;
 }
 .hop {
   display: flex;
   align-items: center;
-  gap: 0.8rem;
+  gap: 0.875rem;
   min-width: 0;
 }
 .hop .end b {
   display: block;
-  font-size: 1.35rem;
+  font-size: 1.5rem;
   line-height: 1.1;
+  letter-spacing: -0.03em;
   font-variant-numeric: tabular-nums;
 }
 .hop .end span {
-  font-size: 0.8rem;
   color: var(--muted);
-  letter-spacing: 0.04em;
+  font: 400 12px / 1.5 var(--sh-mono);
 }
 .hop .line {
   flex: 1;
   min-width: 2.5rem;
-  text-align: center;
-  font-size: 0.75rem;
-  color: var(--muted);
-  border-bottom: 1px solid var(--line);
-  padding-bottom: 0.2rem;
-  white-space: nowrap;
   overflow: hidden;
+  padding-bottom: 0.2rem;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font: 400 11.5px / 1.5 var(--sh-mono);
+  text-align: center;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .leg .who {
-  text-align: right;
-  font-size: 0.85rem;
   color: var(--muted);
+  font-size: 0.8125rem;
+  text-align: right;
 }
 .panel-foot {
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
   gap: 0.4rem 1rem;
-  padding: 0.75rem 1.2rem;
+  padding: 0.75rem 1.25rem;
   border-top: 1px solid var(--line);
-  font-size: 0.9rem;
+  background: var(--callout);
+  font-size: 0.875rem;
 }
 
-/* The stay */
+/* The stay, as a bookmark: its picture beside what it is */
 .stay {
   display: grid;
-  grid-template-columns: minmax(0, 15rem) 1fr;
-  overflow: hidden;
+  grid-template-columns: minmax(0, 14rem) 1fr;
 }
 .stay.bare {
   grid-template-columns: 1fr;
@@ -228,168 +225,213 @@ h2 {
 .stay figure img {
   width: 100%;
   height: 100%;
-  min-height: 11rem;
+  min-height: 10rem;
   object-fit: cover;
 }
 .stay .body {
-  padding: 1.1rem 1.3rem;
+  padding: 1rem 1.25rem 1.125rem;
 }
 .stay h3 {
-  margin: 0 0 0.2rem;
-  font-size: 1.15rem;
+  margin: 0 0 0.125rem;
+  font-size: 1.125rem;
+  letter-spacing: -0.02em;
 }
 .stay p {
-  margin: 0.4rem 0 0;
+  margin: 0.375rem 0 0;
+  font-size: 0.9375rem;
 }
 .price {
   font-weight: 650;
   font-variant-numeric: tabular-nums;
 }
 
-/* Weather, one chip a day */
-.weather {
-  display: flex;
-  gap: 0.5rem;
-  overflow-x: auto;
-  padding-bottom: 0.2rem;
-}
-.weather div {
-  flex: 1 0 7.5rem;
-  padding: 0.7rem 0.9rem;
-  border-radius: 0.8rem;
-  background: var(--card);
+/* A map link is a button, not a word among words: a pin, and the words the page gives it */
+a[href^="https://www.google.com/maps"] {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3125rem;
+  height: 1.75rem;
+  padding: 0 0.625rem 0 0.5rem;
   border: 1px solid var(--line);
-  font-size: 0.88rem;
-}
-.weather b {
-  display: block;
-  font-size: 0.8rem;
-  color: var(--muted);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--fg);
+  font-size: 0.8125rem;
   font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+}
+a[href^="https://www.google.com/maps"]::before {
+  content: "";
+  flex: none;
+  width: 0.9375rem;
+  height: 0.9375rem;
+  background: currentColor;
+  mask:
+    center / contain no-repeat
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21Z'/%3E%3Ccircle cx='12' cy='9.5' r='2.5'/%3E%3C/svg%3E");
+}
+a[href^="https://www.google.com/maps"]:hover {
+  background: var(--callout);
+}
+/* The day's whole route: the one map link that goes somewhere further, so it reads as the
+   day's own button, with a route in place of the pin */
+a[href^="https://www.google.com/maps/dir/"]::before {
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='6' cy='19' r='2.5'/%3E%3Ccircle cx='18' cy='5' r='2.5'/%3E%3Cpath d='M8.5 19H17a3.5 3.5 0 0 0 0-7H7a3.5 3.5 0 0 1 0-7h8.5'/%3E%3C/svg%3E");
 }
 
-/* Day by day: the page's reason to exist */
+/* Weather, one pill a day */
+.weather {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.weather div {
+  padding: 0.3125rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 0.875rem;
+}
+.weather b {
+  margin-right: 0.5rem;
+  color: var(--muted);
+  font: 400 12px / 1.6 var(--sh-mono);
+}
+
+/* Day by day: the page's reason to exist. A day is its heading over a line through its
+   stops, a dot at each in the maker's colour; not a box. */
 .day {
-  margin: 0 0 1.4rem;
-  overflow: hidden;
+  margin: 0 0 2.5rem;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
 }
 .day > header {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 0.2rem 0.9rem;
-  padding: 1rem 1.2rem 0.8rem;
-  border-bottom: 1px solid var(--line);
+  gap: 0.375rem 0.75rem;
+  padding: 0 0 0.375rem;
 }
 .day .n {
-  font-size: 0.8rem;
-  font-weight: 650;
-  color: var(--accent);
+  padding: 0.125rem 0.625rem;
+  border-radius: 999px;
   background: var(--accent-soft);
-  border-radius: 99px;
-  padding: 0.1rem 0.6rem;
+  color: var(--accent);
+  font-size: 0.8125rem;
+  font-weight: 600;
 }
 .day h3 {
-  margin: 0;
-  font-size: 1.12rem;
   flex: 1 1 12rem;
+  margin: 0;
+  font-size: 1.25rem;
+  letter-spacing: -0.025em;
 }
 .day .meta {
-  font-size: 0.85rem;
   color: var(--muted);
-}
-.day .meta .sky {
-  color: var(--sun);
+  font: 400 12px / 1.6 var(--sh-mono);
 }
 .stops {
-  list-style: none;
   margin: 0;
-  padding: 0.4rem 0;
+  padding: 0;
+  list-style: none;
 }
 .stop {
   display: grid;
-  grid-template-columns: 3.6rem 1fr 9.5rem;
-  gap: 0.9rem;
-  padding: 0.75rem 1.2rem;
-  position: relative;
+  grid-template-columns: 3.5rem 1fr 10.5rem;
+  gap: 1rem;
 }
-.stop + .stop {
-  border-top: 1px solid var(--soft);
+.stop.bare {
+  grid-template-columns: 3.5rem 1fr;
 }
 .stop time {
-  font-size: 0.88rem;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  padding-top: 0.1rem;
+  padding-top: 0.875rem;
+  font: 500 13px / 1.4 var(--sh-mono);
+}
+/* The day's line: a hairline through the stops, a dot at each */
+.stop > div {
+  position: relative;
+  padding: 0.75rem 0 1.125rem 1.375rem;
+  border-left: 2px solid var(--line);
+}
+.stop > div::before {
+  content: "";
+  position: absolute;
+  top: 1.1rem;
+  left: -7px;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--sh-maker);
+  border-radius: 50%;
+  background: var(--bg);
 }
 .stop h4 {
   margin: 0;
-  font-size: 1rem;
+  font-size: 1.0625rem;
+  letter-spacing: -0.01em;
 }
 .stop p {
-  margin: 0.15rem 0 0;
-  font-size: 0.93rem;
-}
-.stop .links {
-  margin-top: 0.3rem;
-  font-size: 0.83rem;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.2rem 0.9rem;
+  margin: 0.125rem 0 0;
+  font-size: 0.9375rem;
 }
 .stop .tip {
-  margin-top: 0.35rem;
-  font-size: 0.85rem;
+  margin-top: 0.375rem;
   color: var(--muted);
+  font-size: 0.875rem;
+}
+.stop .links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem 0.75rem;
+  margin-top: 0.625rem;
+  font-size: 0.875rem;
+}
+.stop .cost {
+  color: var(--muted);
+  font: 400 12px / 1.8 var(--sh-mono);
 }
 .stop figure {
   margin: 0;
+  padding-top: 0.75rem;
 }
 .stop figure img {
-  width: 9.5rem;
-  height: 6.6rem;
-  object-fit: cover;
-  border-radius: 0.6rem;
+  width: 10.5rem;
+  height: 7rem;
+  border-radius: 10px;
   background: var(--soft);
+  object-fit: cover;
 }
 .stop figcaption {
-  margin-top: 0.2rem;
+  margin-top: 0.25rem;
+  color: var(--muted);
   font-size: 0.66rem;
   line-height: 1.3;
-  color: var(--muted);
   overflow-wrap: anywhere;
 }
 .stop figcaption a {
   color: inherit;
-}
-.stop.bare {
-  grid-template-columns: 3.6rem 1fr;
-}
-.stop .cost {
-  font-size: 0.83rem;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
+  text-decoration: none;
 }
 .day > footer {
-  padding: 0.7rem 1.2rem;
-  border-top: 1px solid var(--line);
-  font-size: 0.88rem;
+  padding: 0.25rem 0 0 4.5rem;
 }
 
-/* Costs */
+/* Costs: rows with a hairline between, the total in weight */
 table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.95rem;
+  font-size: 0.9375rem;
 }
 th,
 td {
-  padding: 0.6rem 1.2rem;
-  text-align: left;
+  padding: 0.75rem 0;
   border-bottom: 1px solid var(--line);
+  text-align: left;
   vertical-align: top;
 }
 td.num {
+  padding-left: 1rem;
   text-align: right;
   white-space: nowrap;
 }
@@ -398,30 +440,38 @@ td small {
 }
 tr.total td {
   border-bottom: 0;
+  font-size: 1.125rem;
   font-weight: 650;
-  font-size: 1.05rem;
 }
 tr.total td.num {
   color: var(--accent);
 }
-.fx {
-  padding: 0.7rem 1.2rem;
-  border-top: 1px solid var(--line);
-  font-size: 0.85rem;
-  color: var(--muted);
+/* Around the costs and the notes, no box: the words stand on the paper */
+h2 + .panel:has(table),
+h2 + .panel:has(.notes) {
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
 }
-
+.fx {
+  padding: 0.5rem 0 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+/* What to know before going, set apart the way a note is: a quiet ground */
 .notes {
   margin: 0;
-  padding: 1rem 1.2rem 1rem 2.4rem;
+  padding: 1rem 1.25rem 1rem 2.5rem;
+  border-radius: var(--round);
+  background: var(--callout);
 }
 .notes li + li {
-  margin-top: 0.35rem;
+  margin-top: 0.375rem;
 }
 .sources {
-  margin-top: 3rem;
-  font-size: 0.8rem;
+  margin-top: 2.5rem;
   color: var(--muted);
+  font-size: 0.8125rem;
 }
 .sources a {
   color: inherit;
@@ -430,6 +480,7 @@ tr.total td.num {
 @media (max-width: 40rem) {
   .leg {
     grid-template-columns: 1fr auto;
+    padding: 0.875rem 1rem;
   }
   .leg .when {
     grid-column: 1 / -1;
@@ -438,39 +489,43 @@ tr.total td.num {
     display: inline;
     margin-right: 0.4rem;
   }
+  .panel-foot {
+    padding: 0.75rem 1rem;
+  }
   .stay {
     grid-template-columns: 1fr;
   }
   .stay figure img {
-    height: 12rem;
+    height: 11rem;
   }
-  .stop {
-    grid-template-columns: 3.1rem 1fr;
+  .stop,
+  .stop.bare {
+    grid-template-columns: 3rem 1fr;
+    gap: 0.75rem;
   }
   .stop figure {
     grid-column: 2;
+    padding: 0 0 1rem 1.375rem;
+    border-left: 2px solid var(--line);
   }
   .stop figure img {
     width: 100%;
     height: 9rem;
   }
-  th,
-  td {
-    padding: 0.55rem 0.9rem;
+  .day > footer {
+    padding-left: 3.75rem;
+  }
+  .fact {
+    grid-template-columns: 7.5rem 1fr;
   }
 }
 @media print {
-  body {
-    background: #fff;
-  }
-  .panel {
-    box-shadow: none;
-    break-inside: avoid;
-  }
-  .day {
-    break-inside: auto;
-  }
+  .panel,
   .stop {
     break-inside: avoid;
+  }
+  .notes,
+  .panel-foot {
+    print-color-adjust: exact;
   }
 }

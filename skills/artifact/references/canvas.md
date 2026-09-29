@@ -116,11 +116,10 @@ CSS px, 96 to an inch. Give a board the size of the thing it stands for:
   against dense and quick, one thing at a time against everything at once — never five
   shades of one. A finished screen in each is waste; a sketch is enough to choose by.
   Nobody to ask: commit to one nameable direction, say so, and build.
-- **Then commit to a small system.** One to three typefaces, a display face with
-  character over a plain body face — never a default that looks like every generated
-  page. A toned ground rather than pure white or black. Zero to two accents, and the one
-  that means "chosen" is used for that alone. Four or five type sizes for the whole
-  board, repeated; emphasis by weight, never by a new size.
+- **Then commit to a small system.** One to three typefaces — never a default that
+  looks like every generated page. Zero to two accents, and the one that means "chosen"
+  is used for that alone. Four or five type sizes for the whole board, repeated; emphasis
+  by weight, never by a new size.
 - **Root it in what is already there.** A hi-fi board starts from the real thing: the
   codebase and its stylesheet, the brand's files, a page it was shown, a screenshot the
   user gave. Lift exact values — colours, type, paddings, radii, control heights — and

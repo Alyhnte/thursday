@@ -35,11 +35,6 @@
   --sh-line: rgb(13 13 13 / 10%);
   --sh-soft: #f9f9f9;
   --sh-sunk: #ededed;
-  /* For a kind that lays its words on cards (a brief, a trip): the app's grey ground and the
-     cards on it — white on grey by day, a lighter card on black at night (app/globals.css).
-     wear.mjs measures the maker's colour against these two. */
-  --sh-ground: #f3f3f3;
-  --sh-card: #ffffff;
   --sh-brand: #0169cc;
   --sh-bad: #dc2626;
   --sh-good: #15803d;
@@ -62,8 +57,6 @@
     --sh-line: rgb(255 255 255 / 10%);
     --sh-soft: #131313;
     --sh-sunk: #1c1c1c;
-    --sh-ground: #0d0d0d;
-    --sh-card: #161616;
     --sh-brand: #0a84ff;
     --sh-bad: #ef4444;
     --sh-good: #4ade80;
@@ -81,8 +74,6 @@
   --sh-line: rgb(255 255 255 / 10%);
   --sh-soft: #131313;
   --sh-sunk: #1c1c1c;
-  --sh-ground: #0d0d0d;
-  --sh-card: #161616;
   --sh-brand: #0a84ff;
   --sh-bad: #ef4444;
   --sh-good: #4ade80;
@@ -107,26 +98,47 @@ body {
   text-wrap: pretty;
 }
 
-/* Who made it, at the end of a page that is read: the maker's face and name. A page made
-   outside a bot's job names nobody and shows none. */
+/* Who made it, at the end of what is read, in the flow of the page: the maker as the app
+   shows who did something — its face and name in an edged pill — and the words after it.
+   A page made outside a bot's job names nobody and shows none. */
 .sh-sign {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  padding: 2rem 1rem 2.5rem;
-  color: var(--sh-ink-3);
-  font: 500 11.5px / 1.4 var(--sh-mono);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  padding: 3rem 1rem 3.5rem;
+  /* Not the muted grey: that clears 4.5:1 on white paper only, and a sign may end a grey ground */
+  color: var(--sh-ink-2);
+  font-size: 13px;
+  line-height: 1.4;
 }
-.sh-sign .sh-mark {
+.sh-by {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4375rem;
+  height: 30px;
+  padding: 0 0.75rem 0 0.4375rem;
+  border: 1px solid var(--sh-line);
+  border-radius: 999px;
+  color: var(--sh-ink);
+}
+.sh-by .sh-mark {
   width: 18px;
   height: 18px;
 }
-.sh-sign b {
-  color: var(--sh-ink-2);
+.sh-by b {
   font-weight: 600;
+}
+.sh-sign a {
+  color: inherit;
+  text-decoration-color: var(--sh-line);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+.sh-sign a:hover {
+  color: var(--sh-ink);
+  text-decoration-color: currentcolor;
 }
 .sh-sign[data-bot=""] {
   display: none;
@@ -458,7 +470,8 @@ body {
 /* A page drawn as its own face, in a file's tile (`?face`, shell/theme.js): what it holds
    and nothing of the frame it is opened in. Each kind hides its own parts too. */
 .sh-face .sh-head,
-.sh-face .sh-pane {
+.sh-face .sh-pane,
+.sh-face .sh-sign {
   display: none !important;
 }
 
@@ -475,8 +488,6 @@ body {
     --sh-line: rgb(13 13 13 / 10%);
     --sh-soft: #f9f9f9;
     --sh-sunk: #ededed;
-    --sh-ground: #f3f3f3;
-    --sh-card: #ffffff;
     --sh-brand: #0169cc;
     --sh-good: #15803d;
     --sh-warn: #b45309;

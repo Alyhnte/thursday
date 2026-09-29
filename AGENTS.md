@@ -17,6 +17,7 @@ This is a public MIT repository (`github.com/cgoinglove/thursday`, published to 
   data — memory, Settings, a `*.local.*` file — never code, prompt text, a test fixture, a word
   list or a default. A default, example, source, site or currency works for a stranger anywhere;
   what serves one script or region, such as a font, is added beside the others, never instead.
+  The author credit its LICENSE carries is the project's, not one user's.
 - **Anything private is named `*.local.*`.** `.gitignore` keeps that shape out of commits. Never
   `git add -f` one.
 - **No heuristic does the model's job.** No phrase matching, per-language word lists or timers that

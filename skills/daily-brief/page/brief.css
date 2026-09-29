@@ -1,12 +1,11 @@
 /* The brief's own look, under the shell's head and type (artifact shell.css, put on by
-   page.mjs): the app's grey ground with white cards, the day said in one line, what else
-   there is at a glance in pills, the lead story on a card of its own and the rest as rows
-   by topic. One column on a phone, two on a wide screen; light, dark and print. The one
-   colour is the maker's (--sh-maker). Everything is named `b-` so the shell's names and the
-   brief's never meet. */
+   page.mjs): a page to read in one column on the paper. The day said in one line, what else
+   there is at a glance in pills, the lead story as the one card, and the rest as rows by
+   topic with a hairline between; groups split by space, not boxes. Light, dark and print.
+   The one colour is the maker's (--sh-maker). Everything is named `b-` so the shell's names
+   and the brief's never meet. */
 :root {
-  /* Words that step back, off the app's grey ladder (app/globals.css); the ground and the
-     cards are the shell's (--sh-ground, --sh-card) */
+  /* Words that step back, off the app's grey ladder (app/globals.css) */
   --b-2: #5d5d5d;
   --b-3: #767676;
 }
@@ -21,17 +20,14 @@
   --b-3: #8f8f8f;
 }
 
-body {
-  background: var(--sh-ground);
-}
 .b-page {
   display: grid;
-  gap: 14px;
-  max-width: 34rem;
+  gap: 32px;
+  max-width: 42rem;
   margin: 0 auto;
-  padding: 20px 16px 8px;
-  font-size: 15px;
-  line-height: 1.5;
+  padding: 40px 16px 8px;
+  font-size: 16px;
+  line-height: 1.6;
 }
 .b-page :is(h1, h2, h3, p) {
   margin: 0;
@@ -42,6 +38,7 @@ body {
 }
 .b-page a:hover {
   text-decoration: underline;
+  text-decoration-color: var(--sh-maker);
   text-underline-offset: 3px;
 }
 .b-page img {
@@ -50,35 +47,32 @@ body {
   height: 100%;
   object-fit: cover;
 }
+/* A label is small, in the mono type and as written, the way the app labels a thing */
 .b-mono {
   font-family: var(--sh-mono);
-  letter-spacing: 0.04em;
 }
 
 /* The day, and what it is about in one line */
 .b-mast {
   display: grid;
-  gap: 8px;
+  gap: 12px;
 }
 .b-day {
   color: var(--b-3);
-  font: 500 11px / 1.4 var(--sh-mono);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font: 400 12.5px / 1.4 var(--sh-mono);
 }
 .b-lede {
-  font-size: 27px;
-  font-weight: 750;
-  line-height: 1.12;
-  letter-spacing: -0.032em;
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.035em;
   text-wrap: balance;
 }
 
 /* At a glance: the weather and the markets, a pill each, in a row that scrolls on a phone */
 .b-side {
   display: grid;
-  gap: 12px;
-  align-content: end;
+  gap: 14px;
 }
 .b-glance {
   display: flex;
@@ -93,10 +87,9 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 11px;
+  padding: 5px 11px;
   border: 1px solid var(--sh-line);
   border-radius: 999px;
-  background: var(--sh-card);
   font-size: 12.5px;
   white-space: nowrap;
 }
@@ -110,7 +103,7 @@ body {
 }
 .b-pill .b-mono {
   color: var(--b-3);
-  font-size: 11px;
+  font-size: 11.5px;
 }
 .b-pill .b-up {
   color: var(--sh-good);
@@ -190,13 +183,7 @@ body {
   font-size: 14px;
 }
 
-/* A card: the lead, and each topic's rows */
-.b-card {
-  overflow: hidden;
-  border: 1px solid var(--sh-line);
-  border-radius: 22px;
-  background: var(--sh-card);
-}
+/* A story's parts: its picture, its topic, what it says, why it matters, where it is from */
 .b-pic {
   position: relative;
   overflow: hidden;
@@ -208,7 +195,7 @@ body {
   height: 100%;
   padding: 8px;
   color: var(--b-3);
-  font: 500 11px / 1.3 var(--sh-mono);
+  font: 400 11px / 1.3 var(--sh-mono);
   text-align: center;
   overflow-wrap: anywhere;
 }
@@ -220,111 +207,103 @@ body {
   border-radius: 999px;
   background: rgb(0 0 0 / 50%);
   color: #fff;
-  font: 500 10px / 1.4 var(--sh-mono);
-  letter-spacing: 0.02em;
+  font: 400 10px / 1.4 var(--sh-mono);
 }
 .b-kicker {
   color: var(--sh-maker-text);
-  font: 600 10.5px / 1.4 var(--sh-mono);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  font: 500 12.5px / 1.4 var(--sh-mono);
 }
 .b-sum {
   color: var(--b-2);
-  font-size: 14px;
-  line-height: 1.5;
+  font-size: 15px;
+  line-height: 1.6;
 }
+/* Why it matters: a line of its own, led by its name in weight */
 .b-why {
-  display: flex;
-  gap: 8px;
-  font-size: 13.5px;
-  line-height: 1.45;
-}
-.b-why::before {
-  content: "";
-  flex: none;
-  width: 3px;
-  border-radius: 2px;
-  background: var(--sh-maker);
+  font-size: 14px;
+  line-height: 1.55;
 }
 .b-why b {
   font-weight: 650;
 }
 .b-src {
   color: var(--b-3);
-  font: 500 10.5px / 1.4 var(--sh-mono);
-  letter-spacing: 0.03em;
-}
-.b-src a {
-  text-decoration: underline;
-  text-underline-offset: 2px;
+  font: 400 11.5px / 1.4 var(--sh-mono);
 }
 
+/* The lead: the one card on the page, its picture over its words */
+.b-card.b-lead {
+  overflow: hidden;
+  border: 1px solid var(--sh-line);
+  border-radius: 16px;
+}
 .b-lead .b-pic {
-  aspect-ratio: 16 / 10;
+  aspect-ratio: 16 / 9;
 }
 .b-lead .b-body {
   display: grid;
-  gap: 8px;
-  padding: 14px 16px 16px;
+  gap: 10px;
+  padding: 20px 22px 22px;
 }
 .b-lead h2 {
-  font-size: 21px;
+  font-size: 25px;
   font-weight: 700;
-  line-height: 1.18;
-  letter-spacing: -0.022em;
+  line-height: 1.15;
+  letter-spacing: -0.03em;
   text-wrap: balance;
 }
+.b-lead .b-sum {
+  font-size: 15.5px;
+}
 
-/* A topic: its name, and its stories as rows with a small picture */
+/* A topic: its name, and its stories as rows with a hairline between and a small picture */
 .b-topics {
   display: grid;
-  gap: 14px;
+  gap: 40px;
 }
 .b-topic {
   display: grid;
-  gap: 8px;
+  gap: 4px;
   break-inside: avoid;
 }
 .b-topic > h2 {
   display: flex;
+  align-items: baseline;
   gap: 8px;
-  padding-left: 4px;
+  font-size: 17px;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+}
+.b-topic > h2 span {
   color: var(--b-3);
-  font: 500 11px / 1.4 var(--sh-mono);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  font: 400 12px / 1 var(--sh-mono);
 }
 .b-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 72px;
-  gap: 12px;
-  padding: 14px 16px;
-}
-.b-row + .b-row {
+  grid-template-columns: minmax(0, 1fr) 88px;
+  gap: 18px;
+  padding: 18px 0;
   border-top: 1px solid var(--sh-line);
 }
 .b-row h3 {
-  font-size: 15px;
+  font-size: 17.5px;
   font-weight: 650;
   line-height: 1.3;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
 }
 .b-row .b-sum {
-  margin-top: 3px;
-  font-size: 13px;
+  margin-top: 6px;
 }
 .b-row .b-why {
-  margin-top: 6px;
-  font-size: 12.5px;
+  margin-top: 10px;
 }
 .b-row .b-src {
-  margin-top: 6px;
+  margin-top: 10px;
 }
 .b-row .b-pic {
-  width: 72px;
-  height: 72px;
-  border-radius: 14px;
+  width: 88px;
+  height: 88px;
+  border-radius: 12px;
 }
 .b-row .b-credit {
   display: none;
@@ -332,75 +311,48 @@ body {
 
 /* The end: what it was made from, and who made it (shell .sh-sign) */
 .b-made {
-  padding-top: 10px;
   color: var(--b-3);
   font-size: 12px;
   text-align: center;
 }
 
-/* A wide screen: the day beside what is at a glance, the lead's picture beside its words,
-   the topics in two columns */
+/* A wide screen keeps the one column; the type and the pictures take a step up */
 @media (min-width: 48rem) {
   .b-page {
-    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
-    gap: 18px 28px;
-    max-width: 66rem;
-    padding: 36px 28px 8px;
-  }
-  .b-mast,
-  .b-side {
-    align-self: end;
+    gap: 36px;
+    padding-top: 56px;
   }
   .b-lede {
-    font-size: 38px;
-    line-height: 1.08;
-  }
-  .b-glance {
-    flex-wrap: wrap;
-    margin: 0;
-    padding: 0;
-    overflow: visible;
-  }
-  .b-lead,
-  .b-topics,
-  .b-made {
-    grid-column: 1 / -1;
-  }
-  .b-lead {
-    display: grid;
-    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
-  }
-  .b-lead .b-pic {
-    aspect-ratio: auto;
-    min-height: 100%;
+    font-size: 40px;
+    line-height: 1.06;
   }
   .b-lead .b-body {
-    align-content: center;
-    gap: 10px;
-    padding: 28px 30px;
+    gap: 12px;
+    padding: 24px 28px 28px;
   }
   .b-lead h2 {
     font-size: 30px;
-    line-height: 1.1;
-    letter-spacing: -0.03em;
-  }
-  .b-lead .b-sum {
-    font-size: 15px;
-  }
-  .b-topics {
-    display: block;
-    columns: 2;
-    column-gap: 18px;
-  }
-  .b-topic {
-    margin-bottom: 18px;
   }
   .b-row {
-    grid-template-columns: minmax(0, 1fr) 92px;
+    grid-template-columns: minmax(0, 1fr) 120px;
+    gap: 22px;
+    padding: 22px 0;
   }
   .b-row .b-pic {
-    width: 92px;
-    height: 92px;
+    width: 120px;
+    height: 120px;
+  }
+}
+/* On a phone the picture steps back so the words keep their width */
+@media (max-width: 30rem) {
+  .b-row {
+    grid-template-columns: minmax(0, 1fr) 68px;
+    gap: 14px;
+    padding: 16px 0;
+  }
+  .b-row .b-pic {
+    width: 68px;
+    height: 68px;
   }
 }
 
@@ -413,9 +365,6 @@ body {
     --b-2: #5d5d5d;
     --b-3: #767676;
   }
-  body {
-    background: none;
-  }
   .b-page {
     max-width: none;
     padding: 0;
@@ -426,8 +375,8 @@ body {
   .b-listen {
     display: none;
   }
-  .b-card,
-  .b-topic {
+  .b-lead,
+  .b-row {
     break-inside: avoid;
   }
 }

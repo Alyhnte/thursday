@@ -316,7 +316,7 @@ const deckSchema = z.object({
     .enum(THEMES)
     .nullish()
     .describe(
-      "forest (deep green on paper, serif headings), sea (blue, sans), clay (terracotta on warm paper, serif) or ink (gold on near-black, sans). Null keeps the deck's own; a new one starts in forest.",
+      "forest (deep green on white), sea (blue on white), clay (terracotta on white) or ink (black and white). Null keeps the deck's own; a new one starts in forest.",
     ),
   revision: z
     .string()

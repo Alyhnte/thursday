@@ -634,30 +634,31 @@ function stackedChart({ labels, series, fmt, share, size, locale }) {
 
 const STYLE = `<style id="chart-style">
 .chart{margin:1.5rem 0 2rem}
-.chart-title{margin:0 0 .15rem;font-weight:600}
-.chart-sub{margin:0 0 .6rem;font-size:.85rem;color:var(--muted,#71717a)}
-.chart-svg{display:block;width:100%;height:auto;overflow:visible;border-radius:0;font:${FONT}px ui-sans-serif,system-ui,-apple-system,sans-serif;font-variant-numeric:tabular-nums;touch-action:pan-y}
-.chart-svg .grid{stroke:var(--line,#e4e4e7);stroke-width:1}
-.chart-svg .grid.base,.chart-svg .zero{stroke:var(--muted,#71717a);stroke-dasharray:3 3}
-.chart-svg .tick,.chart-svg .mark-label{fill:var(--muted,#71717a)}
-.chart-svg .label,.chart-svg .value{fill:var(--fg,#18181b)}
-.chart-svg .quiet-text{fill:var(--muted,#71717a)}
-.chart-svg .mark{stroke:var(--muted,#71717a);stroke-dasharray:2 3}
+.chart-title{margin:0 0 .2rem;font-weight:650;letter-spacing:-.015em}
+.chart-sub{margin:0 0 .6rem;font-size:.85rem;color:var(--muted,#767676)}
+.chart-svg{display:block;width:100%;height:auto;overflow:visible;border-radius:0;font:${FONT}px var(--sh-font,ui-sans-serif,system-ui,-apple-system,sans-serif);font-variant-numeric:tabular-nums;touch-action:pan-y}
+.chart-svg .grid{stroke:var(--line,#e7e7e7);stroke-width:1}
+.chart-svg .grid.base,.chart-svg .zero{stroke:var(--muted,#767676);stroke-dasharray:3 3}
+.chart-svg .tick,.chart-svg .mark-label{fill:var(--muted,#767676)}
+.chart-svg .label,.chart-svg .value{fill:var(--fg,#0d0d0d)}
+.chart-svg .quiet-text{fill:var(--muted,#767676)}
+.chart-svg .mark{stroke:var(--muted,#767676);stroke-dasharray:2 3}
 .chart-svg .mark-label{font-size:11px}
 .chart-svg .line{fill:none;stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
 .chart-svg .end{font-weight:600}
-.chart-svg .c1{--c:#2563eb}.chart-svg .c2{--c:#d97706}.chart-svg .c3{--c:#059669}.chart-svg .c4{--c:#db2777}.chart-svg .c5{--c:#7c3aed}.chart-svg .c6{--c:#64748b}
-.chart-svg .quiet{--c:color-mix(in srgb,var(--muted,#71717a) 45%,transparent)}
+.chart-svg .c1{--c:#2a78d6}.chart-svg .c2{--c:#eb6834}.chart-svg .c3{--c:#1baf7a}.chart-svg .c4{--c:#eda100}.chart-svg .c5{--c:#e87ba4}.chart-svg .c6{--c:#008300}
+.chart-svg .quiet{--c:color-mix(in srgb,var(--muted,#767676) 45%,transparent)}
 .chart-svg .line{stroke:var(--c)}.chart-svg .dot,.chart-svg .bar{fill:var(--c)}.chart-svg .end{fill:var(--c)}
 .chart-svg .slice{fill:none;stroke:var(--c)}.chart-svg .part{fill:#fff;font-weight:600}
-.chart-svg .hover line{stroke:var(--muted,#71717a)}
-.chart-svg .hover rect{fill:var(--bg,#fff);stroke:var(--line,#e4e4e7)}
-.chart-svg .hover text{fill:var(--fg,#18181b);font-size:12px}
+.chart-svg .hover line{stroke:var(--muted,#767676)}
+.chart-svg .hover rect{fill:var(--bg,#fff);stroke:var(--line,#e7e7e7)}
+.chart-svg .hover text{fill:var(--fg,#0d0d0d);font-size:12px}
 .chart-svg.narrow{display:none}
 @media (max-width:560px){.chart-svg.wide{display:none}.chart-svg.narrow{display:block}}
-.chart .source{margin:.4rem 0 .6rem;font-size:.85rem;color:var(--muted,#71717a)}
+.chart .source{margin:.5rem 0 .6rem;color:var(--muted,#767676);font:400 12px/1.5 var(--sh-mono,ui-monospace,monospace)}
 .chart details{margin:0;font-size:.9rem}
-@media (prefers-color-scheme:dark){.chart-svg .c1{--c:#60a5fa}.chart-svg .c2{--c:#fbbf24}.chart-svg .c3{--c:#34d399}.chart-svg .c4{--c:#f472b6}.chart-svg .c5{--c:#a78bfa}.chart-svg .c6{--c:#94a3b8}}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .chart-svg .c1{--c:#3987e5}:root:not([data-theme="light"]) .chart-svg .c2{--c:#d95926}:root:not([data-theme="light"]) .chart-svg .c3{--c:#199e70}:root:not([data-theme="light"]) .chart-svg .c4{--c:#c98500}:root:not([data-theme="light"]) .chart-svg .c5{--c:#d55181}:root:not([data-theme="light"]) .chart-svg .c6{--c:#008300}}
+:root[data-theme="dark"] .chart-svg .c1{--c:#3987e5}:root[data-theme="dark"] .chart-svg .c2{--c:#d95926}:root[data-theme="dark"] .chart-svg .c3{--c:#199e70}:root[data-theme="dark"] .chart-svg .c4{--c:#c98500}:root[data-theme="dark"] .chart-svg .c5{--c:#d55181}:root[data-theme="dark"] .chart-svg .c6{--c:#008300}
 </style>`;
 
 // Reads every line chart's own data off its svg: a readout follows the pointer
@@ -744,9 +745,9 @@ function writePicture(path, { svg, title, sub, source }) {
     .join(" ");
   const file = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="img" aria-label="${esc(title)}">
 <style>
-.pic{font:${FONT}px ui-sans-serif,system-ui,-apple-system,sans-serif;font-variant-numeric:tabular-nums}
-.pic-title{font-size:16px;font-weight:600;fill:#18181b}
-.pic-sub,.pic-source{font-size:12px;fill:#71717a}
+.pic{font:${FONT}px Geist,ui-sans-serif,system-ui,-apple-system,sans-serif;font-variant-numeric:tabular-nums}
+.pic-title{font-size:16px;font-weight:650;fill:#0d0d0d}
+.pic-sub,.pic-source{font-size:12px;fill:#767676}
 ${style}
 </style>
 <g class="pic">

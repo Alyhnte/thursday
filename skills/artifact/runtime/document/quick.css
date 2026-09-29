@@ -18,18 +18,25 @@
   --good: var(--sh-good);
   --warn: var(--sh-warn);
   --bad: var(--sh-bad);
+  /* A quiet ground for a note set apart, a step off the paper in either theme */
+  --callout: color-mix(in srgb, var(--sh-ink) 4.5%, var(--sh-paper));
+  --round: 12px;
 }
 
 body {
-  display: flex;
-  flex-direction: column;
   height: auto;
   min-height: 100%;
 }
+/* The contents beside the column that is read: the paper, then who made it, in the flow, so
+   the signature comes after the last line and never stands over the page */
 .pg-page {
-  flex: 1;
   display: flex;
   align-items: flex-start;
+  min-height: calc(100vh - var(--sh-head));
+}
+.pg-read {
+  flex: 1;
+  min-width: 0;
 }
 
 /* The contents, drawn from the headings (quick.js), marking the section being read. The
@@ -37,10 +44,12 @@ body {
 .pg-toc {
   position: sticky;
   top: var(--sh-head);
-  width: 212px;
+  width: 232px;
   /* The whole height under the head, as a pane is, however short the list */
   height: calc(100vh - var(--sh-head));
-  padding: 1rem 0.75rem;
+  padding: 2.5rem 0.75rem 1rem 1rem;
+  border-right: 0;
+  background: transparent;
   font-size: 13px;
   line-height: 1.5;
 }
@@ -64,7 +73,7 @@ body {
   white-space: nowrap;
 }
 .pg-toc a:hover {
-  background: var(--sh-sunk);
+  background: var(--sh-soft);
   color: var(--sh-ink);
 }
 .pg-toc a.pg-on {
@@ -89,6 +98,8 @@ body.pg-toc-shut .pg-toc {
     left: 0;
     bottom: 0;
     height: auto;
+    border-right: 1px solid var(--sh-line);
+    background: var(--sh-paper);
     box-shadow: var(--sh-shadow);
   }
 }
@@ -98,7 +109,7 @@ body.pg-toc-shut .pg-toc {
   min-width: 0;
   max-width: 46rem;
   margin: 0 auto;
-  padding: 2.5rem 1.5rem 6rem;
+  padding: 3rem 1.5rem 0;
   color: var(--fg);
   font: 16px / 1.7 var(--sh-font);
 }
@@ -112,22 +123,33 @@ body.pg-toc-shut .pg-toc {
 .sh-face .pg-paper {
   padding-top: 1.75rem;
 }
+/* The signature ends the column the paper is read in */
+.pg-read > .sh-sign {
+  max-width: 46rem;
+  margin: 0 auto;
+}
 
+/* Headings as the app sets them: bold, tight, and the words under them a quiet grey */
 :where(.pg-paper) h1 {
-  margin: 0 0 0.4rem;
-  font-size: 2rem;
-  line-height: 1.2;
-  letter-spacing: -0.02em;
+  margin: 0 0 0.75rem;
+  font-size: 2.375rem;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.035em;
+  text-wrap: balance;
 }
 :where(.pg-paper) h2 {
-  margin: 2.6rem 0 0.7rem;
-  font-size: 1.3rem;
-  line-height: 1.3;
-  letter-spacing: -0.01em;
+  margin: 3rem 0 0.75rem;
+  font-size: 1.375rem;
+  font-weight: 650;
+  line-height: 1.25;
+  letter-spacing: -0.022em;
 }
 :where(.pg-paper) h3 {
-  margin: 1.8rem 0 0.4rem;
-  font-size: 1.05rem;
+  margin: 1.75rem 0 0.375rem;
+  font-size: 1.0625rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
 }
 :where(.pg-paper) p,
 :where(.pg-paper) ul,
@@ -145,8 +167,11 @@ body.pg-toc-shut .pg-toc {
 :where(.pg-paper) li + li {
   margin-top: 0.25rem;
 }
+/* A link is the ink, underlined in the maker's colour */
 :where(.pg-paper) a {
-  color: var(--accent);
+  color: inherit;
+  text-decoration-color: var(--sh-maker);
+  text-decoration-thickness: 1.5px;
   text-underline-offset: 3px;
 }
 :where(.pg-paper) small,
@@ -174,14 +199,17 @@ body.pg-toc-shut .pg-toc {
   color: var(--muted);
 }
 :where(.pg-paper) blockquote {
-  padding: 0.1rem 0 0.1rem 1rem;
-  border-left: 3px solid var(--line);
-  color: var(--muted);
+  padding: 0.1rem 0 0.1rem 1.1rem;
+  border-left: 2px solid var(--sh-ink);
+  font-size: 1.0625rem;
 }
 :where(.pg-paper) code,
-:where(.pg-paper) pre,
+:where(.pg-paper) pre {
+  font-family: var(--sh-mono);
+}
+/* A figure lines up in the page's own type, each digit as wide as the next */
 :where(.pg-paper) .num {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
 }
 :where(.pg-paper) code {
   padding: 0.1em 0.35em;
@@ -206,23 +234,31 @@ body.pg-toc-shut .pg-toc {
 :where(.pg-paper) .scroll {
   overflow-x: auto;
 }
+/* A table as the app draws one (components/ui/table.tsx): its heads small in the mono type,
+   and a hairline between rows */
 :where(.pg-paper) table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.93rem;
+  font-size: 0.9375rem;
 }
 :where(.pg-paper) th,
 :where(.pg-paper) td {
-  padding: 0.55rem 0.7rem;
+  padding: 0.625rem 0.75rem;
   text-align: left;
   vertical-align: top;
   border-bottom: 1px solid var(--line);
 }
 :where(.pg-paper) th {
-  font-size: 0.78rem;
-  font-weight: 600;
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
   color: var(--muted);
+  font: 400 11px / 1.5 var(--sh-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   white-space: nowrap;
+}
+:where(.pg-paper) tbody tr:last-child td {
+  border-bottom: 0;
 }
 :where(.pg-paper) td.num,
 :where(.pg-paper) th.num {
@@ -230,34 +266,35 @@ body.pg-toc-shut .pg-toc {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+/* The one the page recommends: the maker's colour, faintly */
 :where(.pg-paper) tr.best td {
-  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  background: color-mix(in srgb, var(--sh-maker) 7%, transparent);
 }
 
-/* Over the title, what kind of document this is: Report, Memo, Notes */
+/* Over the title, what kind of document this is: Report, Memo, Notes — small, in the mono
+   type, as written, the way the app labels a thing */
 :where(.pg-paper) .kicker {
-  margin: 0 0 0.5rem;
-  color: var(--accent);
-  font-size: 0.78rem;
-  font-weight: 650;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  margin: 0 0 0.875rem;
+  color: var(--muted);
+  font: 400 13px / 1.4 var(--sh-mono);
 }
 /* Under the title: as of when, by whom, for whom — as chips, on one line. A line of
    words, not a flex row: the editor's caret has no place between a row's pieces. */
 :where(.pg-paper) .byline {
-  margin: 0 0 1.2rem;
+  margin: 0 0 1.5rem;
   color: var(--muted);
   font-size: 0.85rem;
-  line-height: 2.1;
+  line-height: 2.2;
 }
 :where(.pg-paper) .byline .chip {
   margin-right: 0.15rem;
 }
 /* The lead: what the reader should take away, in one or two sentences */
 :where(.pg-paper) .lede {
-  margin-bottom: 2rem;
-  font-size: 1.1rem;
+  margin-bottom: 2.25rem;
+  font-size: 1.1875rem;
+  line-height: 1.55;
+  letter-spacing: -0.01em;
   color: var(--muted);
 }
 
@@ -268,12 +305,12 @@ body.pg-toc-shut .pg-toc {
   /* Not inline-flex: in a page being edited, a caret put beside a flex box lands at
      the start of its words, so what is typed after a chip went in front of it */
   display: inline-block;
-  padding: 0.1rem 0.6rem;
+  padding: 0.125rem 0.625rem;
   border: 1px solid var(--line);
   border-radius: 99px;
-  background: var(--soft);
+  background: var(--bg);
   color: var(--fg);
-  font-size: 0.82rem;
+  font-size: 0.8125rem;
   font-weight: 500;
   line-height: 1.5;
   white-space: nowrap;
@@ -288,7 +325,7 @@ body.pg-toc-shut .pg-toc {
   margin-right: 0.3rem;
   vertical-align: -0.1em;
   background: currentColor;
-  opacity: 0.7;
+  opacity: 0.55;
   mask: center / contain no-repeat;
 }
 :where(.pg-paper) .chip.date::before {
@@ -375,11 +412,10 @@ body.pg-toc-shut .pg-toc {
 /* A section not written yet, or a fact still to come: what stands where it will go */
 :where(.pg-paper) .pending {
   margin: 0 0 1rem;
-  padding: 0.9rem 1.1rem;
-  border: 1px dashed var(--line);
-  border-radius: 0.7rem;
+  padding: 1rem 1.125rem;
+  border: 1px dashed color-mix(in srgb, var(--sh-ink) 22%, transparent);
+  border-radius: var(--round);
   color: var(--muted);
-  font-style: italic;
 }
 
 /* Sources at the end: <ol class="sources"><li><a href>…</a> · read 23 Sep</li> */
@@ -437,9 +473,8 @@ body:not(.pg-editing) :where(.pg-paper) th[data-sort]:hover {
   content: "↓";
 }
 :where(.pg-paper) ol.footnotes {
-  margin-top: 2.4rem;
-  padding: 1rem 0 0 1.3rem;
-  border-top: 1px solid var(--line);
+  margin-top: 2.5rem;
+  padding: 0 0 0 1.3rem;
   color: var(--muted);
   font-size: 0.85rem;
 }
@@ -468,6 +503,9 @@ body:not(.pg-editing) :where(.pg-paper) th[data-sort]:hover {
 :where(.pg-paper) .tabs [role="tab"][aria-selected="true"] {
   color: var(--fg);
   border-bottom-color: var(--fg);
+}
+:where(.pg-paper) .tabs [role="tab"]:first-child {
+  padding-left: 0;
 }
 :where(.pg-paper) .tabs [role="tab"]:focus-visible {
   outline: 2px solid var(--accent);
@@ -503,10 +541,23 @@ body:not(.pg-editing) :where(.pg-paper) th[data-sort]:hover {
 :where(.pg-paper) .grid.three {
   grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
 }
+/* A card is a thing that stands on its own — an option to choose — so it has an edge and a
+   corner and no shadow. A figure is not one: a card holding a .stat is the figure on the
+   paper under a hairline. What a card holds starts at its top and ends at its bottom,
+   whatever the first and last are. */
 :where(.pg-paper) .card {
-  padding: 1.1rem 1.2rem;
+  padding: 1rem 1.125rem;
   border: 1px solid var(--line);
-  border-radius: 0.8rem;
+  border-radius: var(--round);
+}
+:where(.pg-paper) .card:has(> .stat) {
+  padding: 0.875rem 0 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+}
+:where(.pg-paper) .card > :first-child {
+  margin-top: 0;
 }
 :where(.pg-paper) .card > :last-child {
   margin-bottom: 0;
@@ -514,22 +565,39 @@ body:not(.pg-editing) :where(.pg-paper) th[data-sort]:hover {
 
 /* One number that matters, with what it is under it */
 :where(.pg-paper) .stat {
-  font-size: 2rem;
-  font-weight: 650;
-  line-height: 1.15;
-  letter-spacing: -0.02em;
+  margin-bottom: 0.25rem;
+  font-size: 2.25rem;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.04em;
   font-variant-numeric: tabular-nums;
 }
 :where(.pg-paper) .stat + small {
   display: block;
-  margin-top: 0.2rem;
+  line-height: 1.45;
 }
 
 /* A note set apart; .good .bad .warn tint it */
+/* A note set apart as a callout: a quiet ground and a mark before it, or a tone's own wash
+   and mark. The mark hangs in the padding, so the note stays a block of words. */
 :where(.pg-paper) .note {
-  padding: 0.9rem 1.1rem;
-  border-radius: 0.7rem;
-  background: var(--soft);
+  position: relative;
+  padding: 0.875rem 1.125rem 0.875rem 2.75rem;
+  border-radius: var(--round);
+  background: var(--callout);
+  print-color-adjust: exact;
+}
+:where(.pg-paper) .note::before {
+  content: "";
+  position: absolute;
+  top: calc(0.875rem + 0.2em);
+  left: 1rem;
+  width: 1.125rem;
+  height: 1.125rem;
+  background: var(--muted);
+  mask:
+    center / contain no-repeat
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 11v5M12 7.5v.5'/%3E%3C/svg%3E");
 }
 :where(.pg-paper) .note > :last-child {
   margin-bottom: 0;
@@ -547,51 +615,64 @@ body:not(.pg-editing) :where(.pg-paper) th[data-sort]:hover {
 :where(.pg-paper) .note.bad,
 :where(.pg-paper) .note.warn {
   color: inherit;
-  border-left: 3px solid currentColor;
 }
 :where(.pg-paper) .note.good {
-  border-color: var(--good);
+  background: color-mix(in srgb, var(--good) 10%, var(--bg));
 }
 :where(.pg-paper) .note.bad {
-  border-color: var(--bad);
+  background: color-mix(in srgb, var(--bad) 9%, var(--bg));
 }
 :where(.pg-paper) .note.warn {
-  border-color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 11%, var(--bg));
+}
+:where(.pg-paper) .note.good::before {
+  background: var(--good);
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='m8 12.5 2.7 2.7L16 9.5'/%3E%3C/svg%3E");
+}
+:where(.pg-paper) .note.warn::before {
+  background: var(--warn);
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10.3 4.2 2.6 17.5A2 2 0 0 0 4.3 20.5h15.4a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0Z'/%3E%3Cpath d='M12 10v4M12 17.5v.01'/%3E%3C/svg%3E");
+}
+:where(.pg-paper) .note.bad::before {
+  background: var(--bad);
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='m9 9 6 6M15 9l-6 6'/%3E%3C/svg%3E");
 }
 :where(.pg-paper) .tag {
   display: inline-block;
-  padding: 0.05rem 0.5rem;
+  padding: 0.0625rem 0.5rem;
   border-radius: 99px;
-  border: 1px solid var(--line);
+  background: var(--callout);
   font-size: 0.78rem;
-  color: var(--muted);
+  color: var(--sh-ink-2);
   white-space: nowrap;
 }
 
 /* A bar for one value out of a whole: <div class="bar" style="--at: 62%"></div> */
 :where(.pg-paper) .bar {
-  margin-bottom: 1rem;
-  height: 0.5rem;
+  margin-bottom: 0.625rem;
+  height: 0.375rem;
   border-radius: 99px;
   background: linear-gradient(
     to right,
-    var(--accent) var(--at, 0%),
-    var(--soft) var(--at, 0%)
+    var(--sh-maker) var(--at, 0%),
+    var(--sh-sunk) var(--at, 0%)
   );
+  print-color-adjust: exact;
 }
 
+/* A toggle: its line and the words it opens, no frame */
 :where(.pg-paper) details {
   margin-bottom: 1rem;
-  border: 1px solid var(--line);
-  border-radius: 0.7rem;
-  padding: 0.7rem 1rem;
 }
 :where(.pg-paper) summary {
   cursor: pointer;
   font-weight: 600;
 }
 :where(.pg-paper) details[open] > summary {
-  margin-bottom: 0.6rem;
+  margin-bottom: 0.5rem;
+}
+:where(.pg-paper) details > :not(summary) {
+  margin-left: 1.25rem;
 }
 
 /* Editing: a block under the pointer, its handle in the gutter, the formatting that
@@ -659,6 +740,10 @@ body.pg-editing .pg-paper .chip[contenteditable="true"] {
 @media print {
   body {
     display: block;
+  }
+  .pg-page {
+    display: block;
+    min-height: 0;
   }
   .pg-paper {
     max-width: none;

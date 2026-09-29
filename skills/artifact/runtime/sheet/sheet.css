@@ -38,8 +38,7 @@ body {
   align-items: center;
   padding: 0 10px;
   color: var(--sh-ink-3);
-  font-family: Georgia, serif;
-  font-style: italic;
+  font: 400 12px / 1 var(--sh-mono);
 }
 .ss-formula {
   flex: 1;
@@ -50,7 +49,7 @@ body {
   border: 0;
   background: transparent;
   color: var(--sh-ink);
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-family: var(--sh-mono);
   font-size: 12.5px;
   text-overflow: ellipsis;
   outline: none;
@@ -100,14 +99,13 @@ body {
 .ss-grid .ss-letters th {
   top: 0;
   color: var(--sh-ink-3);
-  font-size: 11px;
-  font-weight: 500;
+  font: 400 11px / 1 var(--sh-mono);
   text-align: center;
 }
 .ss-grid .ss-names th {
   top: 26px;
   color: var(--sh-ink);
-  font-weight: 650;
+  font-weight: 600;
   text-align: left;
 }
 .ss-grid .ss-names th.num {
@@ -121,8 +119,7 @@ body {
   padding: 0;
   background: var(--sh-soft);
   color: var(--sh-ink-3);
-  font-size: 11px;
-  font-weight: 500;
+  font: 400 11px / 1 var(--sh-mono);
   text-align: center;
 }
 .ss-grid thead .ss-row {
@@ -134,9 +131,9 @@ body {
   position: sticky;
   bottom: 0;
   z-index: 1;
-  border-top: 1px solid var(--sh-ink-3);
+  border-top: 1px solid color-mix(in srgb, var(--sh-ink) 30%, transparent);
   background: var(--sh-soft);
-  font-weight: 650;
+  font-weight: 600;
 }
 .ss-grid tfoot .ss-row {
   z-index: 3;
@@ -194,10 +191,11 @@ body {
 .ss-grid .at {
   box-shadow: inset 0 0 0 2px var(--sh-brand);
 }
-/* A cell worked out by a formula, faintly; the cells the picked formula names, each reference in
-   its own colour, edged where the range ends (sheet.js showRefs) */
+/* A cell worked out by a formula, faintly, in grey: blue is what is picked; the cells the
+   picked formula names, each reference in its own colour, edged where the range ends
+   (sheet.js showRefs) */
 .ss-grid td.fx:not(.in) {
-  background: color-mix(in srgb, var(--sh-brand) 5%, var(--sh-paper));
+  background: var(--sh-soft);
 }
 .ss-grid td[data-ref],
 .ss-grid th[data-ref] {
@@ -220,35 +218,45 @@ body {
   font-size: 12px;
 }
 
+/* The sheets, as the app switches between views of one thing: white pills on a grey rail */
 .ss-foot {
   display: flex;
   flex: none;
-  align-items: stretch;
-  height: 36px;
+  align-items: center;
+  height: 40px;
+  padding: 0 6px;
   border-top: 1px solid var(--sh-line);
   background: var(--sh-soft);
   font-size: 13px;
 }
 .ss-tabs {
   display: flex;
+  align-items: center;
+  gap: 2px;
   min-width: 0;
+  height: 100%;
   overflow-x: auto;
 }
 .ss-tabs button {
   flex: none;
-  padding: 0 16px;
-  border: 0;
-  border-right: 1px solid var(--sh-line);
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: calc(var(--sh-radius) * 0.8);
   background: transparent;
   color: var(--sh-ink-2);
   font: inherit;
   cursor: pointer;
 }
+.ss-tabs button:hover {
+  color: var(--sh-ink);
+}
 .ss-tabs button[aria-selected="true"] {
+  border-color: var(--sh-line);
   background: var(--sh-paper);
   color: var(--sh-ink);
-  font-weight: 650;
-  box-shadow: inset 0 -2px 0 var(--sh-ink);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgb(13 13 13 / 6%);
 }
 .ss-gap {
   flex: 1;
@@ -480,7 +488,7 @@ body {
 }
 .ss-note {
   min-width: 0;
-  line-height: 36px;
+  line-height: 40px;
   overflow: hidden;
   margin-right: 12px;
   color: var(--sh-ink-3);
