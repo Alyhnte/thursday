@@ -26,6 +26,8 @@
      one accent, so a page says whose it is. Ink when no bot made it, or its face is not
      one colour. */
   --sh-maker: var(--sh-ink);
+  /* The same colour as words wear it, at 4.5:1 on the page's ground (wear.mjs) */
+  --sh-maker-text: var(--sh-ink);
   --sh-paper: #ffffff;
   --sh-ink: #0d0d0d;
   --sh-ink-2: #4f4f4f;

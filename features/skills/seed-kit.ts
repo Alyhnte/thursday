@@ -6,5 +6,6 @@ import { SEED_KITS_RENAMED } from "@/config";
  */
 export const seedKitName = (bot: string): string => {
   const key = bot.trim().toLowerCase();
-  return SEED_KITS_RENAMED[key] ?? key;
+  // Its own entries only: a bot named "constructor" is no renamed seed
+  return Object.hasOwn(SEED_KITS_RENAMED, key) ? SEED_KITS_RENAMED[key] : key;
 };

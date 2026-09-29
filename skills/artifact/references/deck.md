@@ -112,8 +112,8 @@ and nothing is printed: fix the deck with `make_deck` and run it again.
    plus a short pause, and writes `<deck>.mp4` beside the deck: h264 and yuv420p, which every
    phone plays. It installs a portable ffmpeg into `projects/` the first time when the machine
    has none. Fewer audio files than slides, a slide that does not fit or a picture that did not
-   load stops it with what to fix. When it is made, the voices move into `voices/` beside the
-   deck, numbered by slide (`slide-01.mp3`), and it prints where they went.
+   load stops it with what to fix. When it is made, the voices are copied into `voices/` beside
+   the deck, numbered by slide (`slide-01.mp3`), and it prints where they went.
 5. Hand back the mp4's path and how long it runs, with the deck's path beside it.
 
 To change a slide later, change the deck, make that slide's voice again if its notes changed, and

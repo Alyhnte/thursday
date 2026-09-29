@@ -14,7 +14,7 @@
   --line: var(--sh-line);
   --soft: var(--sh-soft);
   /* The maker's colour (shell --sh-maker): a document says whose it is */
-  --accent: var(--sh-maker);
+  --accent: var(--sh-maker-text);
   --good: var(--sh-good);
   --warn: var(--sh-warn);
   --bad: var(--sh-bad);

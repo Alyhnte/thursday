@@ -9,7 +9,9 @@
 //                                                  slide, in slide order
 import { spawnSync } from "node:child_process";
 import {
+  copyFileSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -18,7 +20,6 @@ import {
   statSync,
 } from "node:fs";
 import { basename, dirname, extname, join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
 import {
   ARTIFACTS,
   NAME,
@@ -104,100 +105,33 @@ function openDeck(arg) {
   };
 }
 
-/** The deck as its shot mode draws it: every slide flat at true size, as it prints. */
-const asShot = (html) =>
-  html.replace(/<body\b([^>]*)>/i, (tag, attrs) =>
-    /\sclass\s*=\s*"/i.test(attrs)
-      ? tag.replace(/(\sclass\s*=\s*")/i, "$1shot ")
-      : `<body class="shot"${attrs}>`,
-  );
-
-/** Slide numbers as a sentence starts with them, and its verb. */
-const listed = (numbers) =>
-  numbers.length === 1
-    ? `Slide ${numbers[0]} does`
-    : `Slides ${numbers.slice(0, -1).join(", ")} and ${numbers.at(-1)} do`;
-
 /**
- * The deck printed to `<deck>.pdf` beside it, one slide a sheet at the slide's own size, in
- * a headless browser of its own: the job's may be a window on the user's screen.
+ * The deck printed to `<deck>.pdf` beside it, one slide a sheet at the slide's own size, by
+ * the artifact skill's camera in a browser of its own — the job's may be a window on the
+ * user's screen — loaded and checked the way the video's frames are.
  */
-async function pdf(arg) {
+function pdf(arg) {
   const deck = openDeck(arg);
-  const scripts = join(skills(), "browser", "scripts");
-  const { inPageApart, orFail } = await import(
-    pathToFileURL(join(scripts, "session.mjs")).href
-  );
-  const { serveFolder } = await import(
-    pathToFileURL(join(scripts, "serve.mjs")).href
-  );
   const out = deck.file.replace(/\.html$/i, ".pdf");
-  const server = await serveFolder(dirname(deck.file), {
-    instead: { [deck.file]: asShot(deck.html) },
-  });
-  let done;
-  try {
-    done = orFail(
-      await inPageApart(
-        async (page, a) => {
-          const tab = await page.context().newPage();
-          try {
-            await tab.setViewportSize({ width: a.w, height: a.h });
-            await tab.goto(a.url, { waitUntil: "load" });
-            await tab.evaluate(async () => {
-              await document.fonts.ready;
-              await Promise.all(
-                [...document.images].map((i) => i.decode().catch(() => {})),
-              );
-            });
-            const broken = await tab.evaluate(() =>
-              [...document.images]
-                .filter((i) => !i.naturalWidth)
-                .map((i) => i.getAttribute("src")),
-            );
-            // A slide that grew past its size would print across two sheets
-            const cut = await tab.evaluate(
-              ({ w, h }) =>
-                [...document.querySelectorAll("section[data-slide]")].flatMap(
-                  (slide, i) =>
-                    slide.offsetHeight > h + 1 || slide.scrollWidth > w + 1
-                      ? [i + 1]
-                      : [],
-                ),
-              { w: a.w, h: a.h },
-            );
-            if (broken.length || cut.length) return { broken, cut };
-            // The deck's own @page rule makes a sheet one slide
-            await tab.pdf({
-              path: a.out,
-              printBackground: true,
-              preferCSSPageSize: true,
-            });
-            return { broken, cut };
-          } catch (error) {
-            return { error: String(error?.message ?? error).slice(0, 800) };
-          } finally {
-            await tab.close();
-          }
-        },
-        {
-          url: server.url(basename(deck.file)),
-          out,
-          w: deck.w,
-          h: deck.h,
-        },
-      ),
-    );
-  } finally {
-    server.close();
-  }
-  if (done.broken.length)
+  const done = spawnSync(
+    process.execPath,
+    [
+      join(skills(), "artifact", "runtime", "render.mjs"),
+      deck.file,
+      "--shot",
+      "--size",
+      `${deck.w}x${deck.h}`,
+      "--pdf",
+      out,
+      "--apart",
+      "--strict",
+    ],
+    { encoding: "utf8" },
+  );
+  if (done.status !== 0)
     throw new Stop(
-      `Pictures that did not load: ${done.broken.join(", ")}. Nothing was printed: fix them with make_deck and run this again.`,
-    );
-  if (done.cut.length)
-    throw new Stop(
-      `${listed(done.cut)} not fit, and would print across two sheets. Nothing was printed: say less there with make_deck and run this again.`,
+      `${done.stdout}${done.stderr}`.trim().split("\n").at(-1) ||
+        "The deck could not be printed.",
     );
   const mb = (statSync(out).size / 1024 / 1024).toFixed(1);
   console.log(
@@ -328,32 +262,36 @@ function video(arg, audio) {
     `Made ${shown(out)}: ${voices.length} slides, ${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")} long, ${deck.w}x${deck.h}, ${mb} MB. Hand back this path.`,
   );
   console.log(
-    `The voices are now ${shown(kept)}/slide-01… in slide order, kept for a slide said again later; the deck's folder is one thing in Artifacts.`,
+    `The voices are copied into ${shown(kept)}/slide-01… in slide order, kept for a slide said again later; the files you gave stay where they were.`,
   );
 }
 
 /**
- * The voices, moved into `voices/` beside the deck and numbered by slide: the studio
- * writes them loose among the user's finished work, and they belong to this deck. Staged
- * first, so a file already in there is never overwritten by another slide's.
+ * The voices, copied into `voices/` beside the deck and numbered by slide, so a slide said
+ * again later has the others to go with it. Copied, never moved: a voice may be a recording
+ * the user made, and what else `voices/` holds stays. Staged first, so no slide's voice is
+ * written over another's part way; the stage goes, whatever happens.
  */
 function keepVoices(file, voices) {
   const dir = join(dirname(file), "voices");
+  mkdirSync(dir, { recursive: true });
   const stage = mkdtempSync(join(dirname(file), ".voices-"));
-  voices.forEach((voice, i) =>
-    renameSync(
-      voice,
-      join(stage, `slide-${String(i + 1).padStart(2, "0")}${extname(voice)}`),
-    ),
-  );
-  rmSync(dir, { recursive: true, force: true });
-  renameSync(stage, dir);
+  try {
+    const names = voices.map((voice, i) => {
+      const name = `slide-${String(i + 1).padStart(2, "0")}${extname(voice)}`;
+      copyFileSync(voice, join(stage, name));
+      return name;
+    });
+    for (const name of names) renameSync(join(stage, name), join(dir, name));
+  } finally {
+    rmSync(stage, { recursive: true, force: true });
+  }
   return dir;
 }
 
 const [command, ...rest] = process.argv.slice(2);
 try {
-  if (command === "pdf") await pdf(rest[0]);
+  if (command === "pdf") pdf(rest[0]);
   else if (command === "video") video(rest[0], rest.slice(1));
   else throw new Stop(USAGE);
 } catch (error) {

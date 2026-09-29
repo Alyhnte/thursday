@@ -57,15 +57,60 @@ const markOf = (raw = process.env.THURSDAY_BOT_MARK) => {
   }
 };
 
+/** A #rrggbb colour's relative luminance (WCAG 2). */
+const luminance = (hex) => {
+  const [r, g, b] = [1, 3, 5].map((at) => {
+    const c = Number.parseInt(hex.slice(at, at + 2), 16) / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+};
+const contrast = (a, b) => {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+};
+/** `hex` mixed `t` of the way to `to`, both #rrggbb. */
+const mix = (hex, to, t) =>
+  `#${[1, 3, 5]
+    .map((at) => {
+      const a = Number.parseInt(hex.slice(at, at + 2), 16);
+      const b = Number.parseInt(to.slice(at, at + 2), 16);
+      return Math.round(a + (b - a) * t)
+        .toString(16)
+        .padStart(2, "0");
+    })
+    .join("")}`;
+/**
+ * `hex` as words can wear it on `ground`: moved toward `to` in twentieths until it reads
+ * at 4.5:1, the floor every text colour in the shell clears. A face's colour is made to
+ * clear 3:1 as a shape (bot mark.const), which is not enough for a line of words.
+ */
+const readable = (hex, ground, to) => {
+  for (let step = 0; step <= 20; step++) {
+    const said = mix(hex, to, step / 20);
+    if (contrast(said, ground) >= 4.5) return said;
+  }
+  return to;
+};
+
 /**
  * The maker's colour as the page's one accent (shell.css --sh-maker): the colour its face
- * is drawn in, when that is one colour. Nothing for a face in a paint or the page's text.
+ * is drawn in, when that is one #rrggbb colour, and beside it the same colour darkened or
+ * lightened until words in it read on the ground a kind lays them on (--sh-maker-text):
+ * the app's grey ground by day, its card at night. Nothing for a face in a paint or the
+ * page's text.
  */
 function makerRule(raw) {
   const { ink, paint } = markOf(raw) ?? {};
-  if (!/^(#[0-9a-fA-F]{6}|oklch\([0-9. ]+\))$/.test(String(ink))) return "";
+  if (!/^#[0-9a-fA-F]{6}$/.test(String(ink))) return "";
   if (Array.isArray(paint) && paint.length > 1) return "";
-  return `:root{--sh-maker:${ink}}`;
+  const day = readable(ink, "#f3f3f3", "#000000");
+  const night = readable(ink, "#161616", "#ffffff");
+  return [
+    `:root{--sh-maker:${ink};--sh-maker-text:${day}}`,
+    `@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--sh-maker-text:${night}}}`,
+    `:root[data-theme="dark"]{--sh-maker-text:${night}}`,
+  ].join("\n");
 }
 
 /**
@@ -107,6 +152,13 @@ export const retitle = (html, title) =>
       /<span class="sh-title">[^<]*<\/span>/,
       `<span class="sh-title">${escape(title)}</span>`,
     );
+
+/**
+ * The head of a page with nothing of the reader's to edit — a brief, a trip, a digest: who
+ * made it, its name, the theme and export (print, download). Its markers are wear's.
+ */
+export const pageHead = (title) =>
+  parts().head.replace("{{title}}", () => escape(title));
 
 /** head.html's `<!-- part: name -->` sections, by name. */
 const parts = () => {

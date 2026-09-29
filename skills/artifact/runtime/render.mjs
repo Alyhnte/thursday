@@ -18,8 +18,12 @@
  * lays every picture it took on one image, numbered, so all of them are seen in one look.
  * `--strict` fails the run, exit 1, when a picture on the page did not load, for a caller
  * that goes on from the pictures without a look; without it they are listed and it goes on.
+ * `--pdf <file.pdf>` prints the page instead of taking pictures, by the page's own print
+ * rules, loaded and checked as the pictures would be: with `--size`, a slide past that size
+ * would spill onto the next sheet, so none is printed and the run fails naming it.
  *
  *   node render.mjs <slides.html> --out <dir> [--size 1080x1350] [--name slide] [--shot] [--most n] [--apart] [--sheet <file.png>] [--strict]
+ *   node render.mjs <slides.html> --pdf <file.pdf> [--size 1920x1080] [--shot] [--apart] [--strict]
  */
 import { existsSync, mkdirSync } from "node:fs";
 import { readFile } from "node:fs/promises";
@@ -35,24 +39,27 @@ import {
 } from "../../browser/scripts/session.mjs";
 
 const USAGE =
-  "usage: node render.mjs <slides.html> --out <dir> [--size 1080x1350] [--name slide] [--shot] [--most n] [--apart] [--sheet <file.png>] [--strict]";
+  "usage: node render.mjs <slides.html> --out <dir> [--size 1080x1350] [--name slide] [--shot] [--most n] [--apart] [--sheet <file.png>] [--strict] | <slides.html> --pdf <file.pdf> [--size WxH] [--shot] [--apart] [--strict]";
 const opts = parseArgs();
 const file = opts._[0] && resolve(opts._[0]);
 const [w, h] = String(opts.size ?? "")
   .split("x")
   .map(Number);
 const most = opts.most === undefined ? 0 : Number(opts.most);
+const pdf = typeof opts.pdf === "string" ? resolve(opts.pdf) : "";
 if (
   !file ||
-  !opts.out ||
+  !(opts.out || pdf) ||
+  opts.pdf === true ||
   (opts.size !== undefined && !(w && h)) ||
   opts.sheet === true ||
   !(Number.isInteger(most) && most >= 0)
 )
   fail(USAGE);
 if (!existsSync(file)) fail(`No such file: ${file}`);
-const out = resolve(opts.out);
-mkdirSync(out, { recursive: true });
+const out = opts.out ? resolve(opts.out) : "";
+if (out) mkdirSync(out, { recursive: true });
+if (pdf) mkdirSync(dirname(pdf), { recursive: true });
 const name = opts.name ?? "slide";
 const sheet = opts.sheet ? resolve(opts.sheet) : "";
 if (sheet) mkdirSync(dirname(sheet), { recursive: true });
@@ -73,7 +80,7 @@ const url = served.url(basename(file));
 
 const done = orFail(
   await (opts.apart ? inPageApart : inPage)(
-    async (page, { url, w, h, out, name, most, sheet }) => {
+    async (page, { url, w, h, out, name, most, sheet, pdf, strict }) => {
       const tab = await page.context().newPage();
       try {
         // Slides of their own size lay out the same in any window; the viewport only
@@ -94,6 +101,27 @@ const done = orFail(
             .filter((i) => !i.naturalWidth)
             .map((i) => i.getAttribute("src")),
         );
+        if (pdf) {
+          // One slide a sheet: a slide past its size would spill onto the next one
+          const off = await tab.evaluate(
+            ({ w, h }) =>
+              [...document.querySelectorAll("[data-slide]")].flatMap(
+                (slide, i) =>
+                  w && (slide.offsetWidth > w + 1 || slide.offsetHeight > h + 1)
+                    ? [i + 1]
+                    : [],
+              ),
+            { w, h },
+          );
+          if (off.length || (strict && broken.length))
+            return { files: [], broken, off, printed: false };
+          await tab.pdf({
+            path: pdf,
+            printBackground: true,
+            preferCSSPageSize: true,
+          });
+          return { files: [], broken, off, printed: true };
+        }
         const slides = tab.locator("[data-slide]");
         const n = await slides.count();
         const files = [];
@@ -194,10 +222,25 @@ const done = orFail(
         await tab.close();
       }
     },
-    { url, w, h, out, name, most, sheet },
+    { url, w, h, out, name, most, sheet, pdf, strict: Boolean(opts.strict) },
   ),
 );
 served.close();
+
+if (pdf) {
+  if (done.broken.length) {
+    const said = `Pictures that did not load: ${done.broken.join(", ")}`;
+    if (opts.strict)
+      fail(`${said}. Nothing was printed: fix them and run this again.`);
+    console.log(said);
+  }
+  if (done.off.length)
+    fail(
+      `Slide(s) ${done.off.join(", ")} came out past ${w}x${h}, and would print across two sheets. Nothing was printed.`,
+    );
+  console.log(`Printed ${pdf}`);
+  process.exit(0);
+}
 
 let wrong = 0;
 for (const path of done.files) {

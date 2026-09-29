@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { after, test } from "node:test";
 
 // The imports resolve the data folder, and a skill switched off is read from its database:
@@ -193,6 +193,8 @@ test("a ready-made bot's kit is listed to that bot alone, and an old copy left u
   assert.equal(seedSkills("../etc"), null, "a name that is no folder has none");
   // A bot installed under a seed's old name keeps its kit, read where it ships now
   assert.equal(seedSkills("Marketer"), kit);
+  // A name the lookup's own object answers to is a name like any other
+  assert.equal(seedSkills("constructor"), join(dirname(kit!), "constructor"));
 
   const own = join(home, "writer-own");
   const copy = "---\nname: social\ndescription: Old social.\n---\n\nOld.\n";

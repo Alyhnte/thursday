@@ -500,7 +500,7 @@ const wearAt = join(
 );
 if (!process.env.THURSDAY_SKILLS || !existsSync(wearAt))
   fail("THURSDAY_SKILLS is not set: run this from a bot's shell in the app.");
-const { wear } = await import(pathToFileURL(wearAt).href);
+const { wear, pageHead } = await import(pathToFileURL(wearAt).href);
 mkdirSync(dirname(out), { recursive: true });
 writeFileSync(
   out,
@@ -520,19 +520,7 @@ ${css}
 </style>
 </head>
 <body>
-<header class="sh-head">
-{{shell.who}}
-<span class="sh-title">${esc(trip.title)}</span>
-<span class="sh-gap"></span>
-{{shell.theme}}
-<details class="sh-menu">
-{{shell.export}}
-<div class="sh-list">
-<button type="button" class="sh-item" data-export="print">Print<small>PDF</small></button>
-{{shell.download}}
-</div>
-</details>
-</header>
+${pageHead(trip.title)}
 <main>
 ${parts.join("\n")}
 </main>
