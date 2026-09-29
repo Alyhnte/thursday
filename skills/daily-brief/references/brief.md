@@ -1,8 +1,10 @@
 # The brief
 
-One page the user reads in two minutes over coffee and trusts: a lead story, 3 to 7 more
-grouped by their topic, each with its photo, two lines and why it matters, and a 60-second
-version to hear. One bash call to gather, one to read the chosen stories, one for each file
+One page the user reads in a few minutes over coffee, trusts, and could get nowhere else: it
+is theirs. A lead story and a few more in full, each with its photo, two lines, what changed
+since an earlier brief told it and why it is this reader's; the stories they follow as a line
+through the days; the rest as headlines; today's weather as what to do about it; and the brief
+to hear. One bash call to gather, one to read the chosen stories, one for each file
 of their words, one to lay out. Nothing in between.
 
 ## Gather
@@ -37,7 +39,7 @@ order the page will show them, lead first. Every topic the user chose gets at le
   something nobody else does.
 - **The lead** is the story that matters most to this user today — not the loudest one — and
   it should have a photo.
-- **Size** comes from their preferences; without one, a lead and five.
+- **Size** comes from their preferences; without one, a lead, three in full and two or three short.
 - Pass a spare for each topic too: a publisher that refuses leaves a gap, and the spare
   fills it without another call.
 
@@ -60,8 +62,16 @@ summary. Never state a fact they do not hold.
   "lang": "en",
   "stories": "stories/stories.json",
   "glance": "glance.json",
-  "lead": { "id": "a1", "kicker": "AI", "headline": "…", "summary": "…", "why": "…" },
-  "items": [{ "id": "b2", "headline": "…", "summary": "…", "why": "…" }],
+  "day": "Rain from mid-afternoon: take an umbrella.",
+  "lead": { "id": "a1", "kicker": "AI", "headline": "…", "summary": "…", "why": "…",
+            "since": "…", "yours": "…" },
+  "items": [
+    { "id": "b2", "headline": "…", "summary": "…", "why": "…" },
+    { "id": "c4", "headline": "…", "short": true }
+  ],
+  "following": [
+    { "topic": "Starship", "steps": [{ "date": "Sep 12", "text": "…" }, { "date": "Today", "text": "…" }] }
+  ],
   "spoken": "The 60-second version, as it will be read aloud.",
   "audio": null,
   "labels": {}
@@ -75,7 +85,8 @@ sections by the topic they were found under, in your order; `"section": "…"` o
 it to another. `lang` sets dates and numbers; for a page that is not in English, `labels`
 gives the page's own words in that language: `title`, `why` ("Why it matters"), `listen`
 ("The 60-second version"), `hear` ("Listen", on the button that plays the audio), `photo`,
-`made` (keep `{time}` and `{count}` in it).
+`made` (keep `{time}` and `{count}` in it), `count` (keep `{n}`: "{n} stories"), `today`,
+`yours` ("For you"), `following`, `more` ("More headlines").
 
 - **headline** — the news in plain words, under about 70 characters. Rewrite the publisher's
   when it is a tease ("You won't believe…", a question, "Here's why"). The subject does
@@ -87,6 +98,20 @@ gives the page's own words in that language: `title`, `why` ("Why it matters"), 
 - **why** — one sentence on what it changes for this reader and their interests; leave it
   empty rather than write a platitude ("This could have big implications").
 - **lede** — the day in one sentence, naming two or three of the stories.
+- **since** — for a story an earlier brief told (the headlines `news.mjs` prints under the list,
+  with their dates): one sentence, what that brief said and what is new today. Only from those
+  headlines; never for a story told for the first time.
+- **yours** — one sentence on why this story is this reader's: what they asked about, a topic or
+  a name they keep (their preferences, your memory of them). Only a link you can point to;
+  leave it out otherwise — a made-up "you'll love this" is worse than none.
+- **following** — a story this reader is following across days: its `topic`, and `steps`, two to
+  five moments oldest first, each a `date` and a line from the briefs that told them, today's
+  last. Only from those printed headlines.
+- **short** — `true` on an item that is worth a headline and no more: it goes under "More
+  headlines" as one line, with no summary. Keep the full ones to the lead and two to four
+  more; the rest are short. A reader finishes a brief that is short.
+- **day** — the weather as what to do about it, from the glance's forecast: "Rain from 3 pm:
+  take an umbrella", "Hot by noon: water". Leave it out when there is nothing to do.
 - **spoken** — the whole brief as it sounds, about 150 words for 60 seconds: a greeting, the
   lead in two sentences, then one sentence a story, the glance in one line when there is one,
   and a close. Written to be heard: short sentences, no parentheses, no urls, numbers as

@@ -2,7 +2,11 @@
 /**
  * The brief as one page: what the model wrote (brief.json) laid over what the scripts
  * fetched (stories.json, glance.json), written to `brief-<date>.html` in the bot's artifacts
- * folder. Pictures and audio are inlined, so the one file opens anywhere — on this screen,
+ * folder. It is built to be read in a few minutes and to be this reader's own: the day and how
+ * many stories, the brief to hear, today in a line and the numbers they watch, then each story
+ * with what changed since an earlier brief told it and why it is theirs, the stories they are
+ * following as a line through the days, and the rest as headlines. Pictures (shrunk to the size
+ * they are shown at) and audio are inlined, so the one file opens anywhere — on this screen,
  * or on a phone it was sent to. It wears the artifact skill's shell, as every page a bot
  * makes does: the maker's face and name in its head and at its end, the app's type, the
  * maker's colour as its one accent. The layout is never typed by hand.
@@ -35,6 +39,13 @@ import {
 const SKILL = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 // Past this, a summary is a paragraph, not two lines
 const SUMMARY_MAX = 280;
+/**
+ * The widths pictures are kept at: the lead across the page, a row's beside its words at
+ * twice the pixels it is drawn at. A publisher's picture came at 8138px, 1.8 MB, for a
+ * card 640px wide.
+ */
+const LEAD_WIDTH = 1200;
+const ROW_WIDTH = 360;
 
 const LABELS = {
   title: "Morning Brief",
@@ -44,6 +55,11 @@ const LABELS = {
   read: "Read",
   photo: "Photo",
   made: "Made {time} from {count} publishers. Photos belong to the publishers credited on them.",
+  count: "{n} stories",
+  today: "Today",
+  yours: "For you",
+  following: "Following",
+  more: "More headlines",
 };
 
 const esc = (s = "") =>
@@ -141,13 +157,23 @@ run(async () => {
     if (!s)
       problems.push(`${at}: no story "${w.id}" in ${shown(storiesFile)}.`);
     if (!w.headline?.trim()) problems.push(`${at}: "headline" is empty.`);
-    if (!w.summary?.trim()) problems.push(`${at}: "summary" is empty.`);
-    else if (w.summary.length > SUMMARY_MAX)
+    if (i === 0 && w.short)
+      problems.push(`lead: the lead is never "short"; it opens the page.`);
+    if (!w.summary?.trim()) {
+      if (!w.short) problems.push(`${at}: "summary" is empty.`);
+    } else if (w.summary.length > SUMMARY_MAX)
       problems.push(
         `${at}: the summary runs ${w.summary.length} characters; two lines are under ${SUMMARY_MAX}.`,
       );
     return { ...s, ...w };
   });
+  for (const [i, f] of (brief.following ?? []).entries()) {
+    if (!f?.topic) problems.push(`following[${i}]: "topic" is empty.`);
+    if (!Array.isArray(f?.steps) || f.steps.length < 2)
+      problems.push(
+        `following[${i}]: "steps" lists at least two moments, oldest first, today's last.`,
+      );
+  }
   if (problems.length)
     throw new Stop(
       `Nothing written. Fix brief.json:\n- ${problems.join("\n- ")}`,
@@ -165,10 +191,24 @@ run(async () => {
       : rel.format(-Math.round(h), "hour");
   };
 
+  // Every picture shrunk to the width it is shown at, in one headless browser, before it goes in
+  const [lead, ...items] = joined;
+  const long = items.filter((s) => !s.short);
+  const short = items.filter((s) => s.short);
+  const pics = await shrink([
+    ...(lead.image?.file && existsSync(lead.image.file)
+      ? [{ id: lead.id, file: lead.image.file, max: LEAD_WIDTH }]
+      : []),
+    ...long
+      .filter((s) => s.image?.file && existsSync(s.image.file))
+      .map((s) => ({ id: s.id, file: s.image.file, max: ROW_WIDTH })),
+  ]);
+
   const picture = (s, credit) => {
-    if (!s.image?.file || !existsSync(s.image.file))
+    const src = pics.get(s.id);
+    if (!src)
       return `<div class="b-pic"><div class="b-none">${esc(s.site ?? host(s.url))}</div></div>`;
-    return `<div class="b-pic"><img src="${inline(s.image.file)}" alt="${esc(s.headline)}">${credit ? `<span class="b-credit">${esc(L.photo)} · ${esc(s.image.site ?? s.site)}</span>` : ""}</div>`;
+    return `<div class="b-pic"><img src="${src}" alt="${esc(s.headline)}">${credit ? `<span class="b-credit">${esc(L.photo)} · ${esc(s.image.site ?? s.site)}</span>` : ""}</div>`;
   };
   const source = (s) =>
     `<p class="b-src"><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.site ?? host(s.url))}</a>${s.published ? ` · ${esc(when(s.published))}` : ""}${s.outlets > 1 ? ` · +${s.outlets - 1}` : ""}</p>`;
@@ -176,16 +216,35 @@ run(async () => {
     s.why?.trim()
       ? `<p class="b-why"><span><b>${esc(L.why)}.</b> ${esc(s.why)}</span></p>`
       : "";
+  // What changed since an earlier brief told this story, and why it is this reader's
+  const since = (s) =>
+    s.since?.trim()
+      ? `<p class="b-since"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span>${esc(s.since)}</span></p>`
+      : "";
+  const yours = (s) =>
+    s.yours?.trim()
+      ? `<p class="b-yours"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2ZM9 21h6"/></svg><span><b>${esc(L.yours)}.</b> ${esc(s.yours)}</span></p>`
+      : "";
+  const chips = (s, kicker) => {
+    const list = [
+      s.since?.trim()
+        ? `<span class="b-chip b-on">${esc(L.following)}</span>`
+        : "",
+      kicker ? `<span class="b-chip">${esc(kicker)}</span>` : "",
+    ].filter(Boolean);
+    return list.length ? `<p class="b-chips">${list.join("")}</p>` : "";
+  };
   const link = (s, text) =>
     `<a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(text)}</a>`;
 
-  const [lead, ...items] = joined;
   const leadHtml = `<article class="b-card b-lead">
 ${picture(lead, true)}
 <div class="b-body">
-${(lead.kicker ?? lead.topic) ? `<p class="b-kicker">${esc(lead.kicker ?? lead.topic)}</p>` : ""}
+${chips(lead, lead.kicker ?? lead.topic)}
 <h2>${link(lead, lead.headline)}</h2>
 <p class="b-sum">${esc(lead.summary)}</p>
+${since(lead)}
+${yours(lead)}
 ${why(lead)}
 ${source(lead)}
 </div>
@@ -193,7 +252,7 @@ ${source(lead)}
 
   // Stories keep the model's order; a topic's section opens where its first story stands
   const topics = [];
-  for (const s of items) {
+  for (const s of long) {
     const name = s.section ?? s.topic ?? "";
     let t = topics.find((x) => x.name === name);
     if (!t) topics.push((t = { name, items: [] }));
@@ -203,13 +262,15 @@ ${source(lead)}
     .map(
       (t) => `<section class="b-topic">
 ${t.name ? `<h2>${esc(t.name)}<span>${t.items.length}</span></h2>` : ""}
-<div class="b-card">
 ${t.items
   .map(
     (s) => `<article class="b-row">
 <div>
+${s.since?.trim() ? chips(s) : ""}
 <h3>${link(s, s.headline)}</h3>
 <p class="b-sum">${esc(s.summary)}</p>
+${since(s)}
+${yours(s)}
 ${why(s)}
 ${source(s)}
 </div>
@@ -217,32 +278,55 @@ ${picture(s, false)}
 </article>`,
   )
   .join("\n")}
-</div>
 </section>`,
     )
     .join("\n");
 
+  // The stories this reader follows, as a line through the briefs that told them
+  const followHtml = (brief.following ?? [])
+    .map(
+      (f) =>
+        `<section class="b-follow"><h2><span class="b-chip b-on">${esc(L.following)}</span>${esc(f.topic)}</h2><ol>${f.steps
+          .map(
+            (st, i) =>
+              `<li${i === f.steps.length - 1 ? ' class="b-now"' : ""}><time>${esc(st.date ?? "")}</time><span>${esc(st.text ?? "")}</span></li>`,
+          )
+          .join("")}</ol></section>`,
+    )
+    .join("\n");
+
+  // The rest, a line each
+  const shortHtml = short.length
+    ? `<section class="b-more"><h2>${esc(L.more)}</h2><ul>${short
+        .map(
+          (s) =>
+            `<li>${link(s, s.headline)}<span>${esc(s.site ?? host(s.url))}${s.published ? ` · ${esc(when(s.published))}` : ""}</span></li>`,
+        )
+        .join("")}</ul></section>`
+    : "";
+
   const num = (v, digits) =>
     new Intl.NumberFormat(lang, { maximumFractionDigits: digits }).format(v);
-  const pills = [];
+  const tiles = [];
+  const dayNote = brief.day?.trim();
   if (glance?.weather) {
     const w = glance.weather;
-    pills.push(
-      `<span class="b-pill">${skyIcon(w.sky)}<b>${w.now}${esc(w.unit)}</b>${esc(w.place)}<span class="b-mono">${w.low}°–${w.high}°${w.rain != null ? ` · ☂ ${w.rain}%` : ""}</span></span>`,
+    tiles.push(
+      `<div class="b-tile b-sky">${skyIcon(w.sky)}<b>${w.now}${esc(w.unit)} · ${esc(w.place)}</b><span class="b-mono">${w.low}°–${w.high}°${w.rain != null ? ` · ☂ ${w.rain}%` : ""}</span>${dayNote ? `<p>${esc(dayNote)}</p>` : ""}</div>`,
     );
   }
   for (const m of glance?.markets ?? []) {
     const dir = m.pct > 0.005 ? "up" : m.pct < -0.005 ? "down" : "";
     const arrow = dir === "up" ? "▲" : dir === "down" ? "▼" : "–";
-    pills.push(
-      `<span class="b-pill"><span class="b-mono">${esc(m.label)}</span><b>${num(m.price, Math.abs(m.price) >= 1000 ? 0 : 2)}</b><span class="b-mono${dir ? ` b-${dir}` : ""}">${arrow} ${num(Math.abs(m.pct), 2)}%</span></span>`,
+    tiles.push(
+      `<div class="b-tile"><span class="b-mono">${esc(m.label)}</span><b>${num(m.price, Math.abs(m.price) >= 1000 ? 0 : 2)}</b><span class="b-mono${dir ? ` b-${dir}` : ""}">${arrow} ${num(Math.abs(m.pct), 2)}%</span></div>`,
     );
   }
 
   const spoken = brief.spoken?.trim();
-  const bars = `<span class="b-bars" aria-hidden="true">${[5, 9, 12, 7, 10, 4].map((h) => `<i style="height:${h}px"></i>`).join("")}</span>`;
+  const bars = `<span class="b-bars" aria-hidden="true">${[5, 9, 12, 7, 10, 4, 8, 11, 6].map((h) => `<i style="height:${h}px"></i>`).join("")}</span>`;
   const hear = audioFile
-    ? `<button type="button" class="b-hear" data-hear aria-pressed="false"><span class="b-dot"><svg class="b-play" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.8v8.4L10 6z"/></svg><svg class="b-pause" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 2h2v8H3zM7 2h2v8H7z"/></svg></span>${esc(L.hear)} ${bars}<span class="b-time" data-time></span></button><audio data-audio preload="metadata" src="${inline(audioFile)}"></audio>`
+    ? `<button type="button" class="b-hear" data-hear aria-pressed="false"><span class="b-dot"><svg class="b-play" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.8v8.4L10 6z"/></svg><svg class="b-pause" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 2h2v8H3zM7 2h2v8H7z"/></svg></span><span class="b-hear-words"><b>${esc(L.hear)}</b><span class="b-time" data-time></span></span>${bars}</button><audio data-audio preload="metadata" src="${inline(audioFile)}"></audio>`
     : "";
   const listen =
     spoken || audioFile
@@ -298,14 +382,18 @@ ${readFileSync(join(SKILL, "page", "brief.css"), "utf8").trim()}
 ${pageHead(heading)}
 <div class="b-page">
 <header class="b-mast">
-<p class="b-day">${esc(dayLine)} · ${esc(madeAt)}</p>
+<p class="b-day">${esc(dayLine)} · ${esc(madeAt)} · ${esc(L.count.replace("{n}", String(joined.length)))}</p>
 <h1 class="b-lede">${esc(brief.lede?.trim() || heading)}</h1>
+${dayNote && !glance?.weather ? `<p class="b-daynote">${esc(dayNote)}</p>` : ""}
+${listen}
 </header>
-${pills.length || listen ? `<div class="b-side">${pills.length ? `<div class="b-glance">${pills.join("")}</div>` : ""}${listen}</div>` : ""}
+${tiles.length ? `<section class="b-today"><h2>${esc(L.today)}</h2><div class="b-tiles">${tiles.join("")}</div></section>` : ""}
 ${leadHtml}
 <div class="b-topics">
 ${topicHtml}
 </div>
+${followHtml}
+${shortHtml}
 <p class="b-made">${esc(L.made.replace("{time}", madeAt).replace("{count}", String(publishers.size)))}</p>
 </div>
 {{shell.sign}}
@@ -337,13 +425,15 @@ ${topicHtml}
   mkdirSync(dirname(out), { recursive: true });
   const replaced = existsSync(out);
   writeFileSync(out, html);
-  const noPicture = joined.filter((s) => !s.image?.file).map((s) => s.id);
+  const noPicture = [lead, ...long]
+    .filter((s) => !pics.has(s.id))
+    .map((s) => s.id);
   console.log(
-    `${shown(out)}${replaced ? " (replaced)" : ""}: ${joined.length} stories, ${joined.length - noPicture.length} pictures${noPicture.length ? ` (none for ${noPicture.join(", ")})` : ""}${pills.length ? `, ${pills.length} at a glance` : ""}${audioFile ? ", audio" : ""}, ${Math.round(statSync(out).size / 1024)} KB.`,
+    `${shown(out)}${replaced ? " (replaced)" : ""}: ${joined.length} stories, ${1 + long.length - noPicture.length} pictures${noPicture.length ? ` (none for ${noPicture.join(", ")})` : ""}${tiles.length ? `, ${tiles.length} at a glance` : ""}${audioFile ? ", audio" : ""}, ${Math.round(statSync(out).size / 1024)} KB.`,
   );
-  if (items.length < 3 || items.length > 7)
+  if (long.length < 2 || long.length > 5)
     console.log(
-      `Note: ${items.length} stories under the lead; a brief reads best with 3 to 7.`,
+      `Note: ${long.length} stories in full under the lead; a brief reads best with 2 to 5, the rest "short".`,
     );
   if (opts.look) look(out, resolve(String(opts.look)));
 });
@@ -385,4 +475,63 @@ function look(page, dir) {
   console.log(
     `Look at ${join(dir, "look-01.png")} once with look_at: the top of the page at phone width.`,
   );
+}
+
+/**
+ * Each picture at most `max` pixels wide, as a JPEG, drawn once through a canvas in a
+ * headless browser of its own; a picture already that narrow is kept as it came. Answers
+ * id → data URL.
+ */
+async function shrink(list) {
+  const got = new Map();
+  if (!list.length) return got;
+  const at = join(
+    process.env.THURSDAY_SKILLS ?? "",
+    "browser",
+    "scripts",
+    "session.mjs",
+  );
+  if (!existsSync(at))
+    throw new Stop(
+      `No browser session script at ${at}: run this from a bot's shell in the app.`,
+    );
+  const { inPageApart } = await import(pathToFileURL(at).href);
+  const inputs = list.map((p) => ({
+    id: p.id,
+    max: p.max,
+    src: inline(p.file),
+  }));
+  const shrunk = await inPageApart(
+    async (page, { inputs }) =>
+      page.evaluate(
+        async (inputs) =>
+          Promise.all(
+            inputs.map(async ({ id, max, src }) => {
+              const img = new Image();
+              img.src = src;
+              // A picture the browser cannot draw (a format it does not read, a cut-off
+              // download) shows as its outlet's name, and the build names it
+              try {
+                await img.decode();
+              } catch {
+                return { id, src: null };
+              }
+              if (img.naturalWidth <= max) return { id, src };
+              const canvas = document.createElement("canvas");
+              canvas.width = max;
+              canvas.height = Math.round(
+                (img.naturalHeight * max) / img.naturalWidth,
+              );
+              canvas
+                .getContext("2d")
+                .drawImage(img, 0, 0, canvas.width, canvas.height);
+              return { id, src: canvas.toDataURL("image/jpeg", 0.82) };
+            }),
+          ),
+        inputs,
+      ),
+    { inputs },
+  );
+  for (const { id, src } of shrunk ?? []) if (src) got.set(id, src);
+  return got;
 }
