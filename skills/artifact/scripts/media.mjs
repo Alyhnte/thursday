@@ -1,4 +1,4 @@
-// ffmpeg for the kit's scripts that make sound and video (book-video.mjs, motion.mjs): the
+// ffmpeg for the kit's scripts that make sound and video (deck.mjs, motion.mjs): the
 // machine's own, or a portable build installed once into the workspace, and what it reads
 // off a file.
 import { spawnSync } from "node:child_process";

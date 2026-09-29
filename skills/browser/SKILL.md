@@ -37,7 +37,7 @@ for them to confirm, the map with the pin dropped, the page they asked to watch 
 sign-in for them to finish, and a payment for them to press. Open it `--headed`, leave it
 open, and say in your answer that it is on their screen. A window you opened
 headed only to get past a wall and are done with, `close` yourself. A window is never how
-you look at your own work: a page, a deck, a canvas or a picture book you made is shown to
+you look at your own work: a page, a deck or a canvas you made is shown to
 you by its skill's `shots` and `look_at`, and reaches them under your answer — nor is `open` on their
 desktop. Only a job they cancel or delete takes its windows with it.
 

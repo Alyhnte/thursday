@@ -66,6 +66,35 @@
   const bare = (text) =>
     text.trim().replace(/^["'“”‘’„«»「『]+|["'“”‘’„«»」』]+$/gu, "");
 
+  /**
+   * A line of words with the word it names marked, where the line writes it: found as
+   * written, or with its letters in another case when that keeps every letter where it was.
+   */
+  const named = (tag, className, text, term, f) => {
+    const line = el(tag, className, null, f);
+    let at = term ? text.indexOf(term) : -1;
+    if (term && at === -1 && text.toLowerCase().length === text.length)
+      at = text.toLowerCase().indexOf(term.toLowerCase());
+    if (at === -1) {
+      line.textContent = text;
+      return line;
+    }
+    line.append(
+      text.slice(0, at),
+      el("mark", "", text.slice(at, at + term.length)),
+      text.slice(at + term.length),
+    );
+    return line;
+  };
+
+  /** A picture a slide shows, by the name the deck keeps it under beside the file. */
+  const pic = (className, src, alt) => {
+    const img = el("img", className);
+    img.src = src;
+    img.alt = alt ?? "";
+    return img;
+  };
+
   /** What each layout puts on its slide, and the class that lays it out (deck.css). */
   const LAYOUTS = {
     cover: (s) => [
@@ -142,10 +171,34 @@
       const words = el("div", "dk-words");
       words.append(el("h2", "dk-head", s.title, "title"));
       if (s.subtitle) words.append(el("p", "dk-sub", s.subtitle, "subtitle"));
-      const img = el("img", s.fit === "whole" ? "dk-pic dk-whole" : "dk-pic");
-      img.src = s.image;
-      img.alt = s.alt ?? "";
-      return [words, img];
+      return [
+        words,
+        pic(s.fit === "whole" ? "dk-pic dk-whole" : "dk-pic", s.image, s.alt),
+      ];
+    },
+    // The way a picture book explains: the picture says it, a line or two names it
+    picture: (s) => [
+      pic(s.fit === "fill" ? "dk-shown dk-photo" : "dk-shown", s.image, s.alt),
+      named("p", "dk-caption", s.text, s.term, "text"),
+      s.more && el("p", "dk-more", s.more, "more"),
+    ],
+    // A question on what came before: a pick is marked right or not, and the answer shows
+    quiz: (s) => {
+      const list = el("ol", "dk-choices");
+      (s.choices ?? []).forEach((choice, i) => {
+        const pick = el("li", "dk-choice");
+        pick.setAttribute("role", "button");
+        pick.tabIndex = 0;
+        if (i === s.right) pick.dataset.right = "";
+        if (choice.image) pick.append(pic("", choice.image, ""));
+        pick.append(el("span", "", choice.text, `choices.${i}.text`));
+        list.append(pick);
+      });
+      return [
+        el("h2", "dk-head", s.question, "question"),
+        list,
+        el("p", "dk-answer", s.answer, "answer"),
+      ];
     },
     timeline: (s) => {
       const line = el("ol", "dk-line");
@@ -416,11 +469,36 @@
   deck.addEventListener("click", (event) => {
     // While editing, a press on a slide is a press on its words
     if (shell.edits.on) return;
-    if (event.target.closest("a, button, input, select, textarea, summary"))
+    if (
+      event.target.closest(
+        "a, button, input, select, textarea, summary, .dk-choice",
+      )
+    )
       return;
     if (getSelection()?.toString()) return;
     const box = deck.getBoundingClientRect();
     go(open + (event.clientX < box.left + box.width / 3 ? -1 : 1));
+  });
+
+  /** A quiz's pick: marked right or not, and the answer shown under the picks. */
+  const answer = (pick) => {
+    const quiz = pick.closest("section[data-slide]");
+    for (const one of quiz.querySelectorAll(".dk-choice"))
+      one.setAttribute("aria-pressed", String(one === pick));
+    quiz.dataset.answered = pick.hasAttribute("data-right") ? "right" : "wrong";
+  };
+  deck.addEventListener("click", (event) => {
+    const pick = event.target.closest(".dk-choice");
+    if (pick && !shell.edits.on) answer(pick);
+  });
+  // Enter or space on a pick picks it, and turns no slide
+  deck.addEventListener("keydown", (event) => {
+    const pick = event.target.closest?.(".dk-choice");
+    if (!pick || event.target !== pick || shell.edits.on) return;
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    event.stopPropagation();
+    answer(pick);
   });
 
   /* The head's own buttons, and the strip's. */
@@ -455,6 +533,11 @@
     copy.classList.add("open");
     for (const field of copy.querySelectorAll("[contenteditable]"))
       field.removeAttribute("contenteditable");
+    // A quiz's picks in the miniature are a picture of them, not buttons inside its button
+    for (const pick of copy.querySelectorAll(".dk-choice")) {
+      pick.removeAttribute("tabindex");
+      pick.removeAttribute("role");
+    }
     return box;
   };
   const drawStrip = () => {

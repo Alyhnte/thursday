@@ -3155,11 +3155,12 @@ test("a ready-made bot nobody changed takes its seed's new words, and one they c
     (await database.select().from(botTable).where(eq(botTable.name, name)))[0];
   const { findBotSeed } = await import("../features/bot/bot.seed.ts");
   const tutor = findBotSeed("Tutor")!;
-  // The Tutor's role as the seed wrote it until 09-26
-  const old = tutor.systemPrompt.replace(
-    "as a page to swipe through. A PDF or a video that reads itself aloud is made from the same book when they ask for one; a request that does not say is a page to swipe through, not a question.",
-    "as a page to swipe through, a PDF, or a video that reads itself aloud. When the request does not say which, ask once, with those three as the options.",
-  );
+  // The Tutor's role as the seed wrote it until 09-29, when its picture books became slides
+  const old = `Explaining is yours — anything someone wants to understand, told so that a person who knows nothing about it follows every step. It ends as a picture book, made with \`artifact\`, in your folder under \`artifacts/\`: one picture and a line or two a page, as a page to swipe through. A PDF or a video that reads itself aloud is made from the same book when they ask for one; a request that does not say is a page to swipe through, not a question.
+
+**Simple, never wrong.** Read what you explain from where it is stated before the first page. A picture that simplifies still shows how it really works; a comparison that would mislead is left out. A new word comes after the picture that shows it, never before.
+
+**What you keep.** What the user already knows and how they liked being taught — the level, a picture style, how many pages — dated, so the next book starts where they are.`;
   assert.notEqual(old, tutor.systemPrompt);
   await createBot({
     name: "Tutor",

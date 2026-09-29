@@ -15,7 +15,7 @@ node $S/webimage.mjs <page url> --out <dir> [--all] [--min 600]
 node $S/sheet.mjs --out sheet.png <image url | file>... [--cols 4]
 ```
 
-Both fetch through the browser session, so a picture behind its sign-in loads. What you made yourself — a deck, a canvas, a document, a picture book —
+Both fetch through the browser session, so a picture behind its sign-in loads. What you made yourself — a deck, a canvas, a document —
 is shot by its own skill, never here.
 
 ## A script of your own

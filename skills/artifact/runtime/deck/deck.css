@@ -364,6 +364,119 @@ section[data-slide]:has(.dk-page) .dk-foot {
   height: 792px;
 }
 
+/* A picture slide, the way a picture book explains: the picture takes what the words
+   leave, whole, and a line or two under it names what it shows. A photo may fill its box
+   instead. */
+.dk-picture {
+  align-items: center;
+  gap: calc(36px * var(--dk-fit, 1));
+  padding: 96px 128px 120px;
+  text-align: center;
+}
+.dk-shown {
+  flex: 1 1 0;
+  width: 100%;
+  min-height: 0;
+  object-fit: contain;
+}
+.dk-shown.dk-photo {
+  border-radius: 16px;
+  object-fit: cover;
+}
+.dk-caption {
+  flex: none;
+  max-width: 1500px;
+  font-family: var(--dk-head);
+  font-size: calc(64px * var(--dk-fit, 1));
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+.dk-more {
+  flex: none;
+  max-width: 1400px;
+  color: var(--dk-muted);
+  font-size: calc(40px * var(--dk-fit, 1));
+  line-height: 1.35;
+  text-wrap: balance;
+}
+/* The word a slide has just shown, named */
+.dk-caption mark {
+  padding: 0 0.12em;
+  border-radius: 0.18em;
+  background: color-mix(in srgb, var(--dk-accent) 20%, transparent);
+  color: inherit;
+  print-color-adjust: exact;
+}
+
+/* A quiz: the question, two to four picks side by side, and the answer once one is
+   picked. On paper, in a picture and in a video there is nothing to press, so the answer
+   shows there, and while editing, so it can be written. */
+.dk-quiz {
+  align-items: center;
+  gap: calc(56px * var(--dk-fit, 1));
+  text-align: center;
+}
+.dk-quiz .dk-head {
+  text-wrap: balance;
+}
+.dk-choices {
+  display: flex;
+  justify-content: center;
+  gap: 40px;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.dk-choice {
+  display: flex;
+  flex: 0 1 380px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: calc(24px * var(--dk-fit, 1));
+  min-width: 0;
+  padding: calc(40px * var(--dk-fit, 1)) 32px;
+  border: 4px solid var(--dk-line);
+  border-radius: 28px;
+  background: var(--dk-card);
+  font-size: calc(44px * var(--dk-fit, 1));
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  print-color-adjust: exact;
+}
+.dk-choice:focus-visible {
+  outline: 4px solid var(--dk-accent);
+  outline-offset: 6px;
+}
+.dk-choice img {
+  width: 100%;
+  height: calc(220px * var(--dk-fit, 1));
+  object-fit: contain;
+}
+.dk-quiz[data-answered] .dk-choice[data-right],
+body:is(.shot, .dk-editing) .dk-quiz .dk-choice[data-right] {
+  border-color: var(--dk-accent);
+  background: color-mix(in srgb, var(--dk-accent) 14%, var(--dk-card));
+}
+.dk-quiz[data-answered="wrong"] .dk-choice[aria-pressed="true"] {
+  border-style: dashed;
+  border-color: var(--dk-muted);
+  color: var(--dk-muted);
+}
+.dk-answer {
+  max-width: 1400px;
+  color: var(--dk-muted);
+  font-size: calc(40px * var(--dk-fit, 1));
+  visibility: hidden;
+}
+.dk-quiz[data-answered] .dk-answer,
+body:is(.shot, .dk-editing) .dk-quiz .dk-answer {
+  visibility: visible;
+}
+
 .dk-close {
   gap: calc(56px * var(--dk-fit, 1));
 }

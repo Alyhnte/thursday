@@ -26,7 +26,7 @@ export const SEED_WORDS = {
         "34a40602b63070cf8fffb472d80ca953ba4970df79efea8994c9ddada1e40852",
     },
     Designer: {
-      role: "41f33cca88277e694d851c30aad3feadbf298db5865d55addbb9c099e2c31c46",
+      role: "bc38b9ebdb47b1997276a8c01540f75ee630ee9e62476b1cf28cbcc14a8a79e6",
       description:
         "c7e32c06db49c5705d7df5cc7c4d0107c5833329b6fda26d9f357bc2e7629724",
     },
@@ -41,9 +41,9 @@ export const SEED_WORDS = {
         "52c4fcfca1ee31d4bd6b219b51157cc7673d5e4093a163cdd16a7055337dbceb",
     },
     Tutor: {
-      role: "e2da41b01905031d1bb1e246c81bfa4c36a6efc14dd58a1e03a977d47941d72b",
+      role: "55c0b1264bb177f052a0048b3c1909ffca36b7c1a33e61dc8b9536ca4e3bbc59",
       description:
-        "9c0b79b91390f79e38c43f3c9f396acaba8e0709c86a1097d2aa150823272481",
+        "f3356e55e33626d633bd890c30c2472c324105a57b0504084ee135c4f4fe5f36",
     },
   },
   before: {
@@ -64,6 +64,9 @@ export const SEED_WORDS = {
         "0702d68f06738940f98ed6cfbab41715e87590fb5af1466fd30d6aec47270fd0",
         "a7b3aa7f71319fc4884bca24b00fcb05c4e552824ac97ecfdd14be0409e77ce6",
       ],
+      Designer: [
+        "41f33cca88277e694d851c30aad3feadbf298db5865d55addbb9c099e2c31c46",
+      ],
       Jarvis: [
         "51bf694bcd2f55f283f24dae6210c9a18c69fb2c44beacbda0b925f798e8ea35",
         "80bf400fb3e2572cb6c4f101577f6f4d44fcd711f4c3330a75de2a7a81795cdc",
@@ -82,6 +85,7 @@ export const SEED_WORDS = {
       Tutor: [
         "1761c048db262a2864d3cd6e3d338f52a370b65efd9f61555970008defd66277",
         "341a3aa83a61e767d66e3ec3daf17f80d5ebe462f0342665cfcc2afa37b56fda",
+        "e2da41b01905031d1bb1e246c81bfa4c36a6efc14dd58a1e03a977d47941d72b",
         "eacf69e58573b8414fb0936ea0aa7e3d6290a53c4e8dd2a562252bf0352cbadc",
       ],
     },
@@ -104,6 +108,7 @@ export const SEED_WORDS = {
       ],
       Tutor: [
         "21e0c69699688b77609c91bdc1387c0545b3e899404d07347ce6f21713573a1f",
+        "9c0b79b91390f79e38c43f3c9f396acaba8e0709c86a1097d2aa150823272481",
         "dd3d35e733da1496a7161b01f1b297d0f715ef4ca30cf79d303e68727f585a17",
       ],
     },

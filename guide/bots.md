@@ -31,7 +31,8 @@ bots. A ready-made bot differs only in its role, and some carry a skill of their
   connector on (**Settings › Connectors**) it searches flights without opening a window.
 - **Designer** makes what gets looked at: two to four ways a screen or page could look side by
   side, a deck, a post or poster at its real size.
-- **Tutor** explains anything as a picture book.
+- **Tutor** explains anything simply, a picture at a time: slides that read like a picture book,
+  read aloud when asked, or a one-page guide to study from.
 - **Marketer** keeps one brief per product and works from it: positioning, page copy, a launch
   plan, social posts, emails, an SEO audit.
 - **Jarvis** takes whatever nobody else is for — the web, files, this computer.
@@ -159,15 +160,10 @@ an open file, it is shown fresh with **Reloaded at** and the time; a sound or vi
 file, a spreadsheet or anything else the app cannot show has **Open it**, which opens it in the
 computer's own program.
 
-## Books, canvases, decks, videos and pages
+## Canvases, decks, videos and pages
 
 A page, canvas or deck opened inside the app takes the keyboard once clicked; opened in its own tab
 (↗) it has the whole window. Its top bar names the bot that made it.
-
-**Tutor**'s picture book is a picture and a line or two a page, turned by swiping, the arrow keys or
-tapping either side; it may end on a quiz. It can also be a PDF, or a video that reads itself aloud,
-when asked; otherwise it is a book to swipe through. Pictures need an image model and the video a
-speech model in **Settings › Models**.
 
 **Designer**'s canvas lays two to four options side by side, each with a note on what it is for and
 what it costs, the one it recommends marked. Drag to move, pinch or hold ⌘ and scroll to zoom, the
@@ -178,12 +174,17 @@ note pin on the rail (**N**) pins a note of the user's own; a bot asked to chang
 the notes. It designs from what exists — a codebase, a brand, a page — so give it a screenshot of a
 screen it cannot open.
 
-A **deck** is for presenting. Any bot can make one; the app lays out every slide, in one of four
-palettes: **Forest**, **Sea**, **Clay** or **Ink**. The top bar has the arrows, Notes (**n**), full
-screen (**f**), Present, a theme button and **Export** (**Print · one slide a page**, **This slide
-as a picture**, **Download this file**). Presenting shows the slide alone, never the notes. There is
-no PowerPoint file; a handout prints to PDF. **Edit** changes words and notes in place, moves,
-duplicates or deletes the open slide, or changes the palette; ⌘Z undoes.
+A **deck** is for presenting, or for explaining one thing simply. Any bot can make one; the app
+lays out every slide, in one of four palettes: **Forest**, **Sea**, **Clay** or **Ink**.
+**Tutor**'s decks explain the way a picture book does — a picture and a line or two a slide, a new
+word marked where it is first named — and may end on a quiz: tapping a pick marks it and shows the
+answer. The top bar has the arrows, Notes (**n**), full screen (**f**), Present, a theme button and
+**Export** (**Print · one slide a page**, **This slide as a picture**, **Download this file**).
+Presenting shows the slide alone, never the notes. There is no PowerPoint file; a handout prints to
+PDF. **Edit** changes words and notes in place, moves, duplicates or deletes the open slide, or
+changes the palette; ⌘Z undoes. Asked for one, a bot also makes the deck a PDF, a slide a sheet, or
+a video that reads each slide's notes aloud over it. A picture a bot generates needs an image model,
+and the video a speech model, in **Settings › Models**.
 
 A **motion video** is a short hand-drawn film with music — a birthday or anniversary gift, a
 thank-you to a parent, a farewell, a small story. Any bot can make one: tell it who it is for and

@@ -55,7 +55,13 @@ const footer = words(100)
   .describe("A source or a date along the foot of the slide.");
 const notes = words(1500)
   .nullish()
-  .describe("What the presenter says over it, as speech. Never shown.");
+  .describe(
+    "What the presenter says over it, as speech; a video of the deck reads it aloud. Never shown.",
+  );
+/** A picture on a slide, as the deck is handed it. */
+const picturePath = words(500).describe(
+  "Workspace path of a png, jpg, webp, gif or svg. It is copied beside the deck.",
+);
 
 const cover = z.object({
   layout: z.literal("cover"),
@@ -145,9 +151,7 @@ const image = z.object({
   layout: z.literal("image"),
   title: words(90).describe("The heading beside the picture."),
   subtitle: words(280).nullish().describe("A line or two under it."),
-  image: words(500).describe(
-    "Workspace path of a png, jpg, webp, gif or svg. It is copied beside the deck.",
-  ),
+  image: picturePath,
   alt: words(160).describe("What it shows, for someone who cannot see it."),
   fit: z
     .enum(["fill", "whole"])
@@ -156,6 +160,60 @@ const image = z.object({
       "fill crops a photo to its box; whole shows a chart or screenshot uncropped. Null for fill.",
     ),
   footer,
+  notes,
+});
+
+/** One thing explained the way a picture book does: the picture says it, a line names it. */
+const picture = z.object({
+  layout: z.literal("picture"),
+  image: picturePath,
+  alt: words(160).describe("What it shows, for someone who cannot see it."),
+  text: words(110).describe(
+    "The line under the picture: what it shows, in short everyday words.",
+  ),
+  more: words(110)
+    .nullish()
+    .describe("A second, lighter line, only when one more is needed."),
+  term: words(40)
+    .nullish()
+    .describe(
+      "The new word this slide names, exactly as `text` writes it: it is marked there. Only on the slide whose picture has just shown the thing.",
+    ),
+  fit: z
+    .enum(["whole", "fill"])
+    .nullish()
+    .describe(
+      "whole shows a drawing, chart or screenshot uncropped; fill crops a photo to its box. Null for whole.",
+    ),
+  footer,
+  notes,
+});
+
+/** A question on what the slides before it showed; a pick is marked and the answer shows. */
+const quiz = z.object({
+  layout: z.literal("quiz"),
+  question: words(120).describe(
+    "One question about what the slides before it showed.",
+  ),
+  choices: z
+    .array(
+      z.object({
+        text: words(40).describe("The pick, in a word or two."),
+        image: picturePath.nullish(),
+      }),
+    )
+    .min(2)
+    .max(4)
+    .describe("Two to four picks, side by side."),
+  right: z
+    .number()
+    .int()
+    .min(0)
+    .max(3)
+    .describe("Which pick is right, counted from 0."),
+  answer: words(160).describe(
+    "Why that one is right, in a sentence: shown once a pick is made, and printed.",
+  ),
   notes,
 });
 
@@ -240,6 +298,8 @@ const slide = z.discriminatedUnion("layout", [
   table,
   quote,
   image,
+  picture,
+  quiz,
   timeline,
   compare,
   stats,
@@ -335,47 +395,33 @@ async function deckFile(said: string, bot: string): Promise<string> {
 }
 
 /**
- * The slides as the file will hold them: a table's short rows filled out, and every
- * picture copied beside the deck under the name its slide shows it by.
+ * The slides as the file will hold them: a table's short rows filled out, a quiz's right
+ * pick one it has, and every picture copied beside the deck under the name its slide
+ * shows it by.
  */
 async function prepare(
   slides: Slide[],
   sandbox: Sandbox,
   dir: string,
 ): Promise<Slide[]> {
+  const folder = sandbox.resolve(dir);
   const taken = new Map<string, string>();
-  const out: Slide[] = [];
-  for (const [at, one] of slides.entries()) {
-    if (one.layout === "table") {
-      const long = one.rows.findIndex((row) => row.length > one.columns.length);
-      if (long !== -1)
-        throw new Refusal(
-          `Slide ${at + 1}: row ${long + 1} has ${one.rows[long].length} cells, and there are ${one.columns.length} columns.`,
-        );
-      out.push({
-        ...one,
-        rows: one.rows.map((row) => one.columns.map((_, i) => row[i] ?? "")),
-      });
-      continue;
-    }
-    if (one.layout !== "image") {
-      out.push(one);
-      continue;
-    }
-    const folder = sandbox.resolve(dir);
+
+  /** A slide's picture beside the deck, by the name the slide will show it by. */
+  const place = async (at: number, image: string): Promise<string> => {
     // A bare name is one beside the deck: how the deck names its pictures when it is handed back
-    const beside = join(folder, one.image);
+    const beside = join(folder, image);
     const source =
-      !one.image.includes("/") && (await stat(beside).catch(() => null))
+      !image.includes("/") && (await stat(beside).catch(() => null))
         ? beside
-        : sandbox.resolve(one.image);
+        : sandbox.resolve(image);
     if (viewKindOf(source) !== "image")
       throw new Refusal(
-        `Slide ${at + 1}: ${one.image} is not a picture. Give a png, jpg, webp, gif or svg.`,
+        `Slide ${at + 1}: ${image} is not a picture. Give a png, jpg, webp, gif or svg.`,
       );
     if (!(await stat(source).catch(() => null))?.isFile())
       throw new Refusal(
-        `Slide ${at + 1}: there is no file at ${one.image}. Give its path from the workspace root, as \`ls\` shows it.`,
+        `Slide ${at + 1}: there is no file at ${image}. Give its path from the workspace root, as \`ls\` shows it.`,
       );
     let name = taken.get(source);
     if (!name) {
@@ -389,7 +435,37 @@ async function prepare(
         await copyFile(source, join(folder, name));
       }
     }
-    out.push({ ...one, image: name });
+    return name;
+  };
+
+  const out: Slide[] = [];
+  for (const [at, one] of slides.entries()) {
+    if (one.layout === "table") {
+      const long = one.rows.findIndex((row) => row.length > one.columns.length);
+      if (long !== -1)
+        throw new Refusal(
+          `Slide ${at + 1}: row ${long + 1} has ${one.rows[long].length} cells, and there are ${one.columns.length} columns.`,
+        );
+      out.push({
+        ...one,
+        rows: one.rows.map((row) => one.columns.map((_, i) => row[i] ?? "")),
+      });
+    } else if (one.layout === "image" || one.layout === "picture")
+      out.push({ ...one, image: await place(at, one.image) });
+    else if (one.layout === "quiz") {
+      if (one.right >= one.choices.length)
+        throw new Refusal(
+          `Slide ${at + 1}: right is ${one.right}, and there are ${one.choices.length} picks, counted from 0.`,
+        );
+      const choices = [];
+      for (const choice of one.choices)
+        choices.push(
+          choice.image
+            ? { ...choice, image: await place(at, choice.image) }
+            : choice,
+        );
+      out.push({ ...one, choices });
+    } else out.push(one);
   }
   return out;
 }

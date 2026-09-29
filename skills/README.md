@@ -7,11 +7,11 @@ ships beside this folder instead, in `seed-skills/<that bot's name>/`, listed to
 and read where it ships; `seed-skills/retired.json` names the copies older versions made in a
 bot's folder, which are not listed while they are unchanged.
 
-What the user keeps, looks at or uses — a document, a canvas, a picture book, a deck, a page or
+What the user keeps, looks at or uses — a document, a canvas, a deck, a motion video, a page or
 a small app, with its charts and diagrams — is one skill, `artifact`, the way Claude's own Docs,
 Design and Slides are one kind of thing with a runtime behind them: a bot writes the content, and
 what draws it is the skill's `runtime/` folder — the shell every page wears (its head, its theme,
-how an edit is kept, how a bot writes into it), the document, canvas, book and deck drawings, the
+how an edit is kept, how a bot writes into it), the document, canvas and deck drawings, the
 kit an app is built on, and the camera that shoots them. `load_skill` does not list a `runtime/`
 folder: a bot never opens it. `make_deck` draws with `artifact/runtime/deck`.
 

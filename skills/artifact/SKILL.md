@@ -1,6 +1,6 @@
 ---
 name: artifact
-description: "Makes what the user keeps or uses: a document, canvas, picture book, deck, motion video, sheet, page or app. Use it for a report or memo, options or a mockup at real size, an explanation in pictures, slides, a short hand-drawn film for a birthday, a thank-you or a small story, an Excel sheet or reading one, a tool such as a calculator or a tracker, numbers as a chart, or a diagram of how something is built."
+description: "Makes what the user keeps or uses: a document, canvas, deck, motion video, sheet, page or app. Use it for a report or memo, options or a mockup at real size, slides to present or to explain one thing a picture at a time, read aloud or as a PDF, a short hand-drawn film for a birthday, a thank-you or a small story, an Excel sheet or reading one, a tool such as a calculator or a tracker, numbers as a chart, or a diagram of how something is built."
 license: Complete terms in LICENSE.txt
 ---
 
@@ -18,14 +18,13 @@ the type, light and dark, a head that names it with Edit and Export, and the pic
 |---|---|---|---|
 | read it — a report, a memo, options compared, a plan, notes of a meeting, research with its photos; or a Word file of it | document | write Markdown, then `node $S/document.mjs put <name> <file.md>`; a .docx: `document.mjs docx <name>` | `references/document.md` |
 | choose between ways something could look, or see it at its real size — an app or phone screen, a landing page, a poster, a post | canvas | `node $S/canvas.mjs new <name>` | `references/canvas.md`, then `references/craft.md` |
-| understand one thing simply — a picture and a line or two a page, to swipe, as a PDF or read aloud | picture book | `node $S/book.mjs new <name>`, then its pages: `book.mjs put <name> <pages.html>` | `references/book.md` |
-| watch it presented | deck | the `make_deck` tool | `references/deck.md` |
+| watch it presented, or understand one thing simply — a picture and a line or two a slide; as a PDF, or a video that reads itself | deck | the `make_deck` tool; then `node $S/deck.mjs pdf <deck>` or `deck.mjs video <deck> <audio>…` | `references/deck.md` |
 | watch a short hand-drawn film — a birthday or anniversary gift, a thank-you, a farewell, a small story, with music | motion video | write the film as code with the kit, from `templates/motion/birthday.js`, then `node $S/motion.mjs put <name> <film.js>` | `references/motion.md` |
 
 - **Write the content, never the file around it.** Each script makes its file and puts what you
   wrote into it; a file you write whole yourself loses its head, its editing and its check.
 - **A name is yours, a path is anyone's.** A name reaches only your own folder; a document, canvas
-  or book another bot handed you is reached by its path.
+  or deck another bot handed you is reached by its path.
 - **Change what exists by getting it first.** The user may have edited it in the app since you
   made it. `get` it into a file, change that, `put` it back: `put` refuses to undo their edits.
 
@@ -43,7 +42,7 @@ document.
 
 ## Charts
 
-Numbers they should see are a chart, drawn into the document, page or book that carries them:
+Numbers they should see are a chart, drawn into the document or page that carries them:
 `node $S/chart.mjs <file.html> <figure id> <data.csv>`; on a slide, a board or a post, it is a
 picture: `node $S/chart.mjs <picture.svg> <data.csv>`. A line, bars, upright columns, a donut or
 stacked bars (`--kind`; no arguments lists every option). Never hand-write chart SVG.
@@ -57,11 +56,12 @@ keep, share, use or come back to.
   `[PRICE]`, for them to fill — never a plausible one.
 - **Pictures come off the pages you read.** `node $THURSDAY_SKILLS/browser/scripts/webimage.mjs
   <page url> --out <the folder beside the file>` saves a page's own picture with its credit line.
-- **Look once where the look is the work.** A canvas, a picture book and a motion video come
-  back as one picture of every board, page or scene (`shots`, then `look_at`): fix what it
-  refuses or marks as cut, two rounds at most. A document and a deck are drawn by the app from what you wrote, so they go
-  back without a second look. A page, an app or a diagram is looked at only when asked, with
+- **Look once where the look is the work.** A canvas and a motion video come back as one
+  picture of every board or scene (`shots`, then `look_at`), and `make_deck` hands back every
+  slide on one: fix what it refuses or marks as cut, two rounds at most. A document is drawn by
+  the app from what you wrote, so it goes back without a second look. A page, an app or a diagram is looked at only when asked, with
   `node $S/document.mjs shots <its path>`: an app's build and a diagram's check already name
   what is broken.
-- **Hand back** the file's path — a canvas or a book with its pictures' paths, a motion video
-  with its mp4 — and say in a line or two what it holds and what you would do next with it.
+- **Hand back** the file's path — a canvas with its pictures' paths, a deck or a motion video
+  with its mp4 when there is one — and say in a line or two what it holds and what you would do
+  next with it.

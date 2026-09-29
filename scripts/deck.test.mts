@@ -369,3 +369,140 @@ test("every slide on one picture comes back, and reaches a model that sees pictu
   });
   shots = { exitCode: 0, stdout: '{"pictures":[],"cut":[]}', stderr: "" };
 });
+
+test("a picture slide explains a thing at a time, and a quiz's right pick is one it has", async () => {
+  const drawing = join(WORKSPACE, "scratch", "sun.svg");
+  await mkdir(dirname(drawing), { recursive: true });
+  await writeFile(
+    drawing,
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 9"></svg>',
+  );
+  await make({
+    deck: "Water",
+    title: "Where rain comes from",
+    slides: [
+      { layout: "cover", title: "Where does rain come from?" },
+      {
+        layout: "picture",
+        image: "scratch/sun.svg",
+        alt: "The sun over the sea",
+        text: "The sun warms the sea.",
+        term: "sea",
+      },
+      {
+        layout: "quiz",
+        question: "What does warm water become?",
+        choices: [
+          { text: "Vapour", image: "scratch/sun.svg" },
+          { text: "Stone" },
+        ],
+        right: 0,
+        answer: "Warmed, it rises as vapour.",
+      },
+    ],
+  });
+  const path = file("Water");
+  const deck = await held(path);
+  // Both slides show the one picture, copied beside the deck once
+  assert.equal(deck.slides[1].image, "sun.svg");
+  assert.equal(deck.slides[2].choices[0].image, "sun.svg");
+  assert.equal(deck.slides[2].choices[1].image, undefined);
+  assert.ok(existsSync(join(dirname(path), "sun.svg")));
+
+  const refused = await make({
+    deck: "Water2",
+    title: "T",
+    slides: [
+      {
+        layout: "quiz",
+        question: "Which?",
+        choices: [{ text: "a" }, { text: "b" }],
+        right: 3,
+        answer: "Because.",
+      },
+    ],
+  });
+  assert.match(String(refused), /right is 3, and there are 2 picks/);
+  assert.ok(!existsSync(file("Water2")));
+
+  for (const bad of [
+    {
+      layout: "quiz",
+      question: "One pick?",
+      choices: [{ text: "a" }],
+      right: 0,
+      answer: "A.",
+    },
+    {
+      layout: "quiz",
+      question: "Five picks?",
+      choices: [1, 2, 3, 4, 5].map((n) => ({ text: String(n) })),
+      right: 0,
+      answer: "A.",
+    },
+    {
+      layout: "picture",
+      image: "x.png",
+      alt: "x",
+      text: "a line far longer than a picture book would ever hold ".repeat(3),
+    },
+  ])
+    assert.equal(
+      schema.safeParse({ deck: "d", title: "D", slides: [bad] }).success,
+      false,
+      JSON.stringify(bad),
+    );
+});
+
+test("a deck becomes a PDF or a video only from what it needs, and says what is missing", async () => {
+  const { spawnSync } = await import("node:child_process");
+  const repo = join(import.meta.dirname, "..");
+  const run = (...args: string[]) =>
+    spawnSync(
+      process.execPath,
+      [join(repo, "skills", "artifact", "scripts", "deck.mjs"), ...args],
+      {
+        cwd: WORKSPACE,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          THURSDAY_ARTIFACTS: "artifacts/Tester",
+          THURSDAY_SKILLS: join(repo, "skills"),
+        },
+      },
+    );
+  await make({ deck: "Rain", title: "Rain", slides });
+
+  const none = run("video", "Rain");
+  assert.equal(none.status, 1);
+  assert.match(none.stderr, /one audio file a slide.*: 2 of them/);
+  // By its path, as make_deck handed it back
+  assert.match(
+    run("video", "artifacts/Tester/Rain/Rain.html").stderr,
+    /: 2 of them/,
+  );
+
+  const voice = join(WORKSPACE, "scratch", "voice-1.mp3");
+  await mkdir(dirname(voice), { recursive: true });
+  await writeFile(voice, "");
+  assert.match(
+    run("video", "Rain", "scratch/voice-1.mp3").stderr,
+    /has 2 slides and 1 audio files came/,
+  );
+  assert.match(
+    run("video", "Rain", "scratch/voice-1.mp3", "scratch/gone.mp3").stderr,
+    /No such audio: scratch\/gone\.mp3/,
+  );
+  // Nothing was made, and no voice moved
+  assert.ok(!existsSync(join(dirname(file("Rain")), "Rain.mp4")));
+  assert.ok(existsSync(voice));
+
+  const page = join(WORKSPACE, "artifacts", "Tester", "page.html");
+  await writeFile(page, "<p>Not a deck</p>");
+  assert.match(
+    run("pdf", "artifacts/Tester/page.html").stderr,
+    /is not a deck the make_deck tool made/,
+  );
+  assert.match(run("pdf", "Nowhere").stderr, /No deck at/);
+  assert.match(run("slides", "Rain").stderr, /Usage: deck\.mjs pdf/);
+});
