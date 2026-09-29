@@ -168,7 +168,7 @@ export function WriteLine({
   const take = useCallback(
     (list: File[]) => {
       writeLine.open();
-      void keep(list);
+      return keep(list);
     },
     [keep],
   );
@@ -351,9 +351,9 @@ export function WriteLine({
     <DrawPad
       open={drawing}
       onClose={() => setDrawing(false)}
-      onDone={(file) => {
+      onDone={async (file) => {
         setDrawing(false);
-        take([file]);
+        return (await take([file])).length > 0;
       }}
       // on a spoken call she is given it as it lands; in writing it goes with the words
       action={onCall ? "Show her" : "Add to the message"}

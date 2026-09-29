@@ -35,8 +35,9 @@ export function useGivenFiles(options?: {
   const [files, setFiles] = useState<GivenFile[]>([]);
   const [give] = useServerAction(giveFilesAction);
 
+  /** Keeps what fits beside the files already here; resolves to the paths it kept. */
   const take = useCallback(
-    async (list: File[]) => {
+    async (list: File[]): Promise<string[]> => {
       const room = GIVEN_FILES.perMessage - files.length;
       if (list.length > room)
         toast.add({
@@ -44,7 +45,7 @@ export function useGivenFiles(options?: {
           title: `At most ${GIVEN_FILES.perMessage} files at a time.`,
         });
       const taken = list.slice(0, Math.max(0, room));
-      if (!taken.length) return;
+      if (!taken.length) return [];
       const batch: GivenFile[] = taken.map((file) => ({
         key: crypto.randomUUID(),
         name: file.name,
@@ -63,11 +64,13 @@ export function useGivenFiles(options?: {
             return at < 0 ? one : { ...one, path: paths[at] ?? null, note };
           }),
         );
+        return paths;
       } catch {
         // the hook has already said why; what did not arrive does not wait here
         setFiles((all) =>
           all.filter((one) => !batch.some((mine) => mine.key === one.key)),
         );
+        return [];
       }
     },
     [files.length, give],

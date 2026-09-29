@@ -4,10 +4,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Swatch } from "@/components/ui/swatch";
+import { toast } from "@/components/ui/toast";
 import { DRAW_PAD } from "@/config";
 import { MARK_INK } from "@/features/bot/mark.const";
 import { useEscape } from "@/hooks/use-hotkey";
 import { useIsDark } from "@/hooks/use-theme";
+import { errorToString } from "@/lib/utils";
 import { ORB_INK } from "../ascii.const";
 
 /**
@@ -74,8 +76,11 @@ export function DrawPad({
 }: {
   open: boolean;
   onClose: () => void;
-  /** The drawing, as a file to hand over. */
-  onDone: (file: File) => void;
+  /**
+   * The drawing, as a file to hand over; resolves to whether it was taken. One refused — the
+   * line full, the upload failed — stays on the pad, and whoever refused it says why.
+   */
+  onDone: (file: File) => Promise<boolean>;
   /** What the button that hands it over says. */
   action: string;
 }) {
@@ -152,7 +157,10 @@ export function DrawPad({
     canvas?.getContext("2d")?.clearRect(0, 0, canvas.width, canvas.height);
   };
 
-  /** The drawing alone, cropped to it with a little room, on the pad's own colour. */
+  /**
+   * The drawing alone, cropped to it with a little room, on the pad's own colour, handed
+   * over; cleared once it was taken. What stopped it is said, and the drawing stays.
+   */
   const keep = async () => {
     if (!canvas || !size || !strokes.current.length) return;
     setKeeping(true);
@@ -192,8 +200,17 @@ export function DrawPad({
         out.toBlob(done, "image/png"),
       );
       if (!blob) throw new Error("This browser could not keep the drawing.");
-      onDone(new File([blob], "drawing.png", { type: "image/png" }));
-      clear();
+      const drawn = strokes.current.length;
+      if (await onDone(new File([blob], "drawing.png", { type: "image/png" })))
+        if (strokes.current.length === drawn)
+          // Drawn on again while it went: that stays
+          clear();
+    } catch (cause) {
+      toast.add({
+        type: "error",
+        title: "The drawing could not be kept.",
+        description: errorToString(cause),
+      });
     } finally {
       setKeeping(false);
     }
