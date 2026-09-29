@@ -32,7 +32,7 @@ The buttons at the top right of the call screen open **Thursday**, **Memory** an
 list is Thursday, Memory, Bots, Threads, Routines, Files, Skills, Connectors, Sign-ins, Models,
 API keys and Phone. ⌘K (Ctrl+K) jumps to a section's filter, and ⌘ (Ctrl) with a number from 1 to 9
 opens one of the first nine sections. Under community are **Ask on Discord** and **GitHub**. The
-theme — **System**, **Light** or **Dark** — is at the foot of the list.
+theme — **System**, **Light** or **Dark**, Light until one is picked — is at the foot of the list.
 
 ## Keys
 

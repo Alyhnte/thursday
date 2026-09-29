@@ -1,7 +1,12 @@
 "use client";
 
 import { useEffect, useSyncExternalStore } from "react";
-import { THEME_STORAGE_KEY, THEMES, type Theme } from "@/lib/theme";
+import {
+  DEFAULT_THEME,
+  THEME_STORAGE_KEY,
+  THEMES,
+  type Theme,
+} from "@/lib/theme";
 
 /**
  * Theme preference stored in localStorage and applied as the `dark` class on
@@ -13,12 +18,12 @@ const isTheme = (value: unknown): value is Theme =>
   (THEMES as readonly unknown[]).includes(value);
 
 function read(): Theme {
-  if (typeof window === "undefined") return "system";
+  if (typeof window === "undefined") return DEFAULT_THEME;
   try {
     const raw = window.localStorage.getItem(THEME_STORAGE_KEY);
-    return isTheme(raw) ? raw : "system";
+    return isTheme(raw) ? raw : DEFAULT_THEME;
   } catch {
-    return "system";
+    return DEFAULT_THEME;
   }
 }
 
@@ -91,7 +96,7 @@ export function useTheme(): Theme {
     },
     () => theme,
     // Server snapshot; hydration swaps in the stored value.
-    () => "system",
+    () => DEFAULT_THEME,
   );
 }
 
