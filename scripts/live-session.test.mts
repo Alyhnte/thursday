@@ -351,6 +351,74 @@ test("a picture put down that the connection will not carry is said by its path,
   assert.match(warnings.at(-1) ?? "", /inbox\/photo\.png did not go through/);
 });
 
+test("a fact put down while the backend waits on its tools goes in after their outputs, in order with the picture it names", async () => {
+  const pending = new Map<string, (value: string | LiveToolResult) => void>();
+  const { session } = await connect({
+    runTool: (call) => new Promise((resolve) => pending.set(call.id, resolve)),
+  });
+  nested({ type: "response.created", response: { id: "r1" } });
+  functionCall("a");
+  nested({ type: "response.completed", response: { id: "r1", output: [] } });
+  await tick();
+  session.brief("The user put a file down, kept at inbox/photo.png.");
+  session.picture("data:image/jpeg;base64,BBBB", "inbox/photo.png");
+  assert.deepEqual(backendOrder(), []);
+  pending.get("a")?.("done");
+  await tick();
+  assert.deepEqual(backendOrder(), [
+    "function_call_output:a",
+    "message:developer",
+    "message:user",
+    "continue",
+  ]);
+});
+
+test("a turn heard from again after an error took it for ended holds what is put down until its outputs are in", async () => {
+  const pending = new Map<string, (value: string | LiveToolResult) => void>();
+  const { session } = await connect({
+    runTool: (call) => new Promise((resolve) => pending.set(call.id, resolve)),
+  });
+  nested({ type: "response.created", response: { id: "r1" } });
+  wire.on.event({ type: "error", error: { message: "Handoff ended." } });
+  await tick();
+  // It goes on after all, and asks for a tool
+  functionCall("a");
+  await tick();
+  session.picture("data:image/jpeg;base64,BBBB", "inbox/photo.png");
+  assert.deepEqual(backendOrder(), []);
+  nested({ type: "response.completed", response: { id: "r1", output: [] } });
+  pending.get("a")?.("done");
+  await tick();
+  assert.deepEqual(backendOrder(), [
+    "function_call_output:a",
+    "message:user",
+    "continue",
+  ]);
+});
+
+test("what waited on a turn an error cut off after its tools ran goes in with the next turn", async () => {
+  const { session } = await connect({ runTool: async () => "done" });
+  nested({ type: "response.created", response: { id: "r1" } });
+  functionCall("a");
+  await tick();
+  // Its handoff ends on an error, with no end named for it: it is left waiting
+  wire.on.event({ type: "error", error: { message: "Handoff ended." } });
+  session.picture("data:image/jpeg;base64,BBBB", "inbox/photo.png");
+  assert.deepEqual(backendOrder(), ["function_call_output:a"]);
+  // The next hand-over is a new turn: the picture waits on it, and goes in as it ends
+  nested({ type: "response.created", response: { id: "r2" } });
+  nested({ type: "response.completed", response: { id: "r2", output: [] } });
+  await tick();
+  assert.deepEqual(backendOrder(), ["function_call_output:a", "message:user"]);
+  // Nothing waits any more: the next goes in at once
+  session.picture("data:image/jpeg;base64,CCCC", "inbox/two.png");
+  assert.deepEqual(backendOrder(), [
+    "function_call_output:a",
+    "message:user",
+    "message:user",
+  ]);
+});
+
 test("an incomplete response that asked for tools is continued once, and a second in a row only warns", async () => {
   const { warnings } = await connect();
   nested({ type: "response.created", response: { id: "r1" } });

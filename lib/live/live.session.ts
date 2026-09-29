@@ -234,18 +234,21 @@ type Transcript = {
 };
 /** A picture for the backend: its data URL, and the workspace path it was read from, if any. */
 type Picture = { image: string; path?: string };
+/** What goes into the backend's conversation and starts no turn: a fact (`brief`), or a picture. */
+type Given = { fact: string } | Picture;
 type BackendResponse = {
   calls: Map<string, Promise<void>>;
   /**
-   * Pictures its tools handed back, and pictures put down while it ran, sent once every
-   * output is in and just before it goes on — or as it ends, when it has nothing to go on
-   * with: the guide returns every pending result first, and a picture between two outputs of
-   * one turn is an order it never shows.
+   * What waits on this turn: pictures its tools handed back, and facts and pictures put down
+   * while it ran, sent in order once every output is in and just before it goes on — or as
+   * it ends, when it has nothing to go on with. The guide returns every pending result
+   * first: an item between a call and its output, or between two outputs of one turn, is an
+   * order it never shows.
    */
-  pictures: Picture[];
+  held: Given[];
   /**
-   * Its pictures have gone in: nothing waits on it, and one put down now goes in at once.
-   * Not `continued`, which is set before its tools' outputs are in.
+   * What waited on it has gone in: nothing waits on it, and what is put down now goes in at
+   * once. Not `continued`, which is set before its tools' outputs are in.
    */
   settled?: boolean;
   terminal: boolean;
@@ -442,19 +445,33 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
       LIVE_CALL.transcriptSaveMs,
     );
   };
-  /** What waited on a turn of the backend's, into its conversation now. */
-  const sendPictures = (response: BackendResponse) => {
+  /** What waited on a turn of the backend's, into its conversation now, in order. */
+  const release = (response: BackendResponse) => {
     response.settled = true;
-    for (const picture of response.pictures.splice(0)) sendImage(picture);
+    for (const given of response.held.splice(0))
+      if ("fact" in given) sendFact(given.fact);
+      else sendImage(given);
+  };
+  /**
+   * The turn of the backend's that what is put down now waits on: the latest, while it runs
+   * or waits on its tools' outputs. None when it is quiet, and what is put down goes in at once.
+   */
+  const runningTurn = () => {
+    const latest = [...responses.values()].at(-1);
+    return latest &&
+      !latest.settled &&
+      (!latest.terminal || latest.calls.size > 0)
+      ? latest
+      : undefined;
   };
   const continueResponse = async (response: BackendResponse) => {
     if (!response.terminal || response.continued) return;
     // Nothing to go on with: what waited on it goes in, for the turn handed over next
-    if (!response.calls.size) return sendPictures(response);
+    if (!response.calls.size) return release(response);
     response.continued = true;
     await Promise.all(response.calls.values());
     if (!closing && !closed) {
-      sendPictures(response);
+      release(response);
       continuedAt = performance.now();
       transport.send({
         type: "response.create",
@@ -463,6 +480,17 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
     }
     activity();
   };
+  /** A fact for the backend alone, as a developer message. */
+  const sendFact = (text: string) =>
+    transport.send({
+      type: "response.item.create",
+      event_id: crypto.randomUUID(),
+      item: {
+        type: "message",
+        role: "developer",
+        content: [{ type: "input_text", text }],
+      },
+    });
   /**
    * A picture for the backend, as the user's image, named by its path when it is a file. One
    * the connection will not carry is said to the backend instead, which was told a picture
@@ -488,20 +516,9 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
     } catch (cause) {
       const reason = errorToString(cause);
       logger.warn("Live picture not sent", { reason, bytes: image.length });
-      transport.send({
-        type: "response.item.create",
-        event_id: crypto.randomUUID(),
-        item: {
-          type: "message",
-          role: "developer",
-          content: [
-            {
-              type: "input_text",
-              text: `The picture of ${path ?? "what they show"} did not go through, so nothing on it was seen: ${reason}`,
-            },
-          ],
-        },
-      });
+      sendFact(
+        `The picture of ${path ?? "what they show"} did not go through, so nothing on it was seen: ${reason}`,
+      );
       on.warn(
         path
           ? `${path} did not go through to her: ${reason}`
@@ -582,7 +599,7 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
           if (!response.terminal && !response.calls.size) {
             response.terminal = true;
             response.stale = true;
-            sendPictures(response);
+            release(response);
           }
         activity();
         break;
@@ -607,18 +624,29 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
         if (!id) break;
         let response = responses.get(id);
         if (!response) {
+          // A new turn: one before it that never ended — its handoff cut off by an error,
+          // after its tools had run — goes no further, and what waited on it waits on this.
+          // One going on after its tools' outputs sends its own (continueResponse)
+          const carried: Given[] = [];
+          for (const earlier of responses.values())
+            if (!earlier.settled && !earlier.continued) {
+              earlier.settled = true;
+              carried.push(...earlier.held.splice(0));
+            }
           response = {
             calls: new Map(),
-            pictures: [],
+            held: carried,
             terminal: false,
             continued: false,
           };
           responses.set(id, response);
         }
-        // Heard from again after an error took it for ended: it is still going
+        // Heard from again after an error took it for ended: it is still going, and what is
+        // put down waits on it again
         if (response.stale && !TERMINAL_EVENTS.includes(nested.type)) {
           response.stale = false;
           response.terminal = false;
+          response.settled = false;
         }
         if (nested.type === "response.reasoning_summary_text.done") {
           on.reasoning?.({
@@ -680,7 +708,7 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
               void continueResponse(response);
             } else {
               response.continued = true;
-              sendPictures(response);
+              release(response);
             }
             break;
           }
@@ -719,7 +747,7 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
                   },
                 });
                 // After every output of this turn (continueResponse)
-                if (image) response.pictures.push({ image });
+                if (image) response.held.push({ image });
               }
               activity();
             });
@@ -751,7 +779,7 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
           } else {
             salvaging = false;
             response.continued = true;
-            sendPictures(response);
+            release(response);
             on.warn(
               nested.response?.error?.message ??
                 `The Live backend ${nested.type.slice(9)}.`,
@@ -856,35 +884,28 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
     /**
      * Queues a fact for the backend alone. It starts no turn: it waits in the backend's
      * conversation and is read with whatever the voice hands over next, and the voice,
-     * which may say aloud anything appended to it, never sees it. Live acknowledges no
-     * item; a refusal comes back as an `error`.
+     * which may say aloud anything appended to it, never sees it. It goes in at once, or —
+     * while a turn of the backend's runs or waits on its tools — after that turn's outputs,
+     * in order with what else was put down (runningTurn). Live acknowledges no item; a
+     * refusal comes back as an `error`.
      */
     brief(text: string): void {
-      const content = text.trim();
-      if (closed || closing || !content) return;
-      transport.send({
-        type: "response.item.create",
-        event_id: crypto.randomUUID(),
-        item: {
-          type: "message",
-          role: "developer",
-          content: [{ type: "input_text", text: content }],
-        },
-      });
+      const fact = text.trim();
+      if (closed || closing || !fact) return;
+      const running = runningTurn();
+      if (running) running.held.push({ fact });
+      else sendFact(fact);
     },
     /**
      * A picture kept at `path` (a data URL of it, made to fit `messageLimit`) into the
      * backend's conversation, as the guide has an image reach it ("Add images and visual
-     * context"): at once, or — while a turn of the backend's runs or waits on its tools —
-     * after that turn's outputs, as a tool's picture goes. Like a brief it starts no turn.
+     * context"): at once, or after the outputs of the turn it would land in, as a brief goes.
+     * Like a brief it starts no turn.
      */
     picture(image: string, path: string): void {
       if (closed || closing) return;
-      const running = [...responses.values()].findLast(
-        (response) =>
-          !response.settled && (!response.terminal || response.calls.size > 0),
-      );
-      if (running) running.pictures.push({ image, path });
+      const running = runningTurn();
+      if (running) running.held.push({ image, path });
       else sendImage({ image, path });
     },
   };

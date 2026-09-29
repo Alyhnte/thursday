@@ -177,6 +177,10 @@ function fitPicture(
     );
     canvas.width = Math.round(width * ratio);
     canvas.height = Math.round(height * ratio);
+    // A JPEG keeps no transparency, and what is transparent comes out black: a picture with
+    // a clear ground is laid on white, as a page shows it
+    context.fillStyle = "#fff";
+    context.fillRect(0, 0, canvas.width, canvas.height);
     context.drawImage(source, 0, 0, canvas.width, canvas.height);
     for (const quality of SHOWING.qualities) {
       const url = canvas.toDataURL("image/jpeg", quality);
