@@ -8,6 +8,7 @@ import {
   Volume2,
   VolumeX,
 } from "lucide-react";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { queryKey } from "@/app/api/query-key";
@@ -30,6 +31,7 @@ import { PERSONAS } from "@/features/ai/prompts/persona";
 import { BOT_SEEDS, ERRANDS_BOT, findBotSeed } from "@/features/bot/bot.seed";
 import { BotMark } from "@/features/bot/components/bot-mark";
 import { installSeedBots } from "@/features/bot/seed-bots";
+import type { ThreadView } from "@/features/bot/thread.store";
 import { AccountsSetup } from "@/features/config/components/config-setting";
 import {
   CallLines,
@@ -104,6 +106,76 @@ const SAYS = {
     "I still have no voice of my own, and my bots have nothing to think with yet, so there is no call and no job for now. Look around; add a key or sign in with ChatGPT whenever you like, and I will take it from there.",
 } as const;
 
+/**
+ * The office where her face stands, on the bots step alone (the maintainer's pick, 09-29): who
+ * works for you, drawn as it will be when they do. Its code loads only then (bot-room loads it so).
+ */
+const OfficeBackdrop = dynamic(
+  () =>
+    import("@/features/bot/components/office-view").then(
+      (module) => module.OfficeBackdrop,
+    ),
+  { ssr: false },
+);
+
+/** How long the office takes to go (office-view `leaving`, `duration-250`). */
+const OFFICE_LEAVE_MS = 250;
+
+/**
+ * The bots picked, as a thread nobody has started: the first holds it, and each other one has
+ * a desk (office.ts seats every exchange's bot). Words alone, nothing read off the server.
+ */
+function teamThread(names: string[], since: Date): ThreadView | null {
+  const [lead, ...rest] = names;
+  if (!lead) return null;
+  const ref = (name: string) => ({
+    name,
+    icon: findBotSeed(name)?.icon ?? null,
+  });
+  return {
+    id: "intro-team",
+    request: "Who works for you",
+    label: "Who works for you",
+    bot: ref(lead),
+    roster: names.map(ref),
+    // The one who holds it hands each of the rest what that bot is for, one after another, so
+    // they come in to their desks as a thread's helpers do (office.scene joinsOf)
+    lines: rest.map((bot, index) => ({
+      id: `intro-ask-${bot}`,
+      bot: ref(lead),
+      to: ref(bot),
+      text: findBotSeed(bot)?.hint ?? bot,
+      kind: "ask" as const,
+      exchange: `intro-${bot}`,
+      parent: null,
+      at: new Date(since.getTime() + 600 + index * 450),
+    })),
+    room: {
+      participants: names.map((bot) => ({ bot, state: "done" as const })),
+      questions: [],
+      deliveries: [],
+      relays: [],
+      exchanges: rest.map((bot) => ({
+        id: `intro-${bot}`,
+        bot,
+        caller: lead,
+        state: "queued" as const,
+        waitsFor: [],
+      })),
+    },
+    status: "working",
+    outcome: null,
+    ask: null,
+    seen: true,
+    routineId: null,
+    tokens: { input: 0, output: 0 },
+    contextTokens: 0,
+    contextBudget: 0,
+    createdAt: since,
+    updatedAt: since,
+  };
+}
+
 /** Must match the `duration-700` below. */
 const FADE_MS = 700;
 
@@ -150,6 +222,23 @@ export function Intro({
   const [opening, setOpening] = useState<Opening>("echoes");
   const wake = useThursdayStore((state) => state.wake);
   const patchCall = useThursdayStore((state) => state.patch);
+  // The bots step is drawn as their office (teamThread), and it goes as the step does
+  const officeUp = step === "bots";
+  const [officeDrawn, setOfficeDrawn] = useState(false);
+  useEffect(() => {
+    if (officeUp) return setOfficeDrawn(true);
+    const end = setTimeout(() => setOfficeDrawn(false), OFFICE_LEAVE_MS);
+    return () => clearTimeout(end);
+  }, [officeUp]);
+  const [since] = useState(() => new Date());
+  const team = useMemo(
+    () =>
+      teamThread(
+        BOT_SEEDS.filter((seed) => picked[seed.name]).map((seed) => seed.name),
+        since,
+      ),
+    [picked, since],
+  );
   // her face comes in on the opening's last beat, and the first screen after it
   const herIn = opening !== "echoes";
   const helloIn = opening === "hello" || opening === "over";
@@ -235,10 +324,19 @@ export function Intro({
       aria-modal="true"
       aria-label="Getting started"
       className={cn(
-        "fixed inset-0 z-40 bg-background transition-opacity duration-700",
+        "fixed inset-0 z-40 bg-background transition-opacity duration-700 [--face-w:min(20rem,52vw,37.5vh)]",
         gone && "pointer-events-none opacity-0",
       )}
     >
+      {/* Where her face stands and across to its left, up to where the step's turn begins */}
+      {officeDrawn && team && (
+        <OfficeBackdrop
+          thread={team}
+          leaving={!officeUp}
+          className="absolute inset-y-0 left-0 right-[calc(50%-var(--face-w)*0.695)] mask-[linear-gradient(to_right,black_80%,transparent)]"
+        />
+      )}
+
       {opening !== "over" && (
         <Echoes
           anchor={faceBox}
@@ -278,7 +376,9 @@ export function Intro({
           edge below about 820px (09-26), and the column scrolls */}
       <div
         className={cn(
-          "flex h-full flex-col items-center justify-center gap-5 pt-[7vh] [--face-w:min(20rem,52vw,37.5vh)]",
+          "relative flex h-full flex-col items-center justify-center gap-5 pt-[7vh]",
+          // The office under it takes the pointer, save where this column has a part
+          officeUp && "pointer-events-none",
           stacked &&
             "max-[900px]:justify-start max-[900px]:overflow-y-auto max-[900px]:pb-20",
         )}
@@ -302,6 +402,7 @@ export function Intro({
             className={cn(
               "block w-full rounded-full outline-none transition-all duration-700 ease-out focus-visible:ring-3 focus-visible:ring-ring/50",
               step !== "hello" && !callable && "opacity-35",
+              officeUp && "pointer-events-none opacity-0",
               stacked && "max-[900px]:mt-6 max-[900px]:w-[min(8rem,20vh)]",
             )}
           >
@@ -322,7 +423,13 @@ export function Intro({
 
           {/* Beside her there is no room in a narrow window: there her latest line alone,
               under her */}
-          <div className={cn(stacked && "max-[900px]:hidden")}>
+          <div
+            className={cn(
+              stacked && "max-[900px]:hidden",
+              // Over the office her words go under it, as in a narrow window
+              officeUp && "hidden",
+            )}
+          >
             <SideCaptions
               turns={turns}
               pinned={focus.pinned}
@@ -340,7 +447,7 @@ export function Intro({
             // Where the caller's words go on a call: the caller's turn
             <div
               key={step}
-              className="absolute top-1/2 left-full ml-[calc(var(--face-bleed)+0.375rem)] flex w-[min(22rem,26vw)] -translate-y-1/2 animate-in flex-col gap-4 text-left fade-in slide-in-from-bottom-1 duration-300 max-[900px]:static max-[900px]:ml-0 max-[900px]:w-[min(22rem,calc(100vw-2rem))] max-[900px]:translate-y-0"
+              className="pointer-events-auto absolute top-1/2 left-full ml-[calc(var(--face-bleed)+0.375rem)] flex w-[min(22rem,26vw)] -translate-y-1/2 animate-in flex-col gap-4 text-left fade-in slide-in-from-bottom-1 duration-300 max-[900px]:static max-[900px]:ml-0 max-[900px]:w-[min(22rem,calc(100vw-2rem))] max-[900px]:translate-y-0"
             >
               {step === "key" && <KeyTurn onSaved={() => setKeyed(true)} />}
               {step === "mic" && <MicTurn mic={mic} />}
@@ -371,7 +478,13 @@ export function Intro({
         >
           {/* One slot of one height for her first words or the step's state, and the rows
               under the button keep theirs: her face and the button stand still from step to step */}
-          <div className="flex h-14 items-center gap-2 text-[13px] text-muted-foreground">
+          <div
+            className={cn(
+              "flex h-14 items-center gap-2 text-[13px] text-muted-foreground",
+              // Her line over the office grows up, off the button
+              officeUp && "items-end",
+            )}
+          >
             {step === "hello" ? (
               helloIn && (
                 <p className="max-w-130 animate-in text-[20px] leading-[1.5] text-balance text-foreground duration-700 fill-mode-backwards fade-in slide-in-from-bottom-2">
@@ -379,6 +492,10 @@ export function Intro({
                   you when it is ready.
                 </p>
               )
+            ) : officeUp ? (
+              <p className="w-[min(24rem,calc(var(--face-w)*1.39+6rem))] animate-in rounded-xl bg-background/85 px-3.5 py-2 text-[14px] leading-[1.55] text-balance text-foreground ring-1 ring-border/60 backdrop-blur-md fade-in duration-300">
+                {said.at(-1)?.text}
+              </p>
             ) : step === "mic" && mic.on ? (
               <Ear live getMicSpectrum={mic.spectrum} />
             ) : !callable ? (
@@ -419,7 +536,7 @@ export function Intro({
               }}
               // on the first screen it follows her line up, once
               className={cn(
-                "h-12 rounded-full px-7 pl-8 text-[15px]",
+                "pointer-events-auto h-12 rounded-full px-7 pl-8 text-[15px]",
                 step === "mic" && !mic.on && "pl-6",
                 step === "hello" &&
                   "animate-in delay-300 duration-700 fill-mode-backwards fade-in slide-in-from-bottom-2",
