@@ -966,7 +966,17 @@ export function tripsOf(scene: OfficeScene, plan: Plan): Trip[] {
         break;
       }
       case "report":
-        plot(coord, "lobby", event.at, event, "report", { forever: true });
+        // At your counter while it stands; once the thread goes on, carried back to the desk
+        plot(
+          coord,
+          "lobby",
+          event.at,
+          event,
+          "report",
+          event.closed === null
+            ? { forever: true }
+            : { until: event.closed, home: "report" },
+        );
         break;
       case "return":
         if (event.to === coord)
@@ -1053,17 +1063,8 @@ export type Moment = {
     y2: number;
     opacity: number;
   }[];
-  /**
-   * The final report, once it lies at your counter (x, y), and where its card is laid: on the
-   * ground in front of the building, below the counter (gx, gy).
-   */
-  report: {
-    event: OfficeEvent;
-    x: number;
-    y: number;
-    gx: number;
-    gy: number;
-  } | null;
+  /** The final report, once it lies at your counter. */
+  report: OfficeEvent | null;
   /** A send turned down, and the room's words for why. */
   stamp: { x: number; y: number; scale: number; text: string } | null;
   /** Where each bot's tag goes: above its head. */
@@ -1344,8 +1345,12 @@ export function momentOf(
         ),
   );
   if (asked) flat("question", 29, 77, 8.2, 4.4, 3.4, false, -0.2, 1, true);
-  const reported = trips.find(
-    (trip) => trip.out === "report" && t >= trip.arrive,
+  // The report on your counter while it stands there; taken back, it leaves in its bot's hands
+  const reported = trips.findLast(
+    (trip) =>
+      trip.out === "report" &&
+      t >= trip.arrive &&
+      (!Number.isFinite(trip.back) || t < trip.stay),
   );
   if (reported)
     flat("report", 29, 77, 8.2, 4.4, 3.4, true, -0.2, fade(reported.arrive));
@@ -1450,13 +1455,8 @@ export function momentOf(
   }
   // the final report, once it lies at your counter; a question stays with its bot's plate and
   // the room's box, where it is answered
-  const [kx, ky] = fit.at(26, 77, 8.2);
-  const [gx, gy] = fit.at(24, DEPTH + 8, -5);
   const final = reportAt(scene, t);
-  const report =
-    final && reported && t >= reported.arrive
-      ? { event: final, x: kx, y: ky, gx, gy }
-      : null;
+  const report = final && reported?.event.id === final.id ? final : null;
   const refused = scene.events.findLast(
     (event) =>
       event.kind === "refused" &&

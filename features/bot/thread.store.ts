@@ -488,6 +488,53 @@ export function useRoomOffice(): boolean {
 }
 
 /**
+ * How a thread open in the room is read, for every thread: beside its office where her face
+ * stands, or as the conversation alone with her face kept (bot-room). Kept on this machine.
+ */
+export type ReadAs = "office" | "chat";
+
+const READ_AS_KEY = "thursday.room.read-as";
+let readAs: ReadAs | null = null;
+const readAsListeners = new Set<() => void>();
+
+const storedReadAs = (): ReadAs => {
+  try {
+    return window.localStorage.getItem(READ_AS_KEY) === "chat"
+      ? "chat"
+      : "office";
+  } catch {
+    // storage may be blocked: the office, as on a first visit
+    return "office";
+  }
+};
+
+export const roomReadAs = {
+  set(next: ReadAs) {
+    readAs = next;
+    try {
+      window.localStorage.setItem(READ_AS_KEY, next);
+    } catch {
+      // storage may be blocked: kept for this visit
+    }
+    for (const listener of readAsListeners) listener();
+  },
+};
+
+export function useRoomReadAs(): ReadAs {
+  return useSyncExternalStore(
+    (listener) => {
+      readAsListeners.add(listener);
+      return () => readAsListeners.delete(listener);
+    },
+    () => {
+      readAs ??= storedReadAs();
+      return readAs;
+    },
+    () => "office",
+  );
+}
+
+/**
  * The thread being read in the room, by id (bot-room). It is handled on screen: the call-back
  * does not ring over it, nor for what it asks while it is read there (use-call-ring).
  */

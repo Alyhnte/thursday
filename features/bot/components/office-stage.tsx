@@ -22,6 +22,7 @@ import {
   clockOf,
   filesOf,
   heldFor,
+  type OfficeEvent,
   type OfficeScene,
   type Plate,
   type PlateLine,
@@ -410,17 +411,6 @@ export function OfficeStage({
                 text={moment.stamp.text}
               />
             )}
-            {moment.report && (
-              <ReportCard
-                report={moment.report}
-                spot={at(moment.report.x, moment.report.y)}
-                ground={at(moment.report.gx, moment.report.gy)}
-                box={size}
-                face={faceOf(moment.report.event.from)}
-                files={files.filter((file) => onDisk(file.path))}
-                from={from}
-              />
-            )}
             {plates.map(({ tag, plate }) => (
               <PlateAt
                 key={tag.bot}
@@ -444,6 +434,14 @@ export function OfficeStage({
             ))}
           </div>
           <OfficeHead scene={scene} label={label} start={start} />
+          {moment.report && (
+            <ReportCard
+              report={moment.report}
+              face={faceOf(moment.report.from)}
+              files={files.filter((file) => onDisk(file.path))}
+              from={from}
+            />
+          )}
           <div className="absolute bottom-3.5 left-4 flex items-center gap-0.5 rounded-full bg-background p-0.75 shadow-sm ring-1 ring-border">
             <ZoomButton
               label="Zoom out"
@@ -1063,100 +1061,65 @@ function Refused({
   );
 }
 
-/** How wide the report card is, and how much of the office's foot the zoom buttons keep. */
-const REPORT = { width: 300, foot: 64 };
-
 /**
- * The final report where it lies, at your counter: its words and the files the job handed
- * over, each under the bot whose words named it; pressing one opens it. Its card is laid on the
- * ground in front of the building, a line running up to the counter, so it covers neither the
- * desks nor the floor they stand on.
+ * The final report, once it lies at your counter: its words and the files the job handed over,
+ * each under the bot whose words named it; pressing one opens it. It stays in one place, at the
+ * office's foot above the zoom buttons, whatever the office is panned or zoomed to, and goes
+ * when the thread goes on after it.
  */
 function ReportCard({
   report,
-  spot,
-  ground,
-  box,
   face,
   files,
   from,
 }: {
-  report: NonNullable<Moment["report"]>;
-  spot: { x: number; y: number };
-  ground: { x: number; y: number };
-  box: { w: number; h: number };
+  report: OfficeEvent;
   face?: BotRef;
   files: { path: string; bot: string }[];
   from: string;
 }) {
-  const left = Math.min(
-    Math.max(16, ground.x - REPORT.width / 2),
-    box.w - REPORT.width - 16,
-  );
-  // Kept clear of the zoom buttons: a short office lifts it toward the counter
-  const top = Math.max(
-    spot.y + 24,
-    Math.min(ground.y, box.h - REPORT.foot - 180),
-  );
   return (
-    <>
-      <span
-        aria-hidden
-        className="absolute w-px bg-foreground/25"
-        style={{
-          left: spot.x,
-          top: spot.y + 6,
-          height: Math.max(0, top - spot.y - 6),
-        }}
-      />
-      <section
-        aria-label={`Final report from ${report.event.from}`}
-        className="pointer-events-auto absolute flex animate-in flex-col gap-2 overflow-y-auto rounded-2xl bg-background px-3.5 pt-3 pb-3.5 shadow-lg ring-1 ring-border fade-in slide-in-from-top-1 duration-300 scrollbar-none"
-        style={{
-          left,
-          top,
-          width: REPORT.width,
-          maxHeight: Math.max(96, box.h - top - REPORT.foot),
-        }}
-      >
-        <div className="flex items-center gap-1.5 text-[12px]">
-          <BotMark
-            size={16}
-            seed={report.event.from}
-            {...iconProps(face?.icon)}
-            notify={false}
-          />
-          <span className="font-semibold">Final report</span>
-          <span className="text-muted-foreground">· {report.event.from}</span>
+    <section
+      aria-label={`Final report from ${report.from}`}
+      className="absolute bottom-15 left-4 flex max-h-[calc(100%-13rem)] w-75 animate-in flex-col gap-2 overflow-y-auto rounded-2xl bg-background px-3.5 pt-3 pb-3.5 shadow-lg ring-1 ring-border fade-in slide-in-from-bottom-1 duration-300 scrollbar-none"
+    >
+      <div className="flex items-center gap-1.5 text-[12px]">
+        <BotMark
+          size={16}
+          seed={report.from}
+          {...iconProps(face?.icon)}
+          notify={false}
+        />
+        <span className="font-semibold">Final report</span>
+        <span className="text-muted-foreground">· {report.from}</span>
+      </div>
+      <p className="line-clamp-4 text-[13px] leading-normal">
+        {plainText(report.text)}
+      </p>
+      {files.length > 0 && (
+        <div className="flex flex-col gap-1">
+          {files.map((file) => {
+            const Icon = fileIcon(file.path);
+            return (
+              <FileLink
+                key={file.path}
+                path={file.path}
+                from={from}
+                className="flex h-7 items-center gap-2 rounded-lg bg-foreground/6 px-2.5 text-left text-[12px] outline-none transition-colors hover:bg-foreground/12 focus-visible:ring-3 focus-visible:ring-ring/50"
+              >
+                <Icon className="size-3.5 shrink-0 text-muted-foreground" />
+                <span className="min-w-0 flex-1 truncate">
+                  {file.path.split("/").pop()}
+                </span>
+                <span className="shrink-0 text-[11px] text-muted-foreground">
+                  {file.bot}
+                </span>
+              </FileLink>
+            );
+          })}
         </div>
-        <p className="line-clamp-4 text-[13px] leading-normal">
-          {plainText(report.event.text)}
-        </p>
-        {files.length > 0 && (
-          <div className="flex flex-col gap-1">
-            {files.map((file) => {
-              const Icon = fileIcon(file.path);
-              return (
-                <FileLink
-                  key={file.path}
-                  path={file.path}
-                  from={from}
-                  className="flex h-7 items-center gap-2 rounded-lg bg-foreground/6 px-2.5 text-left text-[12px] outline-none transition-colors hover:bg-foreground/12 focus-visible:ring-3 focus-visible:ring-ring/50"
-                >
-                  <Icon className="size-3.5 shrink-0 text-muted-foreground" />
-                  <span className="min-w-0 flex-1 truncate">
-                    {file.path.split("/").pop()}
-                  </span>
-                  <span className="shrink-0 text-[11px] text-muted-foreground">
-                    {file.bot}
-                  </span>
-                </FileLink>
-              );
-            })}
-          </div>
-        )}
-      </section>
-    </>
+      )}
+    </section>
   );
 }
 

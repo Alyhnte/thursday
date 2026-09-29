@@ -73,10 +73,13 @@ export function ThreadHeader({
   thread,
   onBack,
   onClose,
+  children,
 }: {
   thread: ThreadView;
   onBack: () => void;
   onClose: () => void;
+  /** Beside the fold button: how the thread is shown (bot-room). */
+  children?: ReactNode;
 }) {
   return (
     <div className="flex items-center gap-2 px-3 pt-3 pb-1">
@@ -101,6 +104,7 @@ export function ThreadHeader({
         {thread.label}
       </span>
       <ThreadFacts thread={thread} />
+      {children}
       <FoldButton onClick={onClose} />
     </div>
   );

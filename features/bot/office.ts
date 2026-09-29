@@ -56,7 +56,10 @@ export type OfficeEvent = {
   extra: boolean;
   /** The exchange a give opened or a release let out, or the room question a question opened; "" for none. */
   exchange: string;
-  /** Only for `question`: when it was seen closed with no answer written yet (answered, or a stop); null while open. */
+  /**
+   * For a `question`: when it was seen closed with no answer written yet (answered, or a stop).
+   * For a `report`: when it was seen taken back, the thread going on after it. Null while it stands.
+   */
   closed: number | null;
 };
 
@@ -441,6 +444,12 @@ export type OfficeMemory = {
   owed: Map<string, { waits: string[]; out: number | null }>;
   /** Questions seen open, and when each was seen closed. */
   asked: Map<string, number | null>;
+  /**
+   * Reports seen, and when each was seen taken back: once the user writes on after a report,
+   * the lines no longer read it as one, and its bot is walked back to its desk with it rather
+   * than put there at once.
+   */
+  reports: Map<string, { event: OfficeEvent; gone: number | null }>;
   /** When the thread was seen to end; null while it runs. */
   ended: number | null;
 };
@@ -478,12 +487,19 @@ export function watch(
   for (const id of office.asking) if (!asked.has(id)) asked.set(id, null);
   for (const [id, closed] of asked)
     if (closed === null && !office.asking.has(id)) asked.set(id, now);
+  const reports = new Map(memory?.reports);
+  for (const event of office.events)
+    if (event.kind === "report") reports.set(event.id, { event, gone: null });
+  for (const [id, seen] of reports)
+    if (seen.gone === null && !office.events.some((event) => event.id === id))
+      reports.set(id, { ...seen, gone: now });
   const over = office.status === "done" || office.status === "cancelled";
   return {
     read,
     seats,
     owed,
     asked,
+    reports,
     ended: over ? (memory?.ended ?? (first ? office.span : now)) : null,
   };
 }
@@ -535,6 +551,15 @@ export function sceneOf(
         at: Math.max(hold.out, give.at),
       });
   }
+  // A report seen and then taken back as the thread went on stays, closed from when that was
+  // seen, so its bot walks back from your counter with it
+  for (const [id, seen] of memory.reports)
+    if (seen.gone !== null)
+      events.push({
+        ...seen.event,
+        at: memory.read.get(id) ?? seen.event.at,
+        closed: seen.gone,
+      });
   events.sort((a, b) => a.at - b.at || a.order - b.order);
   const seats = new Map(
     [...office.seats].map(([bot, seat]) => [
@@ -617,10 +642,14 @@ export function nowOf(scene: OfficeScene, bot: string, t: number): string {
   return bot === scene.office.coord ? "Reading the job" : "Reading the work";
 }
 
-/** The final report, once it has been handed over. */
+/** The final report standing at `t`: handed over, and not taken back since as the thread went on. */
 export const reportAt = (scene: OfficeScene, t: number) =>
-  scene.events.find((event) => event.kind === "report" && event.at <= t) ??
-  null;
+  scene.events.find(
+    (event) =>
+      event.kind === "report" &&
+      event.at <= t &&
+      (event.closed === null || event.closed > t),
+  ) ?? null;
 
 /**
  * What the job handed over: each file its answers and its report name, with the bot whose words

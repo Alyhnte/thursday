@@ -955,23 +955,42 @@ test("the office draws a bot on one exchange with the next let out beside it, an
     card.open();
   }
   await waitFor(id, "done");
-  // Asked for more after the report: while Alpha is at it again, no report stands
+  // The report, seen at your counter
+  const reported = reportAt((await read(30)).scene, 30);
+  assert.ok(reported);
+  // Asked for more after the report: while Alpha is at it again, no report stands, and Alpha
+  // carries the one it left back to its desk from when that was seen, rather than being put there
   await answerThread(id, "Also make it blue.", "user", "Alpha");
   try {
     const again = await read(40);
     assert.equal(seatAt(again.scene, "Alpha").label, "Working");
     assert.equal(reportAt(again.scene, 40), null);
+    const { stageOf, tripsOf } = await import(
+      "../features/bot/office.scene.ts"
+    );
+    const back = tripsOf(
+      again.scene,
+      stageOf(again.scene, { w: 1200, h: 800 }).plan,
+    ).find((trip) => trip.out === "report");
+    assert.deepEqual(
+      [back?.home, back && back.stay >= 40, Number.isFinite(back?.back)],
+      ["report", true, true],
+    );
   } finally {
     blue.open();
   }
   await waitFor(id, "done");
+  // One report stands at a time: the one taken back is kept only as closed
   const bluer = await read(50);
+  const reports = bluer.scene.events.filter((event) => event.kind === "report");
   assert.deepEqual(
-    bluer.scene.events
-      .filter((event) => event.kind === "report")
-      .map((event) => event.text),
-    ["Made it blue."],
+    reports.map((event) => [event.text, event.closed]),
+    [
+      [reported.text, 40],
+      ["Made it blue.", null],
+    ],
   );
+  assert.equal(reportAt(bluer.scene, 50)?.text, "Made it blue.");
 });
 
 test("the office reads a turn that ended without words as the turn's end, never as a report", async () => {

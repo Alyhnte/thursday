@@ -14,6 +14,7 @@ export function Segmented<T extends string>({
   value,
   onChange,
   view = false,
+  size = "default",
   className,
   ...rest
 }: {
@@ -22,6 +23,8 @@ export function Segmented<T extends string>({
   onChange: (value: T) => void;
   /** The options are views of one thing, not values to pick. */
   view?: boolean;
+  /** `sm` stands as tall as a header's small buttons (size-7). */
+  size?: "default" | "sm";
   className?: string;
   "aria-label"?: string;
 }) {
@@ -29,7 +32,8 @@ export function Segmented<T extends string>({
     <div
       role="radiogroup"
       className={cn(
-        "flex w-fit gap-0.5 rounded-full bg-muted p-0.75",
+        "flex w-fit gap-0.5 rounded-full bg-muted",
+        size === "sm" ? "p-0.5" : "p-0.75",
         className,
       )}
       {...rest}
@@ -45,7 +49,10 @@ export function Segmented<T extends string>({
             title={option.title}
             onClick={() => onChange(option.value)}
             className={cn(
-              "flex h-7 items-center justify-center gap-1.5 rounded-full px-3 text-[12.5px] whitespace-nowrap transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+              "flex items-center justify-center gap-1.5 rounded-full whitespace-nowrap transition-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+              size === "sm"
+                ? "h-6 px-2.5 text-[12px]"
+                : "h-7 px-3 text-[12.5px]",
               !picked && "text-muted-foreground hover:text-foreground",
               picked &&
                 (view

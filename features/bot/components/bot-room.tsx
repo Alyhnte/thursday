@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useAppEvent } from "@/app/api/events/app-event.client";
 import { queryKey } from "@/app/api/query-key";
+import { Segmented } from "@/components/ui/segmented";
 import { PAGE_SIZE } from "@/config";
 import {
   type Bot,
@@ -29,12 +30,14 @@ import {
   roomOffice,
   roomOpen,
   roomOpens,
+  roomReadAs,
   roomThread,
   type ThreadView,
   type ThreadViewStatus,
   threadFromRow,
   useBotThreads,
   useCallWaits,
+  useRoomReadAs,
   useSeenOnDetail,
   writeLine,
 } from "../thread.store";
@@ -193,11 +196,18 @@ export const BotRoom = memo(function BotRoom() {
   /** A thread stands in the room, or is on its way: the room is its frame, not the list's. */
   const threadShown = picked !== null && (current !== null || fetching);
   // The thread being read is drawn as its office where her face stands, from the moment it is
-  // picked: her face gives way at once (thursday) and the office builds itself as the thread
-  // arrives. Nothing takes it down while it is read, since what she would ring for waits
-  // meanwhile (use-call-ring roomThread); once it goes, it fades out as her face comes back
+  // picked, unless the user reads threads as the conversation alone (ReadAsSwitch): her face
+  // gives way at once (thursday) and the office builds itself as the thread arrives. Nothing
+  // takes it down while it is read, since what she would ring for waits meanwhile (use-call-ring
+  // roomThread); once it goes, it fades out as her face comes back
   const roomy = useWide(OFFICE_MIN_WIDTH);
-  const office = reading && roomy && !closing && (current !== null || fetching);
+  const readAs = useRoomReadAs();
+  const office =
+    reading &&
+    roomy &&
+    readAs === "office" &&
+    !closing &&
+    (current !== null || fetching);
   useEffect(() => roomOffice.set(office), [office]);
   useEffect(() => () => roomOffice.set(false), []);
   const drawn = useLeaving<ThreadView>(office ? current : null, LEAVE_MS);
@@ -403,7 +413,10 @@ export const BotRoom = memo(function BotRoom() {
                 thread={current}
                 onBack={() => setPicked(null)}
                 onClose={close}
-              />
+              >
+                {/* Offered only where the office can be drawn */}
+                {roomy && <ReadAsSwitch />}
+              </ThreadHeader>
               <Conversation
                 thread={current}
                 tab={sides[current.id] ?? null}
@@ -499,6 +512,37 @@ export const BotRoom = memo(function BotRoom() {
     </div>
   );
 });
+
+/**
+ * How a thread is shown, beside the fold button: beside its office where her face stands, or as
+ * the conversation alone with her face kept. One choice for every thread, kept on this machine
+ * (thread.store roomReadAs).
+ */
+function ReadAsSwitch() {
+  const readAs = useRoomReadAs();
+  return (
+    <Segmented
+      view
+      size="sm"
+      aria-label="How the thread is shown"
+      value={readAs}
+      onChange={roomReadAs.set}
+      options={[
+        {
+          value: "office",
+          label: "Office",
+          title: "The thread beside its office, where her face stands",
+        },
+        {
+          value: "chat",
+          label: "Chat",
+          title: "The conversation alone, her face kept",
+        },
+      ]}
+      className="shrink-0"
+    />
+  );
+}
 
 /**
  * Said at the head of the open room while a call in writing waits behind it. The room has
