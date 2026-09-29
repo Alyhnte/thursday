@@ -25,10 +25,18 @@ export function asWords(
       continue;
     }
     if (message.role === "user") {
+      // Their words are clipped wherever they sit; a picture they sent stays, by what names it
       words.push(
         typeof message.content === "string"
           ? { role: "user", content: clip(message.content) }
-          : message,
+          : {
+              ...message,
+              content: message.content.map((part) =>
+                part.type === "text"
+                  ? { ...part, text: clip(part.text) }
+                  : part,
+              ),
+            },
       );
       continue;
     }

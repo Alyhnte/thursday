@@ -1,7 +1,9 @@
 import type { UIMessage } from "ai";
 import z from "zod";
+import { queryKey } from "@/app/api/query-key";
 import { TEXT_MODEL_PROVIDERS } from "@/features/ai/model.schema";
 import type { ThreadStatus } from "@/features/bot/bot.schema";
+import { mimeOf } from "@/features/workspace/file-kind";
 import type { DateLike } from "@/lib/date-like";
 import { LiveFragmentSchema } from "@/lib/live/live.schema";
 
@@ -109,7 +111,7 @@ export type TextCallHandshake = {
  * wrote while she was answering (`said`), or a fact the page leaves her for a bot's update.
  * It goes as a `data-note` part: in the user's message it went out with, or in her answer
  * where a step read it (thursday.text). `pictures` are the workspace paths of pictures sent
- * with the words, which reach her as pictures (thursday.text readPictures).
+ * with the words, which reach her as pictures (picturePart).
  */
 export const TextCallNoteSchema = z.object({
   id: z.string().min(1),
@@ -136,6 +138,19 @@ export const noteOf = (
   part.type === `data-${TEXT_CALL_NOTE}`
     ? (part as { data: TextCallNote }).data
     : null;
+
+/**
+ * A picture sent with the words, as a page's file part naming it in the workspace by the file
+ * route, where the page draws it from: the server reads it into what the model is sent as
+ * each request goes (thursday.text seePictures), so the conversation the page sends again
+ * every turn carries the name, not the picture.
+ */
+export const picturePart = (path: string) => ({
+  type: "file" as const,
+  mediaType: mimeOf(path),
+  url: queryKey.file(path),
+  filename: path.split("/").pop() ?? path,
+});
 
 /** The notes messages carry, in order. */
 export const notesIn = (messages: UIMessage[]): TextCallNote[] =>

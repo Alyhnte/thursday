@@ -894,8 +894,13 @@ export const MEMORY_EDIT = { maxSteps: 20 };
  *   base64, a third larger, on every step of the run that looked; providers refuse a request
  *   past a few tens of megabytes, and a screenshot is a few hundred kilobytes. Over this the
  *   tool says so and how to make a smaller copy, rather than sending it.
+ * - `perRequest`  the most picture a conversation in writing (a page's, a phone's) sends in
+ *   one request, in file bytes, a third more as base64. Every request carries its pictures
+ *   again, newest first, up to this; an older one past it goes as its path, for her to look
+ *   at again. Providers refuse the whole request past their size: Gemini 20 MB with pictures
+ *   inline, Anthropic 32 MB. Larger keeps more pictures in view and nears those.
  */
-export const LOOK = { maxBytes: 4 * 1024 * 1024 };
+export const LOOK = { maxBytes: 4 * 1024 * 1024, perRequest: 12 * 1024 * 1024 };
 
 /**
  * What the user shows a spoken call, a screen or their camera (features/thursday/show.ts).

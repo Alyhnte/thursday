@@ -855,11 +855,16 @@ test("a page's pictures go into the message they were sent with, as pictures, an
     await pageTurn({ callId, turn: "turn-pictures", messages: [asked] }),
   );
   const parts = lastUserParts();
-  assert.deepEqual(parts.slice(0, 2), ["What is this?", "file:image/png"]);
-  assert.match(parts[2], /huge\.png is 5 MB, over the 4 MB/);
-  assert.match(parts[3], /no file at inbox\/gone\.png/);
-  assert.match(parts[4], /elsewhere\.png is not in the workspace/);
-  assert.match(parts[5], /up\.png is not in the workspace/);
+  // Each picture after the line that names it, so several are told apart
+  assert.deepEqual(parts.slice(0, 3), [
+    "What is this?",
+    "inbox/photo.png, as an image:",
+    "file:image/png",
+  ]);
+  assert.match(parts[3], /huge\.png is 4\.0 MB, over the 4\.0 MB/);
+  assert.match(parts[4], /no file at inbox\/gone\.png/);
+  assert.match(parts[5], /elsewhere\.png is not in the workspace/);
+  assert.match(parts[6], /up\.png is not in the workspace/);
 
   // The next turn carries the picture in the same place: the conversation the page sends
   // again names it, and she still sees it
@@ -894,6 +899,68 @@ test("a page's pictures go into the message they were sent with, as pictures, an
   assert.match(lastUserParts()[1], /deepseek-chat cannot see pictures/);
 });
 
+test("a conversation's pictures go again with every request, newest first, up to what one request carries; an older one goes as its path", async () => {
+  const { LOOK } = await import("../config.ts");
+  // Four pictures, each under a look's limit, three of which fill a request's
+  const size = Math.floor(LOOK.perRequest / 3) - 1;
+  await inboxWith({
+    "one.png": Buffer.alloc(size),
+    "two.png": Buffer.alloc(size),
+    "three.png": Buffer.alloc(size),
+    "four.png": Buffer.alloc(size),
+  });
+  const said = (id: string, text: string, names: string[]) => ({
+    id,
+    role: "user" as const,
+    parts: [
+      { type: "text" as const, text },
+      ...names.map((name) => ({
+        type: "file" as const,
+        mediaType: "image/png",
+        url: `/api/file/inbox/${name}`,
+        filename: name,
+      })),
+    ],
+  });
+  const { callId } = await openTextCall();
+  const first = said("u-many-1", "Here are two.", ["one.png", "two.png"]);
+  steps.push(() => [{ type: "text", text: "Two pictures." }]);
+  const answer = await answerOf(
+    await pageTurn({ callId, turn: "turn-many-1", messages: [first] }),
+  );
+  const second = said("u-many-2", "And two more.", ["three.png", "four.png"]);
+  steps.push(() => [{ type: "text", text: "Four now." }]);
+  await pageTurn({
+    callId,
+    turn: "turn-many-2",
+    messages: [first, answer, second],
+  });
+  const sent = JSON.parse(prompts.at(-1) ?? "[]") as {
+    role: string;
+    content: { type: string; text?: string }[];
+  }[];
+  const users = sent.filter((message) => message.role === "user");
+  const shape = (message: (typeof users)[number]) =>
+    message.content.map((part) =>
+      part.type === "file" ? "file" : String(part.text),
+    );
+  // The newest three go as pictures; the oldest is named, to look at again
+  assert.deepEqual(shape(users[1]), [
+    "And two more.",
+    "inbox/three.png, as an image:",
+    "file",
+    "inbox/four.png, as an image:",
+    "file",
+  ]);
+  const older = shape(users[0]);
+  assert.equal(older[0], "Here are two.");
+  assert.match(
+    older[1],
+    /inbox\/one\.png is a picture not sent with this message.*look_at/,
+  );
+  assert.deepEqual(older.slice(2), ["inbox/two.png, as an image:", "file"]);
+});
+
 test("a phone's pictures go into its message as pictures, stay there for the next turn, and join a running turn with their words", async () => {
   await inboxWith({ "sent.png": PNG, "later.png": PNG });
   const { callId } = await openTextCall();
@@ -920,16 +987,40 @@ test("a phone's pictures go into its message as pictures, stay there for the nex
     notes: () => late.splice(0),
   });
   assert.equal(result.text, "Two pictures.");
-  // The words and the picture in one message of theirs, carried on as sent
+  // The words and the picture in one message of theirs, carried on by name, never its bytes
   const first = result.messages[0];
   assert.equal(first.role, "user");
   assert.ok(Array.isArray(first.content));
-  assert.deepEqual(
-    (first.content as { type: string }[]).map((part) => part.type),
-    ["text", "file"],
+  const [, part] = first.content as {
+    type: string;
+    data?: { type: string; url?: URL };
+  }[];
+  assert.equal(part.type, "file");
+  assert.equal(part.data?.type, "url");
+  assert.equal(part.data?.url?.href, "workspace:inbox%2Fsent.png");
+  assert.doesNotMatch(JSON.stringify(result.messages), /base64|iVBOR/);
+  // What joined between her steps brought its picture too, named
+  assert.deepEqual(lastUserParts(), [
+    "and this one",
+    "inbox/later.png, as an image:",
+    "file:image/png",
+  ]);
+  // The next turn reads the first picture in again from its name
+  steps.push(() => [{ type: "text", text: "Still two." }]);
+  await answerInWriting({
+    callId,
+    standing: null,
+    messages: [...result.messages, { role: "user", content: "and?" }],
+    said: "and?",
+  });
+  const again = JSON.parse(prompts.at(-1) ?? "[]") as {
+    role: string;
+    content: unknown;
+  }[];
+  assert.match(
+    JSON.stringify(again.find((message) => message.role === "user")?.content),
+    /inbox\/sent\.png, as an image:.*"type":"file"/,
   );
-  // What joined between her steps brought its picture too
-  assert.deepEqual(lastUserParts(), ["and this one", "file:image/png"]);
   // Kept as their words, as a turn of theirs is
   assert.deepEqual((await rowsOf(callId))[0], [
     "user",

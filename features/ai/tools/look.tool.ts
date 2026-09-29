@@ -3,8 +3,9 @@ import { type ToolSet, tool } from "ai";
 import z from "zod";
 import { LOOK } from "@/config";
 import { TOOL_NAMES } from "@/features/ai/tools/tool-name";
-import { mimeOf, viewKindOf } from "@/features/workspace/file-kind";
+import { isPicture, mimeOf } from "@/features/workspace/file-kind";
 import { insideWorkspace } from "@/features/workspace/workspace";
+import { formatBytes } from "@/lib/utils";
 
 /**
  * Seeing a picture: a screenshot a bot took, an image the user handed over, a chart a script
@@ -21,6 +22,31 @@ import { insideWorkspace } from "@/features/workspace/workspace";
 
 type Looked = { path: string; mediaType: string };
 
+/**
+ * A file in the workspace as a picture a model can be sent, or what stands in the way: the
+ * checks every way a picture reaches a model makes — `look_at`, and a picture the user sent
+ * with their words (thursday.text seePictures). Each says what went wrong in its own words.
+ */
+export async function checkPicture(
+  path: string,
+): Promise<
+  | { full: string; mediaType: string; bytes: number }
+  | { missing: true }
+  | { notPicture: true }
+  | { tooBig: number }
+> {
+  const full = await insideWorkspace(path.trim());
+  const info = full ? await stat(full).catch(() => null) : null;
+  if (!full || !info?.isFile()) return { missing: true };
+  if (!isPicture(path)) return { notPicture: true };
+  if (info.size > LOOK.maxBytes) return { tooBig: info.size };
+  return { full, mediaType: mimeOf(path), bytes: info.size };
+}
+
+/** What a picture over LOOK.maxBytes is told with: its size, the limit, and the way round it. */
+export const tooBigToSee = (path: string, bytes: number) =>
+  `${path} is ${formatBytes(bytes)}, over the ${formatBytes(LOOK.maxBytes)} a picture sent to a model can be. Make a smaller copy in the shell first (on a Mac: sips -Z 1600 in.png --out out.png), then look at that.`;
+
 export function createLookTool(): ToolSet {
   return {
     [TOOL_NAMES.look_at]: tool({
@@ -32,15 +58,13 @@ export function createLookTool(): ToolSet {
           .describe("Workspace-relative path to a png, jpg, webp or gif."),
       }),
       execute: async ({ path }): Promise<Looked | string> => {
-        const full = await insideWorkspace(path.trim());
-        const info = full ? await stat(full).catch(() => null) : null;
-        if (!full || !info?.isFile())
+        const checked = await checkPicture(path);
+        if ("missing" in checked)
           return `There is no file at ${path}. Give the path from the workspace root, as \`ls\` shows it.`;
-        if (viewKindOf(path) !== "image")
-          return `${path} is not an image. Read it in the shell instead.`;
-        if (info.size > LOOK.maxBytes)
-          return `${path} is ${Math.ceil(info.size / 1024 / 1024)} MB, over the ${LOOK.maxBytes / 1024 / 1024} MB one look takes. Make a smaller copy in the shell first (on a Mac: sips -Z 1600 in.png --out out.png), then look at that.`;
-        return { path: path.trim(), mediaType: mimeOf(path) };
+        if ("notPicture" in checked)
+          return `${path} is not a png, jpg, webp or gif. Read it in the shell instead.`;
+        if ("tooBig" in checked) return tooBigToSee(path, checked.tooBig);
+        return { path: path.trim(), mediaType: checked.mediaType };
       },
       toModelOutput: async ({ output }) => {
         if (typeof output === "string") return { type: "text", value: output };

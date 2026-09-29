@@ -16,7 +16,7 @@ import { TOOL_NAMES } from "@/features/ai/tools/tool-name";
 import { acceptThreadRelaysAction } from "@/features/bot/bot.action";
 import type { Thread } from "@/features/bot/bot.schema";
 import { screenActs } from "@/features/bot/thread.store";
-import { isPicture, mimeOf } from "@/features/workspace/file-kind";
+import { isPicture } from "@/features/workspace/file-kind";
 import { unwrapResult } from "@/lib/protocol/result";
 import { useServerAction } from "@/lib/protocol/use-server-action";
 import { revalidate, useServerRoute } from "@/lib/protocol/use-server-route";
@@ -33,6 +33,7 @@ import {
   type CallStatus,
   noteOf,
   notesIn,
+  picturePart,
   TEXT_CALL_MOVED,
   TEXT_CALL_NOTE,
   type TextCallHandshake,
@@ -105,18 +106,6 @@ const notePart = (note: TextCallNote) => ({
   type: `data-${TEXT_CALL_NOTE}` as const,
   id: note.id,
   data: note,
-});
-
-/**
- * A picture sent with the words, as a file part that names it in the workspace: the server
- * reads it into what the model is sent (thursday.text readPictures), and the conversation the
- * page sends again every turn carries the name, not the picture.
- */
-const picturePart = (path: string) => ({
-  type: "file" as const,
-  mediaType: mimeOf(path),
-  url: queryKey.file(path),
-  filename: path.split("/").pop() ?? path,
 });
 
 export function useTextCall(): TextCall {

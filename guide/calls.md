@@ -78,7 +78,9 @@ as on a spoken call, with no voice and no per-minute billing.
 - **Files**: the paperclip's **A file from this computer**, a paste, or a drop anywhere on the
   window — at most 8 at a time, 25 MB each. A picture (png, jpg, webp, gif) goes to her with the
   words, so "what does this say?" is answered on the spot. One over 4 MB, or one sent while she
-  runs on a model that cannot see pictures, does not go with them, and she says so.
+  runs on a model that cannot see pictures, does not go with them, and she says so. Later
+  messages carry the call's pictures again, the newest up to 12 MB in all; an older one she
+  looks at again by its name.
 - **A drawing**: the paperclip's **Draw something** opens a pad over the screen. **Add to the
   message** puts it on the line as a picture, sent with the words like any other.
 - **Who it goes to**: the chip at the left of the line, or `@` and a name at the start (**Tab** or
