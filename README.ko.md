@@ -58,8 +58,8 @@ Node.js 22.18 이상과 유료 ChatGPT 요금제 로그인이나 OpenAI API 키 
 일을 열면 사무실로 그려집니다. 봇마다 자기 책상에 앉아 있고, 일은 책상에서 책상으로 건너가며, 다른 봇의 답을 기다리는 일은 서류함에 놓인 채 기다리는 봇까지 바닥에 점선이 이어지고, 보고서는 내 카운터로 옵니다. 보고서가 도착하면 봇들이 모두 뛰어오르며 서류를 공중에 던집니다.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/cgoinglove/thursday/main/docs/images/office-dark.png">
-  <img src="https://raw.githubusercontent.com/cgoinglove/thursday/main/docs/images/office-light.png" alt="사무실로 그려진 일 — 한 봇이 책상에서 일하고, 답을 기다리는 일까지 바닥에 점선이 이어진다" width="880">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/cgoinglove/thursday/main/docs/images/office-dark.gif">
+  <img src="https://raw.githubusercontent.com/cgoinglove/thursday/main/docs/images/office-light.gif" alt="사무실로 그려진 일, 카메라가 내려오며 본다 — 봇들이 책상에서 일하고, 보고서가 돌아오면 바닥에 DONE 이 찍히고 모두 뛰어올라 서류를 던진다" width="880">
 </picture>
 
 ### 심부름은 진짜 브라우저로

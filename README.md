@@ -58,8 +58,8 @@ The bot you hand a job to brings in the others, can hold a part until the result
 Open a job and it is drawn as an office: each bot at its desk, the work walked from desk to desk, a hand-off that waits for another bot's answer held in its tray with a dashed line to the bot it waits on, and the report brought to your counter. When the report lands, every bot leaps and throws its papers in the air.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/cgoinglove/thursday/main/docs/images/office-dark.png">
-  <img src="https://raw.githubusercontent.com/cgoinglove/thursday/main/docs/images/office-light.png" alt="A job drawn as an office: a bot at work at its desk, and a dashed line on the floor to a hand-off waiting on its answer" width="880">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/cgoinglove/thursday/main/docs/images/office-dark.gif">
+  <img src="https://raw.githubusercontent.com/cgoinglove/thursday/main/docs/images/office-light.gif" alt="A job drawn as an office, the camera coming down over it: the bots work at their desks, the report comes back, DONE is stamped on the floor and every bot leaps and throws its papers" width="880">
 </picture>
 
 ### Errands, in a real browser
