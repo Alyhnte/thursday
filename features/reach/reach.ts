@@ -138,6 +138,8 @@ type Live = {
   calls: Set<string>;
   /** One turn at a time: what arrives during it joins it (`notes`). */
   busy: boolean;
+  /** Stops the turn that is running, when whoever it answers may no longer write (forgetReach). */
+  turn?: AbortController | null;
   /**
    * What has yet to enter the conversation: their words while a turn runs, and facts put
    * in for them. A running turn takes them between its steps; the next takes the rest first.
@@ -624,6 +626,7 @@ export async function nameReach(
     );
   const live = state.live.get(name);
   if (live) {
+    live.turn?.abort();
     live.notes = [];
     live.calls.clear();
     await hangUp(live);
@@ -637,6 +640,9 @@ export async function forgetReach(name: ReachChannelName): Promise<void> {
   await removeConfig(reachPersonKey(name));
   const live = state.live.get(name);
   if (live) {
+    // A turn of theirs still running would go on using her tools, and answer a chat that
+    // was just turned away
+    live.turn?.abort();
     // What waited for them is not the next person's to read
     live.notes = [];
     live.calls.clear();
@@ -724,6 +730,10 @@ async function answer(
   // Facts that waited go in ahead of the words; theirs that arrive from here on join the turn
   const facts = live.notes.filter((note) => !note.said);
   live.notes = live.notes.filter((note) => note.said);
+  // Stopped with the service (startReach) and with whoever it answers (forgetReach, nameReach)
+  const turn = new AbortController();
+  live.turn = turn;
+  const stopped = () => turn.signal.aborted || live.stop.signal.aborted;
   try {
     // Quiet for long enough, or closed under it (the server restarted): the next words
     // open a new call, which reads the last one back under Earlier calls
@@ -749,7 +759,10 @@ async function answer(
       said: words,
       pictures,
       notes: () => live.notes.splice(0),
+      signal: AbortSignal.any([turn.signal, live.stop.signal]),
     });
+    // Ended as it was stopped: its answer is for nobody
+    if (stopped()) return;
     line.messages = carried(result.messages);
     line.lastAt = Date.now();
     // Every turn asks the plan first and moves again until it resets: said once, ahead of her answer
@@ -772,6 +785,9 @@ async function answer(
       await sendFiles(live, person, result.text);
     }
   } catch (cause) {
+    // Stopped, not failed: nothing is said to a chat that was turned away, and what waited
+    // for them is not put back for the next person
+    if (stopped()) return;
     live.notes.unshift(...facts);
     // A conversation that never had a turn is no call to keep open: an open call is taken
     // to be listening (bot.runner), and nothing would ever close this one
@@ -784,6 +800,7 @@ async function answer(
     await channel.say(person.chat, { plain: why }).catch(() => {});
   } finally {
     clearInterval(typing);
+    if (live.turn === turn) live.turn = null;
   }
 }
 

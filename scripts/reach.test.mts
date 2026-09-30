@@ -111,6 +111,7 @@ mock.module("../features/thursday/thursday.text.ts", {
       said: string | null;
       pictures?: string[];
       notes?: () => { text: string; said: boolean; pictures?: string[] }[];
+      signal?: AbortSignal;
     }) => {
       const turn: Turn = {
         words: String(input.messages.at(-1)?.content),
@@ -132,6 +133,8 @@ mock.module("../features/thursday/thursday.text.ts", {
       turn.joined = notes.map((note) => note.text);
       turn.joinedPictures = notes.flatMap((note) => note.pictures ?? []);
       await gate.after;
+      // A turn that was stopped ends as a model call does when its signal goes
+      input.signal?.throwIfAborted();
       const mine = made ?? [{ role: "assistant", content: "ok" }];
       made = null;
       const quiet = wordless;
@@ -1051,6 +1054,38 @@ test("a file past what goes to the service stays, and a picture past what it dra
     ["sendDocument"],
     "Telegram draws photos up to 10 MB",
   );
+});
+
+test("a turn still running when its person is forgotten is stopped, and nothing more reaches their chat", async () => {
+  const { readConfig } = await import("../features/config/config.query.ts");
+  const { reachPersonKey } = await import("../features/reach/reach.schema.ts");
+  const person = (await readConfig(reachPersonKey("telegram"))) ?? "";
+  let open = () => {};
+  gate.before = new Promise((resolve) => {
+    open = resolve;
+  });
+  const before = turns.length;
+  inbox.push(message(7, "start the long job"));
+  await until(() => turns.length === before + 1, "her turn starts");
+  const told = saidTo(7).length;
+  try {
+    await reach.forgetReach("telegram");
+    gate.before = null;
+    open();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    assert.equal(
+      saidTo(7).length,
+      told,
+      "no answer, and no error, to that chat",
+    );
+    assert.equal((await reach.readReachStatus()).channels[0].allowed, null);
+  } finally {
+    gate.before = null;
+    open();
+    // Let back in as they were: the tests after this one write as them
+    await writeConfig(reachPersonKey("telegram"), person);
+    await reach.startReach();
+  }
 });
 
 test("a token the service turns away stops that service, names its key, and says what to do", async () => {
