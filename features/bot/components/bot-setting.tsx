@@ -1307,6 +1307,8 @@ function BotRail({
   );
   const [setMemoryOn] = useServerAction(setBotMemoryOnAction, {
     onOk: () => revalidate(queryKey.botMemory),
+    // The switch was moved before the write: one that failed puts it back where it is kept
+    onError: () => revalidate(queryKey.botMemory),
   });
   const tokens = bot ? bot.tokens.input + bot.tokens.output : 0;
   return (
