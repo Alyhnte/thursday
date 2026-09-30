@@ -1,13 +1,6 @@
 export async function boot() {
-  const {
-    APP_DIR,
-    APP_NAME,
-    DATA_DIR,
-    DB_PATH,
-    ENV_PATH,
-    HISTORY_KEEP,
-    WORKSPACE_KEEP,
-  } = await import("@/config");
+  const { APP_DIR, DATA_DIR, DB_PATH, ENV_PATH, HISTORY_KEEP, WORKSPACE_KEEP } =
+    await import("@/config");
   const { logger } = await import("@/lib/logger");
 
   // Nothing can run on a database this build cannot migrate, and nothing can
@@ -197,7 +190,7 @@ export async function boot() {
 
   // The two roots are the first thing to check when a fresh clone reads the
   // wrong database or cannot find its skills (config APP_DIR / DATA_DIR)
-  logger.info(`${APP_NAME} is up — app ${APP_DIR}, data ${DATA_DIR}`);
+  logger.info(`up — app ${APP_DIR}, data ${DATA_DIR}`);
 
   // Not awaited: the app is usable without it, and a first run is on the intro
   // screen for about as long as the download takes.

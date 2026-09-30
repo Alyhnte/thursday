@@ -41,7 +41,7 @@
     "test:reach": "node --experimental-test-module-mocks --import tsx --test scripts/reach.test.mts scripts/reach-channels.test.mts scripts/reach-mail.test.mts scripts/reach-mailbox.test.mts scripts/reach-email.test.mts scripts/text-call.test.mts",
     "test:artifact": "node --import tsx --test scripts/artifact-paths.test.mts scripts/proxy.test.mts scripts/favicon.test.mts",
     "test:skills": "node --import tsx --test scripts/skill-files.test.mts scripts/page-edits.test.mts scripts/deck.test.mts scripts/sheet.test.mts scripts/motion.test.mts",
-    "test:cli": "node --import tsx --test scripts/node-check.test.mts scripts/update.test.mts",
+    "test:cli": "node --import tsx --test scripts/node-check.test.mts scripts/starter.test.mts scripts/update.test.mts",
     "test:secrets": "node --import tsx --test scripts/secrets.test.mts",
     "format": "biome format --write",
     "reset": "node scripts/reset.mts",

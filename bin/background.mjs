@@ -26,6 +26,7 @@ import { delimiter, dirname, join, sep } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { heldBy, runningOn, startedAt, stillRuns, stopLines } from "./lock.mjs";
 import { homePort, portTaken } from "./port.mjs";
+import { begin, bold, card, done, fail, say, tilde } from "./print.mjs";
 import {
   commandFor,
   isCheckout,
@@ -539,6 +540,21 @@ async function answers(port) {
 }
 
 /**
+ * Waits for a server the caller started to answer a page on `port`: "up" once it does,
+ * "exited" when `gone` says it stopped first — it has said why, or is asking in the terminal
+ * — and "late" when `within` ran out with neither.
+ */
+export async function comesUp(port, gone, within = UP_MS) {
+  const until = Date.now() + within;
+  while (Date.now() < until) {
+    if (gone()) return "exited";
+    if (await answers(port)) return "up";
+    await sleep(250);
+  }
+  return gone() ? "exited" : "late";
+}
+
+/**
  * Waits for the job to serve a page on this folder. The page alone is not enough: a server a
  * terminal started meanwhile answers on the same port, and was taken for the job while the job
  * failed. A job that stopped with a failure meanwhile is not waited on — launchd would start
@@ -616,15 +632,6 @@ const letGoOfStart = () => {
     // Gone already
   }
 };
-
-/** Lines to print, indented; null is a line left out, "" an empty one. */
-const block = (lines) =>
-  `\n${lines
-    .filter((line) => line !== null)
-    .map((line) => (line ? `  ${line}` : ""))
-    .join("\n")}\n`;
-const say = (lines) => console.log(block(lines));
-const fail = (lines) => console.error(block(lines));
 
 /**
  * Starts the server in the background and has it start when the person logs in; a job already
@@ -710,10 +717,15 @@ async function replaceJob({ root, home, asked, open, version }) {
     return false;
   }
 
-  console.log("\n  Setting up the copy that runs in the background…");
+  // Each step is named while it runs: npm takes seconds, a first boot migrates the database,
+  // and a server being replaced parks its jobs first. A checkout installs nothing
+  const copies = !isCheckout(root);
+  console.log();
+  if (copies) begin("Installing the copy that runs in the background");
   let program;
   try {
     program = installCopy(root, version);
+    if (copies) done(`Installed   ${tilde(join(PROGRAM, version))}`);
   } catch (error) {
     fail([
       `Could not install it into ${PROGRAM}:`,
@@ -770,8 +782,10 @@ async function replaceJob({ root, home, asked, open, version }) {
   for (const signal of signals) process.on(signal, interrupted);
   try {
     if (state) {
+      begin("Stopping the one that runs now");
       bootOut();
       if (job?.port) await waitFree(job.port);
+      done("Stopped the one that ran before");
     }
     if (!(await waitFree(port))) {
       rmSync(staged, { force: true });
@@ -803,7 +817,9 @@ async function replaceJob({ root, home, asked, open, version }) {
       ]);
       return false;
     }
+    done("Starts when you log in");
 
+    begin("Starting it");
     if (!(await waitUp(port, home))) {
       // Taken back out: left in, launchd would start it every half minute and at every login,
       // failing the same way each time
@@ -822,6 +838,7 @@ async function replaceJob({ root, home, asked, open, version }) {
       ]);
       return false;
     }
+    done("Up");
   } finally {
     for (const signal of signals) process.off(signal, interrupted);
   }
@@ -829,15 +846,16 @@ async function replaceJob({ root, home, asked, open, version }) {
 
   const url = `http://localhost:${port}`;
   say([
-    `Thursday ${version} runs in the background, and starts when you log in.`,
-    url,
-    `data: ${home}`,
+    ...card(`Thursday ${version} runs in the background`, url, [
+      ["data", tilde(home)],
+      ["stop", `${command} stop`],
+    ]),
     // One job serves one folder: the one it served before is left, and said so
     job && job.home !== home
       ? `It no longer serves ${job.home}, which is kept as it is.`
       : null,
+    open ? "" : null,
     open ? "Opened it in your browser. This terminal can be closed." : null,
-    `To stop it: ${command} stop`,
   ]);
   if (open) openBrowser(url);
   return true;
@@ -896,13 +914,17 @@ export function printStatus({ home }) {
   const served = job ? runningOn(job.home) : null;
 
   if (job && heldBy(served, state?.pid)) {
-    say([
-      `Thursday${served.version ? ` ${served.version}` : ""} runs in the background, and starts when you log in.`,
-      served.url,
-      `data: ${job.home}`,
-      `log:  ${join(job.home, LOG_FILE)}`,
-      `To stop it: ${command} stop`,
-    ]);
+    say(
+      card(
+        `Thursday${served.version ? ` ${served.version}` : ""} runs in the background, and starts when you log in`,
+        served.url,
+        [
+          ["data", tilde(job.home)],
+          ["log", tilde(join(job.home, LOG_FILE))],
+          ["stop", `${command} stop`],
+        ],
+      ),
+    );
     return;
   }
   if (job) {
@@ -958,6 +980,15 @@ export async function offerBackground({ root, home, port, open, version }) {
   if (existsSync(PLIST) || existsSync(join(home, DECIDED_FILE)))
     return "terminal";
 
+  // What a yes does and how it is undone, before it is asked: it is the first thing a first
+  // run prints
+  say([
+    bold(`Thursday ${version}`),
+    "",
+    "Keep Thursday running in the background?",
+    "It starts when you log in, and needs no terminal.",
+    `Undo it any time: ${thursdayCommand()} stop`,
+  ]);
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   // Raw mode: Ctrl+C arrives here as a key, not as a signal
   rl.on("SIGINT", () => {
@@ -966,14 +997,10 @@ export async function offerBackground({ root, home, port, open, version }) {
   });
   // Ctrl+D ends the input and rejects the question: an answer nobody gave is not a yes, and
   // not a decision to remember either — the next run asks again
-  const answer = await rl
-    .question(
-      "\n  Keep Thursday running in the background, and start it when you log in? [Y/n] ",
-    )
-    .catch((error) => {
-      if (error?.name === "AbortError") return null;
-      throw error;
-    });
+  const answer = await rl.question("  [Y/n] ").catch((error) => {
+    if (error?.name === "AbortError") return null;
+    throw error;
+  });
   rl.close();
 
   if (answer === null) {
@@ -982,9 +1009,10 @@ export async function offerBackground({ root, home, port, open, version }) {
   }
   if (/^n/i.test(answer.trim())) {
     markDecided(home);
-    console.log(
-      `\n  It runs in this terminal until you close it.\n  To keep it running in the background later: ${commandFor("start", home)}`,
-    );
+    // That it runs here, and until when, is said once it is up (thursday.mjs)
+    say([
+      `To keep it running in the background later: ${commandFor("start", home)}`,
+    ]);
     return "terminal";
   }
   const started = await startInBackground({ root, home, port, open, version });

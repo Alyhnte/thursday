@@ -14,10 +14,16 @@ import {
 } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { backgroundJob, keepLogShort, offerBackground } from "./background.mjs";
+import {
+  backgroundJob,
+  comesUp,
+  keepLogShort,
+  offerBackground,
+} from "./background.mjs";
 import { askToSetDatabaseAside, MIGRATION_FAILED_EXIT } from "./database.mjs";
 import { holdFolder, runningOn, stopLines } from "./lock.mjs";
 import { freePort } from "./port.mjs";
+import { card, say, tilde } from "./print.mjs";
 import {
   commandFor,
   DEFAULT_HOME,
@@ -214,10 +220,43 @@ if (APP !== ROOT) {
   }
 }
 
-console.log(`\n  ${name} ${version}\n  ${url}\n  data: ${home}\n`);
-
 let child;
-let opened = has("--no-open");
+/** Said once: a server started again on a database set aside is the same start. */
+let announced = false;
+
+/**
+ * Says where the app is, and opens it, once the server answers a page. Said before the server
+ * started, it scrolled away under the server's own lines, and those name the same port on
+ * 127.0.0.1: another address to a browser, with none of what it keeps for this one (port.mjs).
+ * The last address on the screen is the one to open. A server that exits first has said why,
+ * or is asking in the terminal; one that does not answer in time is said, with the address.
+ */
+async function announce(server) {
+  const state = await comesUp(
+    port,
+    () => server.exitCode !== null || server.signalCode !== null,
+  );
+  if (state === "exited" || announced) return;
+  announced = true;
+  if (state === "late") {
+    say(["Thursday has not answered yet.", `Once it does, it is at ${url}`]);
+    return;
+  }
+  const opens = !has("--no-open");
+  // Someone at a terminal it runs in, not the background job or a script
+  const here = process.stdin.isTTY && !process.env.THURSDAY_BACKGROUND;
+  const stops = "Ctrl+C stops it, and so does closing this terminal.";
+  say([
+    ...card(`Thursday ${version}`, url, [["data", tilde(home)]]),
+    opens || here ? "" : null,
+    opens
+      ? `Opened it in your browser.${here ? ` ${stops}` : ""}`
+      : here
+        ? stops
+        : null,
+  ]);
+  if (opens) openBrowser(url);
+}
 
 /** The server. Started again once a database it could not migrate is removed. */
 function start() {
@@ -264,15 +303,7 @@ function start() {
       return start();
     process.exit(code ?? 0);
   });
-
-  if (opened) return;
-  // After the port is listening, and only on a server still up: one that could
-  // not migrate is asking in the terminal
-  setTimeout(() => {
-    if (opened || server.exitCode !== null) return;
-    opened = true;
-    openBrowser(url);
-  }, 1500).unref();
+  if (!announced) announce(server);
 }
 start();
 
