@@ -169,6 +169,9 @@ type State = {
   gone: (() => void) | null;
   /** A look at the inbox already on its way: a working bot changes threads many times a second. */
   looking: ReturnType<typeof setTimeout> | null;
+  /** A look is running (`look`), and whether something changed that it may not have read. */
+  inLook?: boolean;
+  lookAgain?: boolean;
   /** Closes lines nobody is writing to any more (sweepIdleLines). */
   idle: ReturnType<typeof setInterval> | null;
 };
@@ -1014,10 +1017,29 @@ const UP_SINCE = Date.now() - process.uptime() * 1000;
 function lookSoon(ms = REACH.lookMs) {
   state.looking ??= setTimeout(() => {
     state.looking = null;
-    void lookForOpenWork().catch((cause) =>
-      logger.error("reach: open work", cause),
-    );
+    void look().catch((cause) => logger.error("reach: open work", cause));
   }, ms);
+}
+
+/**
+ * One look at a time. Telling the phone waits on the network, and on a page being drawn: a
+ * second look begun meanwhile reads the same open work and sends what the first has yet to
+ * reach a second time. What changed during a look is read by one more, after it.
+ */
+async function look() {
+  if (state.inLook) {
+    state.lookAgain = true;
+    return;
+  }
+  state.inLook = true;
+  try {
+    do {
+      state.lookAgain = false;
+      await lookForOpenWork();
+    } while (state.lookAgain);
+  } finally {
+    state.inLook = false;
+  }
 }
 
 /**

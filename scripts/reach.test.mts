@@ -19,6 +19,8 @@ const inbox: unknown[] = [];
 let updateId = 1;
 /** Telegram turns the token away, as it does one revoked in BotFather. */
 let turnedAway = false;
+/** A message sent waits here before Telegram answers it, as a slow network holds it. */
+let sending: Promise<void> | null = null;
 const realFetch = globalThis.fetch;
 globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = String(input);
@@ -63,6 +65,7 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     return answer(inbox.splice(0));
   }
   sent.push({ method, body });
+  if (method === "sendMessage") await sending;
   // Where a file they sent is kept on Telegram's side, its extension the file's own
   if (method === "getFile")
     return answer({
@@ -520,6 +523,39 @@ test("an ending keeps its lines, takes its link along, and is seen once delivere
     String(lastSaid().body.text),
     /<b>Post:<\/b> <a href="https:\/\/example\.com\/p\/1">the carousel<\/a>/,
   );
+});
+
+test("a change that lands while one ending is on its way does not send the next one twice", async () => {
+  threads = [
+    thread("thread-3", { label: "Morning", outcome: "The first is done." }),
+    thread("thread-4", { label: "Evening", outcome: "The second is done." }),
+  ];
+  let arrive = () => {};
+  sending = new Promise((resolve) => {
+    arrive = resolve;
+  });
+  const count = sent.length;
+  appEvents.emit({ type: "threads" });
+  await until(() => sent.length > count, "the first ending is on its way");
+  // A working bot writes a row: another look is asked for while the first still waits
+  appEvents.emit({ type: "threads" });
+  await looked();
+  sending = null;
+  arrive();
+  await until(
+    () => seen.flat().includes("thread-4"),
+    "the second ending is delivered",
+  );
+  await looked();
+  const told = sent
+    .slice(count)
+    .filter((one) => one.method === "sendMessage")
+    .map((one) => shown(one.body.text).split("\n")[0]);
+  assert.deepEqual(told, [
+    "Insta finished · Morning",
+    "Insta finished · Evening",
+  ]);
+  threads = [];
 });
 
 test("what ended before this server came up is not news", async () => {
