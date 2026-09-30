@@ -319,3 +319,46 @@ test("with a job at work Update says so first, and starts only when told anyway"
     await npx.done();
   }
 });
+
+test("a move that stops says whether the one before runs on or nothing answers, and stopping twice is two failures", async (context) => {
+  const { followUpdate, useUpdateStore } = await import(
+    "../features/settings/update.store.ts"
+  );
+  const { UPDATE } = await import("../config.ts");
+  /** What the server answers the page's read with; null is a server that is down. */
+  let answer: unknown = null;
+  context.mock.method(globalThis, "fetch", async () => {
+    if (!answer) throw new TypeError("fetch failed");
+    return Response.json({ $ok: true, data: answer });
+  });
+  context.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  const pass = async (ms: number) => {
+    for (let at = 0; at < ms; at += UPDATE.pollMs) {
+      context.mock.timers.tick(UPDATE.pollMs);
+      for (let turn = 0; turn < 5; turn++)
+        await new Promise((done) => setImmediate(done));
+    }
+  };
+
+  // The server that ran before is back and says why the move stopped
+  answer = { current: "1.2.0", moving: { to: "1.3.0", failed: "npm said no" } };
+  const first = followUpdate("1.3.0");
+  await pass(UPDATE.pollMs);
+  await first;
+  const one = useUpdateStore.getState().failed;
+  assert.deepEqual(one, { to: "1.3.0", why: "npm said no", running: true });
+
+  // Tried again, and nothing answers until the page gives up: not said to be running
+  answer = null;
+  const second = followUpdate("1.3.0");
+  await pass(UPDATE.waitMs + UPDATE.pollMs);
+  await second;
+  const two = useUpdateStore.getState().failed;
+  assert.deepEqual(two, {
+    to: "1.3.0",
+    why: "The new version did not answer in time.",
+    running: false,
+  });
+  // The card puts away the failure it was closed on, which the second is not (update-notice)
+  assert.notEqual(two, one);
+});

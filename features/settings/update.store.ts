@@ -19,8 +19,11 @@ import { updateNowAction } from "./update.action";
 type UpdateStore = {
   /** The version being moved to; null when nothing is. */
   to: string | null;
-  /** The move that stopped, until another is started. */
-  failed: { to: string; why: string } | null;
+  /**
+   * The move that stopped, until another is started. `running` says whether a server answered
+   * as it stopped — the one before, running on — or nothing had by the time it was given up on.
+   */
+  failed: { to: string; why: string; running: boolean } | null;
 };
 
 export const useUpdateStore = create<UpdateStore>()(() => ({
@@ -51,8 +54,8 @@ const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
 export async function followUpdate(to: string) {
   if (useUpdateStore.getState().to) return;
   useUpdateStore.setState({ to, failed: null });
-  const stop = (why: string) =>
-    useUpdateStore.setState({ to: null, failed: { to, why } });
+  const stop = (why: string, running = true) =>
+    useUpdateStore.setState({ to: null, failed: { to, why, running } });
   const until = Date.now() + UPDATE.waitMs;
   while (Date.now() < until) {
     await sleep(UPDATE.pollMs);
@@ -67,7 +70,7 @@ export async function followUpdate(to: string) {
     if (!now.moving)
       return stop(`${now.current ?? "The one before"} runs again.`);
   }
-  stop("The new version did not answer in time.");
+  stop("The new version did not answer in time.", false);
 }
 
 /** Update pressed. Asks first when a call is open or jobs are at work, since a restart ends them. */

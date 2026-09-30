@@ -11,6 +11,8 @@ import type { Update } from "../update";
 import { closeUpdateNoticeAction } from "../update.action";
 import { followUpdate, moveTo, useUpdateStore } from "../update.store";
 
+type Failed = ReturnType<typeof useUpdateStore.getState>["failed"];
+
 /**
  * Says a newer version on the call screen, under the settings corner: a square card on the
  * other theme's surface, so it stands off the page, with her mark, the two versions and the
@@ -46,7 +48,9 @@ export function UpdateNotice({ hidden }: { hidden: boolean }) {
 
   // Put away on this page at once; the server keeps the notice away for the day
   const [closed, setClosed] = useState<string | null>(null);
-  const [dismissed, setDismissed] = useState<string | null>(null);
+  // The failure that was closed, not its version: a second try at the same version that
+  // stops again is another failure, and is said again
+  const [dismissed, setDismissed] = useState<Failed>(null);
 
   // Settings opens over the corner and stops 4px short of the window's edge: the card's dark
   // surface showed past it as a strip
@@ -65,20 +69,23 @@ export function UpdateNotice({ hidden }: { hidden: boolean }) {
       </Card>
     );
 
-  if (failed && dismissed !== failed.to)
+  if (failed && dismissed !== failed)
     return (
       <Card>
         <p className="mt-3 text-[15px] leading-tight font-medium">
           Could not update to {failed.to}
         </p>
         <p className="mt-1 text-xs text-muted-foreground">
-          The one before runs on.
+          {/* Only said of a server that answered: given up on with none answering, it is not known to */}
+          {failed.running
+            ? "The one before runs on."
+            : "Thursday is not answering."}
         </p>
         <Actions
           primary="See why"
           onPrimary={() => openSettings("thursday")}
           secondary="Close"
-          onSecondary={() => setDismissed(failed.to)}
+          onSecondary={() => setDismissed(failed)}
         />
       </Card>
     );
