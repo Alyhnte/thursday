@@ -87,11 +87,15 @@ export type Channel = {
    *
    * `id` is the bot's own id on the service, the same under every token it is given: what
    * tells a token replaced for this bot from a token for another one.
+   *
+   * `wanted` says whether reach would hear someone at all, for a service that can skip the
+   * work of reading a stranger's message (a mail's sender checked in DNS). Reach still decides.
    */
   listen(
     on: {
       ready(bot: string, link: string | null, id: string): void;
       incoming(incoming: Incoming): void;
+      wanted?(chat: string): Promise<boolean>;
     },
     signal: AbortSignal,
   ): Promise<void>;

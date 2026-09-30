@@ -134,6 +134,9 @@ importers:
       tailwind-merge:
         specifier: ^3.7.0
         version: 3.7.0
+      tldts:
+        specifier: 7.4.16
+        version: 7.4.16
       tw-animate-css:
         specifier: ^1.4.0
         version: 1.4.0
@@ -4276,6 +4279,10 @@ packages:
 
   tldts@7.4.15:
     resolution: {integrity: sha512-SJVBeHOxDbNoq14CvpAoA2mLEWdbldGK8nR+yumpjY5nrlZxOflcA7p1Qj1gbTGmbu9DY9qLj/bENSWhBzjxRQ==}
+    hasBin: true
+
+  tldts@7.4.16:
+    resolution: {integrity: sha512-QwBER5KMR86IIjpIiO7H/Z3IMJPsZ1A6RKPAqzTTgOyUQUSt9FdnKcqhTaJmkY6HVrgouZHZR0ncK5QxvmnQeg==}
     hasBin: true
 
   to-regex-range@5.0.1:
@@ -8740,6 +8747,10 @@ snapshots:
   tldts-core@7.4.16: {}
 
   tldts@7.4.15:
+    dependencies:
+      tldts-core: 7.4.16
+
+  tldts@7.4.16:
     dependencies:
       tldts-core: 7.4.16
 

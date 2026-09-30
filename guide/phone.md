@@ -96,10 +96,12 @@ longer do, so they cannot be her mailbox.
 
 Once she has a mailbox, a bot can give her address where a site asks for an email, while doing
 what it was asked, and read the mail that site sends back: a code, or a link to confirm the
-address. It reads only the newest mail from the site it names, from the last 30 minutes (or only
-one that comes after it asks, when it had the site send another), waiting up to two minutes for it
-by default and five at most. A mail in the site's name that its domain does not vouch for is not
-read, the same check as your own mail gets, and nothing in her mailbox is marked or moved. A site
+address. It reads only the newest mail from the site it names — one site's domain or address,
+never a whole ending like .com — from the last 30 minutes, waiting up to two minutes for it by
+default and five at most. After it has the site send another, it passes over the one it already
+read. A mail in the site's name that its domain does not vouch for is not read, the same check as
+your own mail gets. Your own mail to her is never among what a bot reads, and nothing in her
+mailbox is marked or moved. A site
 that stops a bot from signing up (a CAPTCHA, a phone number) stays stopped: the bot says so.
 
 ## Who is let in

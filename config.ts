@@ -185,6 +185,14 @@ export const CALL_IDLE = {
  *   to say when mail arrives (IMAP IDLE). A mail that arrives before then waits for it: the
  *   library's own 15 seconds made every answer to a quick reply that much later. Lower asks
  *   sooner, at two extra round trips when a command follows within it.
+ * - `mailIdleMs`  how long the mailbox's connection idles before it is renewed. A server may
+ *   drop an idle one after 30 minutes (RFC 3501 §5.4), and some drop it sooner without a word;
+ *   longer risks a connection that is gone before anyone knows, shorter renews it for nothing.
+ * - `mailDnsMs`  how long a sender's DNS records may take to look up before the mail is set
+ *   aside to be checked again (`mailChecks`). Longer waits out a slow resolver; shorter lets
+ *   one slow domain hold up the inbox for less time.
+ * - `mailIdsKept`  how many Message-IDs of mail already answered are kept, so one sent to her
+ *   again is not answered again. More remembers further back, in the one config row.
  * - `mailLookMs`  how often the mailbox is looked through even when the mail server has not
  *   said anything arrived. A server's word that mail arrived can be lost with a connection
  *   that drops quietly; shorter finds such a mail sooner, longer asks the server less.
@@ -208,6 +216,9 @@ export const REACH = {
   mailFreshMs: 48 * 60 * 60_000,
   mailChecks: 3,
   mailPushAfterMs: 1_000,
+  mailIdleMs: 4 * 60_000,
+  mailDnsMs: 5_000,
+  mailIdsKept: 200,
   mailLookMs: 5 * 60_000,
 };
 

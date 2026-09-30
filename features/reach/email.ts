@@ -1,8 +1,10 @@
 import { Resolver } from "node:dns/promises";
+import { format } from "date-fns";
 import { ImapFlow } from "imapflow";
 import { authenticate } from "mailauth";
 import { type AddressObject, type ParsedMail, simpleParser } from "mailparser";
 import { createTransport } from "nodemailer";
+import { getDomain } from "tldts";
 import { APP_NAME, REACH } from "@/config";
 import { readConfig, writeConfig } from "@/features/config/config.query";
 import { logger } from "@/lib/logger";
@@ -48,15 +50,8 @@ const MAIL_TAKE = 50 * MB;
  * Gmail and Yahoo 25), and a file travels a third larger inside one (base64).
  */
 const MAIL_SEND = 14 * MB;
-/**
- * How long the connection idles before it is renewed. A server may drop an idle one after 30
- * minutes (RFC 3501 §5.4) and some do sooner, silently.
- */
-const IDLE_MS = 4 * 60_000;
-/** How long a sender's DNS records may take to look up before the check is tried again later. */
-const DNS_MS = 5_000;
-/** How many handed-over Message-IDs are kept, so one sent to her again is not answered again. */
-const IDS_KEPT = 200;
+/** A day, the unit IMAP searches by date in (RFC 3501 §6.4.4). */
+const DAY_MS = 24 * 60 * 60_000;
 
 /** Where the inbox was read up to, kept across restarts (a domain row, config.query). */
 export const EMAIL_SEEN_KEY = "REACH_EMAIL_SEEN";
@@ -76,7 +71,7 @@ export type Resolve = (
   type: string,
 ) => Promise<string[][] | string[]>;
 
-const dns = new Resolver({ timeout: DNS_MS, tries: 1 });
+const dns = new Resolver({ timeout: REACH.mailDnsMs, tries: 1 });
 const lookUp: Resolve = (domain, type) =>
   type === "TXT"
     ? dns.resolveTxt(domain)
@@ -95,17 +90,32 @@ export type Mail = Written & {
   refs: string[];
   /** Why it is not taken as from `chat`, in words for anyone (`unproven` is the same, for them). */
   why?: string;
+  /**
+   * Sent by a machine (Auto-Submitted, RFC 3834): reach never answers one, since an
+   * out-of-office answering her would be answered back. A site's code comes marked so too.
+   */
+  auto: boolean;
 };
 
+/** Whether a mail from this address is wanted at all, asked before any of it is checked. */
+export type Wanted = (address: string) => boolean | Promise<boolean>;
+
 /**
- * One mail as reach hears it, or null when it is nobody's to answer: no single From, or sent
- * by a machine (Auto-Submitted, RFC 3834 — an out-of-office answering her would be answered
- * back). A mail that cannot be vouched for comes with `unproven`, which reach says only to
- * the one who may write. Throws `CheckLater` when the sender's records could not be looked up.
+ * One mail, read, or null when it is no one's: no single From, or from an address `wanted`
+ * turns down — asked before the sender's records are looked up, so a stranger's mail costs no
+ * DNS and a stranger's broken DNS holds up nothing. A mail that cannot be vouched for comes
+ * with `unproven`, which reach says only to the one who may write. Throws `CheckLater` when
+ * the sender's records could not be looked up.
  */
 export async function readMail(
   source: Buffer,
-  at: { mailbox: string; arrived: Date; now?: number; resolve?: Resolve },
+  at: {
+    mailbox: string;
+    arrived: Date;
+    now?: number;
+    resolve?: Resolve;
+    wanted?: Wanted;
+  },
 ): Promise<Mail | null> {
   const mail = await simpleParser(source, {
     skipImageLinks: true,
@@ -114,14 +124,17 @@ export async function readMail(
   const froms = mail.headerLines.filter((line) => line.key === "from");
   const [from, ...more] = mail.from?.value ?? [];
   if (froms.length !== 1 || more.length || !from?.address) return null;
-  const auto = mail.headers.get("auto-submitted");
-  const sentBy =
-    typeof auto === "string"
-      ? auto
-      : ((auto as { value?: string })?.value ?? "no");
-  if (sentBy.trim().toLowerCase() !== "no") return null;
-
   const address = from.address.toLowerCase();
+  if (at.wanted && !(await at.wanted(address))) return null;
+  const submitted = mail.headers.get("auto-submitted");
+  const auto =
+    (typeof submitted === "string"
+      ? submitted
+      : ((submitted as { value?: string })?.value ?? "no")
+    )
+      .trim()
+      .toLowerCase() !== "no";
+
   const subject = (mail.subject ?? "").trim();
   const body = withoutQuote(mail.text ?? "");
   const files = mail.attachments.map((file, at) => {
@@ -147,18 +160,23 @@ export async function readMail(
     ...(refused
       ? {
           why: refused.why,
-          unproven: notRead(subject, refused.why, refused.advice),
+          unproven: notRead(at.arrived, refused.why, refused.advice),
         }
       : {}),
+    auto,
     subject,
     id: mail.messageId ?? null,
     refs: [...referencesOf(mail), ...(mail.messageId ? [mail.messageId] : [])],
   };
 }
 
-/** What the one who may write is told of a mail of theirs that was not read (reach take). */
-const notRead = (subject: string, why: string, advice = "") =>
-  `Your mail${subject ? ` “${subject}”` : ""} was not read: ${why}.${advice ? ` ${advice}` : ""}`;
+/**
+ * What the one who may write is told of a mail in their name that was not read (reach take).
+ * It is named by when it arrived, never by its subject: the mail may be a stranger's, and its
+ * words are not repeated from her address.
+ */
+const notRead = (arrived: Date, why: string, advice = "") =>
+  `Your mail of ${format(arrived, "d MMM, HH:mm")} was not read: ${why}.${advice ? ` ${advice}` : ""}`;
 
 /**
  * Why this mail is not taken as from `address`, and what its sender can do about it;
@@ -417,7 +435,13 @@ export function createEmail(
         });
         while (!signal.aborted) {
           rung = false;
-          seen = await look(client, seen, on.incoming);
+          seen = await look(
+            client,
+            seen,
+            on.incoming,
+            // A channel that is not told who is wanted reads everyone's, and reach sorts them
+            on.wanted ?? (() => true),
+          );
           if (!rung && !signal.aborted)
             await ring(client, imap.host, REACH.mailLookMs, signal);
         }
@@ -452,6 +476,7 @@ export function createEmail(
     client: ImapFlow,
     seen: Seen,
     incoming: (incoming: Incoming) => void,
+    wanted: Wanted,
   ): Promise<Seen> {
     // Listed first: the connection runs one command at a time, and a fetch holds it
     const arrived = (
@@ -466,14 +491,20 @@ export function createEmail(
       .sort((a, b) => a.uid - b.uid);
     let now = seen;
     for (const one of arrived) {
-      const mail = await take(client, one.uid, one.size ?? 0, one.internalDate);
+      const mail = await take(
+        client,
+        one.uid,
+        one.size ?? 0,
+        one.internalDate,
+        wanted,
+      );
       const repeat = Boolean(mail?.id && now.ids.includes(mail.id));
       now = {
         ...now,
         uid: one.uid,
         ids: mail?.id
           ? [...now.ids.filter((id) => id !== mail.id), mail.id].slice(
-              -IDS_KEPT,
+              -REACH.mailIdsKept,
             )
           : now.ids,
       };
@@ -485,13 +516,14 @@ export function createEmail(
         mail.subject && bareSubject(mail.subject) !== (thread?.subject ?? null)
           ? [mail.subject, mail.words].filter(Boolean).join("\n\n")
           : mail.words;
-      // Answered in its thread, so they see which mail it answers — an unproven one too, since
-      // what is said about it goes only to the one who may write (reach take)
-      threads.set(mail.chat, {
-        subject: bareSubject(mail.subject),
-        last: mail.id,
-        refs: mail.refs,
-      });
+      // Only a mail vouched for is answered in its thread: one that is not may be a stranger's,
+      // whose subject and Message-ID her next answer would otherwise carry
+      if (!mail.unproven)
+        threads.set(mail.chat, {
+          subject: bareSubject(mail.subject),
+          last: mail.id,
+          refs: mail.refs,
+        });
       incoming({
         kind: "message",
         chat: mail.chat,
@@ -506,12 +538,16 @@ export function createEmail(
     return now;
   }
 
-  /** One mail read whole, or null for one that is nobody's to answer (readMail). */
+  /**
+   * One mail read whole, or null for one that is nobody's to answer: from someone reach does
+   * not want, or sent by a machine (readMail).
+   */
   async function take(
     client: ImapFlow,
     uid: number,
     size: number,
     internalDate: Date | string | undefined,
+    wanted: Wanted,
   ): Promise<Mail | null> {
     const arrived = new Date(internalDate ?? Date.now());
     if (size > MAIL_TAKE) {
@@ -522,7 +558,7 @@ export function createEmail(
         { uid: true },
       );
       const from = head && head.envelope?.from?.[0]?.address?.toLowerCase();
-      if (!from) return null;
+      if (!from || !(await wanted(from))) return null;
       return {
         kind: "message",
         chat: from,
@@ -532,10 +568,11 @@ export function createEmail(
         files: [],
         unreadable: false,
         unproven: notRead(
-          head.envelope?.subject ?? "",
+          arrived,
           `it is ${Math.ceil(size / MB)} MB, and the most she reads is ${MAIL_TAKE / MB} MB`,
         ),
-        subject: head.envelope?.subject ?? "",
+        auto: false,
+        subject: "",
         id: null,
         refs: [],
       };
@@ -547,9 +584,14 @@ export function createEmail(
     );
     if (!whole || !whole.source) return null;
     try {
-      const mail = await readMail(whole.source, { mailbox, arrived, resolve });
+      const mail = await readMail(whole.source, {
+        mailbox,
+        arrived,
+        resolve,
+        wanted,
+      });
       checks.delete(uid);
-      return mail;
+      return mail?.auto ? null : mail;
     } catch (cause) {
       if (!(cause instanceof CheckLater)) throw cause;
       const tries = (checks.get(uid) ?? 0) + 1;
@@ -577,7 +619,7 @@ function imapClient(
     ...(imap.port === IMAP_TLS_PORT ? {} : { doSTARTTLS: true }),
     auth: { user: address, pass: password },
     logger: false,
-    maxIdleTime: IDLE_MS,
+    maxIdleTime: REACH.mailIdleMs,
     autoIdleDelay: REACH.mailPushAfterMs,
     maxLiteralSize: MAIL_TAKE,
     maxResponseSize: MAIL_TAKE + MB,
@@ -602,7 +644,19 @@ export type Checked =
   | { kind: "none"; unproven: string[] };
 
 /**
- * Whether `from` — one address, or a domain and its subdomains — sent `address`.
+ * What a bot may name as a sender: one address, or a domain someone registered — never a
+ * public suffix (com, co.uk) or a name anyone can take a part of (github.io), which would
+ * match every mail under it. Null when it is neither.
+ */
+export function senderOf(from: string): string | null {
+  const wanted = from.trim().toLowerCase().replace(/^@/, "");
+  const domain = wanted.slice(wanted.lastIndexOf("@") + 1);
+  if (!getDomain(domain, { allowPrivateDomains: true })) return null;
+  return wanted;
+}
+
+/**
+ * Whether `from` — one address, or a domain and its subdomains (senderOf) — sent `address`.
  * A domain is matched whole, never as the end of another name (evilgithub.com is not github.com).
  */
 export function sentBy(address: string, from: string): boolean {
@@ -614,39 +668,58 @@ export function sentBy(address: string, from: string): boolean {
 }
 
 /**
+ * The mail checkMail handed a bot, by mailbox (address and UIDVALIDITY): who sent it and its
+ * UID, so "only new" passes over what was read already and anything before it. Pinned, as
+ * reach's state is: a dev reload would forget it otherwise.
+ */
+type Handed = { uid: number; from: string };
+const pinned = globalThis as { __mailHanded?: Map<string, Handed[]> };
+const handed: Map<string, Handed[]> = (pinned.__mailHanded ??= new Map());
+/** How many handed mails a mailbox keeps: a bot reads a few a job. */
+const HANDED_KEPT = 50;
+
+/**
  * For a bot waiting on a site's mail — a code, a link to confirm an address: the newest mail
- * from `from` that reached her inbox in the last `backMs` (or, `onlyNew`, from now on), waiting
- * up to `waitMs` for one when none has. The inbox is only read. A mail is read only when its sender's domain vouches for it
- * (readMail): a mail in a site's name that is not is named with why, never read, since what it
- * says could be anyone's. Throws on a sign-in refused or a server out of reach, in words.
+ * from `from` (senderOf) that reached her inbox in the last `backMs`, waiting up to `waitMs`
+ * for one when none has. With `onlyNew`, mail from that sender already handed to a bot here,
+ * and anything before it, is passed over: after a site is asked to send again. `passOver` is
+ * never read, whoever asks: the user's own mail to her. The inbox is only read. A mail is read
+ * only when its sender's domain vouches for it (readMail): one in a site's name that is not is
+ * named with why, never read, since what it says could be anyone's. Throws on a sender that is
+ * no one's, a sign-in refused, a server out of reach or a search it refused, in words.
  */
 export async function checkMail(
   mailbox: { address: string; password: string; imap: string },
   from: string,
-  times: {
-    backMs: number;
-    waitMs: number;
-    /** Only mail that arrives from now on: one sent again, whatever came before it. */
-    onlyNew?: boolean;
-  },
+  times: { backMs: number; waitMs: number; onlyNew?: boolean },
+  passOver: string[] = [],
   signal?: AbortSignal,
   resolve: Resolve = lookUp,
 ): Promise<Checked> {
+  const sender = senderOf(from);
+  if (!sender)
+    throw new Error(
+      `“${from}” is not one site's: name the domain the mail comes from, like github.com, or its address.`,
+    );
   const imap = parseServer(mailbox.imap);
   if (!imap)
     throw new Error(
       `Her mailbox's reading server “${mailbox.imap}” is not host:port.`,
     );
   const address = mailbox.address.toLowerCase();
+  const never = new Set(passOver.map((one) => one.toLowerCase()));
+  const wanted: Wanted = (one) => sentBy(one, sender) && !never.has(one);
   const since = Date.now() - times.backMs;
   const until = Date.now() + times.waitMs;
   const client = imapClient(mailbox.address, mailbox.password, imap);
   const shut = () => client.close();
   signal?.addEventListener("abort", shut, { once: true });
-  /** Mail from the sender that is not read, and why, by UID: passed over from then on. */
+  /** Mail from the sender that is not read, and why, by UID. */
   const unproven = new Map<number, string>();
   /** Mail whose sender's records did not answer: looked at again on the next pass. */
   const unchecked = new Map<number, string>();
+  /** Mail already judged on an earlier pass — not read, or no one's — and not fetched again. */
+  const judged = new Set<number>();
   try {
     await client
       .connect()
@@ -664,23 +737,33 @@ export async function checkMail(
         },
       );
     const box = await client.mailboxOpen("INBOX", { readOnly: true });
-    // Told apart by the server's own numbering, not by a clock: its time and this computer's
-    // may differ by more than a mail takes to arrive
-    const firstNew = times.onlyNew ? box.uidNext : 0;
+    const kept = `${address}|${box.uidValidity}`;
+    // Past what a bot here already read from this sender: the server's own numbering, not a
+    // clock, which may differ from the server's by more than a mail takes to arrive
+    const after = times.onlyNew
+      ? Math.max(
+          0,
+          ...(handed.get(kept) ?? [])
+            .filter((one) => sentBy(one.from, sender))
+            .map((one) => one.uid),
+        )
+      : 0;
     let rung = false;
     client.on("exists", () => {
       rung = true;
     });
     while (!signal?.aborted) {
       rung = false;
-      // SINCE is by day (RFC 3501 §6.4.4); the hour is checked below, from when each
-      // arrived. The sender is matched here, on the envelope, not by the server's FROM search:
+      // SINCE is by day, in the server's own time zone (RFC 3501 §6.4.4), which may be a day
+      // behind this computer's: a day earlier, and the hour is checked below from when each
+      // arrived. The sender is matched on the envelope, not by the server's FROM search:
       // servers differ on whether that matches part of an address
       const found = await client.search(
-        { since: new Date(since) },
+        { since: new Date(since - DAY_MS) },
         { uid: true },
       );
-      const arrived = found
+      if (!found) throw new Error(`${imap.host} would not search her inbox.`);
+      const arrived = found.length
         ? await client.fetchAll(
             found,
             { uid: true, internalDate: true, size: true, envelope: true },
@@ -691,28 +774,33 @@ export async function checkMail(
         .map((one) => ({ ...one, at: new Date(one.internalDate ?? 0) }))
         .filter(
           (one) =>
-            one.uid >= firstNew &&
+            one.uid > after &&
+            !judged.has(one.uid) &&
             one.at.getTime() >= since &&
             (one.size ?? 0) <= MAIL_TAKE &&
             (one.envelope?.from ?? []).some(
-              (sender) => sender.address && sentBy(sender.address, from),
+              (who) => who.address && wanted(who.address.toLowerCase()),
             ),
         )
         .sort((a, b) => b.at.getTime() - a.at.getTime());
       for (const one of newest) {
-        if (unproven.has(one.uid)) continue;
         const whole = await client.fetchOne(
           String(one.uid),
           { source: true },
           { uid: true },
         );
-        if (!whole || !whole.source) continue;
+        if (!whole || !whole.source) {
+          judged.add(one.uid);
+          continue;
+        }
         let mail: Mail | null;
         try {
           mail = await readMail(whole.source, {
             mailbox: address,
             arrived: one.at,
             resolve,
+            // The envelope said so; the one From the mail is vouched for decides
+            wanted,
           });
           unchecked.delete(one.uid);
         } catch (cause) {
@@ -720,15 +808,19 @@ export async function checkMail(
           unchecked.set(one.uid, cause.message);
           continue;
         }
-        // The envelope said so; the one From the mail is vouched for decides
-        if (!mail || !sentBy(mail.chat, from)) continue;
+        judged.add(one.uid);
+        if (!mail) continue;
         if (mail.why) {
-          unproven.set(
-            one.uid,
-            `“${mail.subject}” from ${mail.chat}: ${mail.why}`,
-          );
+          unproven.set(one.uid, `a mail from ${mail.chat}: ${mail.why}`);
           continue;
         }
+        handed.set(
+          kept,
+          [
+            ...(handed.get(kept) ?? []),
+            { uid: one.uid, from: mail.chat },
+          ].slice(-HANDED_KEPT),
+        );
         return {
           kind: "found",
           from: mail.chat,

@@ -37,7 +37,7 @@ mock.module("node:dns/promises", {
   },
 });
 
-const { readMail, withoutQuote, CheckLater, sentBy } = await import(
+const { readMail, withoutQuote, CheckLater, sentBy, senderOf } = await import(
   "../features/reach/email.ts"
 );
 const { findMailServers, parseServer } = await import(
@@ -106,6 +106,26 @@ async function mail(
   return Buffer.concat([Buffer.from(signatures), raw]);
 }
 
+/** How a refusal names the mail: by when it arrived, never by what its sender wrote. */
+const stamp = (() => {
+  const months = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+  ];
+  const two = (n: number) => String(n).padStart(2, "0");
+  return `${now.getDate()} ${months[now.getMonth()]}, ${two(now.getHours())}:${two(now.getMinutes())}`;
+})();
+
 const read = (source: Buffer, arrived = now) =>
   readMail(source, { mailbox, arrived, resolve });
 
@@ -149,7 +169,7 @@ test("a mail changed after it was signed is not taken as theirs, and they are to
   const read1 = await read(changed);
   assert.match(
     read1?.unproven ?? "",
-    /^Your mail “Flights to Lisbon” was not read: example\.org's mail service does not vouch that it came from alex@example\.org, so it could be anyone's \(its DMARC check said: fail\)\. Thursday reads only mail its sender's service signs/,
+    /^Your mail of \d+ \w+, \d\d:\d\d was not read: example\.org's mail service does not vouch that it came from alex@example\.org, so it could be anyone's \(its DMARC check said: fail\)\. Thursday reads only mail its sender's service signs/,
   );
 });
 
@@ -170,7 +190,7 @@ test("only mail written to her address, and recent, is read", async () => {
   const elsewhere = await read(await mail({ to: "someone@example.net" }));
   assert.equal(
     elsewhere?.unproven,
-    "Your mail “Flights to Lisbon” was not read: it was not written to thursday@example.com. Thursday reads only mail with her address in To or Cc.",
+    `Your mail of ${stamp} was not read: it was not written to thursday@example.com. Thursday reads only mail with her address in To or Cc.`,
   );
   const copied = await read(
     await mail({ to: "someone@example.net", cc: mailbox }),
@@ -186,15 +206,18 @@ test("only mail written to her address, and recent, is read", async () => {
   assert.match(late?.unproven ?? "", /written more than 48 hours ago/);
 });
 
-test("a machine's mail, and a mail in two names, are nobody's to answer", async () => {
-  assert.equal(
-    await read(await mail({ headers: { "Auto-Submitted": "auto-replied" } })),
-    null,
-    "an out-of-office answering her is never answered back",
+test("a machine's mail is marked as one, and a mail in two names is no one's", async () => {
+  // reach answers none marked so (an out-of-office would be answered back); a site's code
+  // comes marked so too, and a bot still reads it
+  const machine = await read(
+    await mail({ headers: { "Auto-Submitted": "auto-generated" } }),
   );
-  assert.ok(
-    await read(await mail({ headers: { "Auto-Submitted": "no" } })),
-    "one that says it was not sent by a machine is read",
+  assert.equal(machine?.auto, true);
+  assert.equal(machine?.unproven, undefined);
+  assert.equal(
+    (await read(await mail({ headers: { "Auto-Submitted": "no" } })))?.auto,
+    false,
+    "one that says it was not sent by a machine is not one",
   );
   assert.equal(
     await read(await mail({ from: ["a@example.org", "b@example.org"] })),
@@ -206,7 +229,7 @@ test("a signature over only the start of a mail leaves the rest anyone's", async
   const read1 = await read(await mail({}, { maxBodyLength: 10 }));
   assert.equal(
     read1?.unproven,
-    "Your mail “Flights to Lisbon” was not read: its signature covers only part of it, so the rest could be anyone's.",
+    `Your mail of ${stamp} was not read: its signature covers only part of it, so the rest could be anyone's.`,
   );
 });
 
@@ -230,6 +253,33 @@ test("only a quote that ends the mail goes; one answered between its lines stays
   );
   assert.equal(withoutQuote("No quote at all.\n\n"), "No quote at all.");
   assert.equal(withoutQuote("> only a quote"), "");
+});
+
+test("a sender nobody wants is passed over before anything is looked up", async () => {
+  let lookups = 0;
+  const read1 = await readMail(await mail(), {
+    mailbox,
+    arrived: now,
+    resolve: async (name, type) => {
+      lookups++;
+      return resolve(name, type);
+    },
+    wanted: (address) => address === "someone@else.example",
+  });
+  assert.equal(read1, null);
+  assert.equal(
+    lookups,
+    0,
+    "a stranger's mail costs no DNS, and its broken DNS stalls nothing",
+  );
+});
+
+test("a bot names one site as a sender, never a whole suffix", () => {
+  assert.equal(senderOf("GitHub.com"), "github.com");
+  assert.equal(senderOf("@github.com"), "github.com");
+  assert.equal(senderOf("noreply@github.com"), "noreply@github.com");
+  for (const suffix of ["com", "co.uk", "github.io", "localhost", ""])
+    assert.equal(senderOf(suffix), null, suffix);
 });
 
 test("a site's mail is its domain's, or a subdomain's, and never a look-alike's", () => {

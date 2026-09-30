@@ -25,7 +25,14 @@ let hand: ((incoming: unknown) => void) | null = null;
 const MB = 1024 * 1024;
 /** What the next check of her mailbox finds, as checkMail answers. */
 let checked: unknown = { kind: "none", unproven: [] };
-const checks: { from: string; waitMs: number; onlyNew?: boolean }[] = [];
+const checks: {
+  from: string;
+  waitMs: number;
+  onlyNew?: boolean;
+  passOver?: string[];
+}[] = [];
+/** Who reach says it would hear, as the mailbox is told (channel.ts `wanted`). */
+let wanted: ((chat: string) => Promise<boolean>) | null = null;
 mock.module("../features/reach/email.ts", {
   namedExports: {
     EMAIL_SEEN_KEY: "REACH_EMAIL_SEEN",
@@ -33,8 +40,14 @@ mock.module("../features/reach/email.ts", {
       _mailbox: unknown,
       from: string,
       times: { waitMs: number; onlyNew?: boolean },
+      passOver: string[],
     ) => {
-      checks.push({ from, waitMs: times.waitMs, onlyNew: times.onlyNew });
+      checks.push({
+        from,
+        waitMs: times.waitMs,
+        onlyNew: times.onlyNew,
+        passOver,
+      });
       if (checked instanceof Error) throw checked;
       return checked;
     },
@@ -46,11 +59,13 @@ mock.module("../features/reach/email.ts", {
         on: {
           ready(bot: string, link: string | null, id: string): void;
           incoming(incoming: unknown): void;
+          wanted?(chat: string): Promise<boolean>;
         },
         signal: AbortSignal,
       ) {
         on.ready(address, `mailto:${address}`, address.toLowerCase());
         hand = on.incoming;
+        wanted = on.wanted ?? null;
         await new Promise((resolve) =>
           signal.addEventListener("abort", resolve, { once: true }),
         );
@@ -348,6 +363,12 @@ test("a bot's question goes as a mail with its choices under it", async () => {
   await new Promise((resolve) => setTimeout(resolve, REACH.lookMs + 100));
 });
 
+test("the mailbox is told whose mail reach would hear, so a stranger's is not checked at all", async () => {
+  assert.ok(wanted, "reach tells the channel");
+  assert.equal(await wanted?.("alex@example.org"), true);
+  assert.equal(await wanted?.("stranger@example.net"), false);
+});
+
 test("naming another address lets the first go", async () => {
   await reach.nameReach("email", "sam@example.net");
   assert.equal((await email())?.allowed?.chat, "sam@example.net");
@@ -385,11 +406,17 @@ test("a bot reads a site's mail at her address, and is told what it is", async (
     /^From noreply@github\.com, arrived .*: “Your code”\n\nYour code is 123456\./,
   );
   assert.match(found, /\[Written by noreply@github\.com, not by the user/);
+  // The user's own mail to her is never among what a bot reads, whatever it names
   assert.deepEqual(checks.at(-1), {
     from: "github.com",
     waitMs: 120_000,
     onlyNew: false,
+    passOver: ["sam@example.net"],
   });
+  assert.equal(
+    await run({ from: "Sam@Example.net" }),
+    "sam@example.net is the user's own address: what they write to Thursday is theirs to her, not a site's, and is not read here.",
+  );
 
   // A wait past the most a bot may ask is cut to it
   checked = {
@@ -415,10 +442,11 @@ test("a bot reads a site's mail at her address, and is told what it is", async (
     from: "github.com",
     waitMs: 5_000,
     onlyNew: true,
+    passOver: ["sam@example.net"],
   });
   assert.match(
     await run({ from: "github.com", onlyNew: true, waitSeconds: 5 }),
-    /^No mail from github\.com reached thursday@example\.com since you asked, after waiting 5 seconds\./,
+    /^No new mail from github\.com reached thursday@example\.com in the last 30 minutes, after waiting 5 seconds\./,
   );
 
   checked = new Error("Could not reach imap.example.com:993: ETIMEDOUT");
