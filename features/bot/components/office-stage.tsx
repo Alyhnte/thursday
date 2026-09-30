@@ -245,6 +245,14 @@ export function OfficeStage({
   const view = panned ?? opening;
   const openingRef = useRef(opening);
   openingRef.current = opening;
+  // A glide under way (the zoom buttons, the frame button) and where it goes: a second press
+  // steps on from there, and a wheel or a drag stops it and takes the view as it stands
+  const glide = useRef(0);
+  const gliding = useRef<View | null>(null);
+  const stopGlide = () => {
+    cancelAnimationFrame(glide.current);
+    gliding.current = null;
+  };
   const drag = useRef<{
     x: number;
     y: number;
@@ -277,6 +285,8 @@ export function OfficeStage({
       // Words opened over a bot scroll as a page does
       if ((event.target as HTMLElement).closest("[data-reads]")) return;
       event.preventDefault();
+      cancelAnimationFrame(glide.current);
+      gliding.current = null;
       const rect = node.getBoundingClientRect();
       const fx = event.clientX - rect.left;
       const fy = event.clientY - rect.top;
@@ -297,6 +307,7 @@ export function OfficeStage({
   const down = (event: ReactPointerEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement;
     if (event.button !== 0 || target.closest("button, a, [data-reads]")) return;
+    stopGlide();
     drag.current = {
       x: event.clientX,
       y: event.clientY,
@@ -327,11 +338,11 @@ export function OfficeStage({
 
   // The zoom buttons and the frame button glide there rather than jump; the wheel and a drag
   // move it as they go
-  const glide = useRef(0);
   const glideTo = (target: View | null) => {
     cancelAnimationFrame(glide.current);
     const from = view;
     const to = target ?? openingRef.current;
+    gliding.current = to;
     const began = performance.now();
     const step = () => {
       const p = Math.min(1, (performance.now() - began) / GLIDE_MS);
@@ -346,10 +357,20 @@ export function OfficeStage({
             },
       );
       if (p < 1) glide.current = requestAnimationFrame(step);
+      else gliding.current = null;
     };
     glide.current = requestAnimationFrame(step);
   };
-  useEffect(() => () => cancelAnimationFrame(glide.current), []);
+  /** The zoom a button press steps from: where a glide under way goes, else where the view is. */
+  const stepBase = () => gliding.current ?? view;
+  useEffect(
+    () => () => {
+      cancelAnimationFrame(glide.current);
+      // pointed at as it went: no pointerleave comes, so the next office would open lit
+      officePointed.set(null);
+    },
+    [],
+  );
   const world = `translate(${view.x}px, ${view.y}px) scale(${view.z})`;
   const at = (x: number, y: number) => ({
     x: view.x + view.z * x,
@@ -380,7 +401,9 @@ export function OfficeStage({
     plates.flatMap(({ tag, plate }) => {
       // Judged where the bot stands, unless it is on its way: one walking past another does not
       // fold and unfold it as it goes
-      const home = tag.walking ? homeOf(tag.bot) : at(tag.x, tag.head - 6);
+      const home = tag.walking
+        ? homeOf(tag.bot)
+        : at(tag.x, tag.foot - (stage?.botSize ?? 0) - 6);
       return home
         ? [
             {
@@ -466,7 +489,7 @@ export function OfficeStage({
             >
               <Patterns />
               <Built stage={stage} />
-              <Pools stage={stage} />
+              <Pools stage={stage} here={moment.here} />
               {moment.shades.map((shade) => (
                 <polygon
                   key={shade.points}
@@ -506,6 +529,10 @@ export function OfficeStage({
                     key={sprite.piece.id}
                     piece={sprite.piece}
                     draw={sprite.draw}
+                    awake={
+                      !sprite.piece.screen ||
+                      moment.here.has(sprite.piece.screen.bot)
+                    }
                   />
                 ) : sprite.kind === "bot" ? (
                   <BotSprite
@@ -587,11 +614,12 @@ export function OfficeStage({
           <div className="absolute bottom-3.5 left-4 flex items-center gap-0.5 rounded-full bg-background p-0.75 shadow-sm ring-1 ring-border">
             <ZoomButton
               label="Zoom out"
-              onClick={() =>
+              onClick={() => {
+                const from = stepBase();
                 glideTo(
-                  zoomAt(view, size.w / 2, size.h / 2, stepFrom(view.z, false)),
-                )
-              }
+                  zoomAt(from, size.w / 2, size.h / 2, stepFrom(from.z, false)),
+                );
+              }}
             >
               <Minus className="size-3.5" />
             </ZoomButton>
@@ -600,11 +628,12 @@ export function OfficeStage({
             </span>
             <ZoomButton
               label="Zoom in"
-              onClick={() =>
+              onClick={() => {
+                const from = stepBase();
                 glideTo(
-                  zoomAt(view, size.w / 2, size.h / 2, stepFrom(view.z, true)),
-                )
-              }
+                  zoomAt(from, size.w / 2, size.h / 2, stepFrom(from.z, true)),
+                );
+              }}
             >
               <Plus className="size-3.5" />
             </ZoomButton>
@@ -857,7 +886,9 @@ function SignSwap({ sign, land }: { sign: Sign; land: number }) {
   }
   useEffect(() => {
     if (was === null) return;
-    const out = window.setTimeout(() => setWas(null), 420);
+    // kept until the new words are in, the longest being DONE painted on (180 + 600 ms): the
+    // old ones stay gone meanwhile, held at their last frame
+    const out = window.setTimeout(() => setWas(null), 800);
     return () => window.clearTimeout(out);
   }, [was]);
   return (
@@ -1130,9 +1161,12 @@ const easeOut = (x: number) => (x <= 0 ? 0 : x >= 1 ? 1 : 1 - (1 - x) ** 3);
 const PieceShape = memo(function PieceShape({
   piece,
   draw,
+  awake = true,
 }: {
   piece: Piece;
   draw: number;
+  /** Its laptop's bot is at its desk: before it comes, a working screen shows dim. */
+  awake?: boolean;
 }) {
   const drawing = draw < 1;
   return (
@@ -1166,7 +1200,7 @@ const PieceShape = memo(function PieceShape({
           {piece.mugs.map((mug) => (
             <MugShape key={`${mug.cx},${mug.cy}`} mug={mug} />
           ))}
-          {piece.screen && <ScreenShape screen={piece.screen} />}
+          {piece.screen && <ScreenShape screen={piece.screen} awake={awake} />}
           {piece.check && (
             <polyline
               points={piece.check}
@@ -1193,8 +1227,9 @@ const SCREEN_LINES = [0.5, 0.95, 1.4, 1.85, 2.3, 2.75, 3.2, 3.65, 4.1, 4.55];
  * a time while the bot works; dim with two still lines while it waits; dark once stopped; an ember
  * pause mark when the app paused it, an ember dot while it asks the user.
  */
-function ScreenShape({ screen }: { screen: Screen }) {
-  const { w, h, mode } = screen;
+function ScreenShape({ screen, awake }: { screen: Screen; awake: boolean }) {
+  const { w, h } = screen;
+  const mode = !awake && screen.mode === "lit" ? "dim" : screen.mode;
   const clip = useId();
   return (
     <g transform={screen.matrix}>
@@ -1284,10 +1319,11 @@ function ScreenShape({ screen }: { screen: Screen }) {
   );
 }
 
-/** A soft pool of light on the floor under each desk at work, laid on the floor's plane. */
-function Pools({ stage }: { stage: Stage }) {
+/** A soft pool of light on the floor under each desk at work with its bot there, on the floor's plane. */
+function Pools({ stage, here }: { stage: Stage; here: Set<string> }) {
   const glow = useId();
-  if (!stage.pools.length) return null;
+  const pools = stage.pools.filter((pool) => here.has(pool.bot));
+  if (!pools.length) return null;
   return (
     <g transform={stage.floor}>
       <defs>
@@ -1306,7 +1342,7 @@ function Pools({ stage }: { stage: Stage }) {
           />
         </radialGradient>
       </defs>
-      {stage.pools.map((pool) => (
+      {pools.map((pool) => (
         <ellipse
           key={pool.id}
           className="office-fade"
@@ -1792,14 +1828,7 @@ function PlateAt({
                 : "z-20 hover:z-30 has-[:focus-visible]:z-30",
         hush && "opacity-15",
       )}
-      style={{
-        left: head.x,
-        top,
-        // the plate, not the words opened in its place, scales about the bot's head
-        ...(words === undefined && scale !== 1
-          ? { transform: `scale(${scale})`, transformOrigin: "0 0" }
-          : {}),
-      }}
+      style={{ left: head.x, top }}
     >
       {/* The bot's body answers to the pointer too; the plate's own button is the one keys and
           readers reach */}
@@ -1833,20 +1862,32 @@ function PlateAt({
         // a plate that comes to say something comes up anew
         key={plate?.tone ?? "none"}
         hidden={hidden}
-        style={anchor ?? undefined}
+        style={{
+          ...anchor,
+          // the plate alone is drawn smaller, about its foot by the bot's head; the bot's body
+          // that answers the pointer keeps its size
+          scale: scale === 1 ? undefined : String(scale),
+          transformOrigin: `${anchor?.right !== undefined ? "100%" : anchor?.left !== undefined ? "0%" : "50%"} 100%`,
+        }}
         className={cn(
           "pointer-events-auto absolute bottom-0 flex h-6.5 items-center whitespace-nowrap rounded-full bg-background pr-2.25 text-[12px] transition-opacity duration-120",
           !anchor && "left-0 -translate-x-1/2",
           plate?.tone === "you"
-            ? "animate-office-ask ring-[1.5px] ring-waiting"
+            ? "ring-[1.5px] ring-waiting"
             : "ring-[0.75px] ring-foreground/25",
-          plate && plate.tone !== "you" && "animate-office-plate",
+          plate && "animate-office-plate",
           // Nothing to say: seen only while it or its bot is pointed at or focused
           plate === null &&
             !pointed &&
             "opacity-0 group-hover/plate:opacity-100 group-has-[:focus-visible]/plate:opacity-100",
         )}
       >
+        {plate?.tone === "you" && (
+          <span
+            aria-hidden
+            className="pointer-events-none absolute inset-0 animate-office-ask rounded-full"
+          />
+        )}
         <button
           type="button"
           onClick={onPick}
@@ -2111,7 +2152,7 @@ function StateLine({
     (bot) => seatAt(scene, bot).key === "asking",
   );
   const words = {
-    work: `At work · ${back} of ${called} back`,
+    work: called ? `At work · ${back} of ${called} back` : "At work",
     you: `Your turn — ${asker ?? "a bot"} asks`,
     paused: "Paused — waiting on Continue",
     stopped: "Stopped",
@@ -2220,7 +2261,10 @@ function SegmentTime({ seconds, tall }: { seconds: number; tall: number }) {
   );
 }
 
-/** A bot's face held still (mark.geometry markStill): the scoreboard's, with no loop of its own. */
+/**
+ * A bot's face held still (mark.geometry markStill): the scoreboard's, with no loop of its own,
+ * wearing the whole icon as BotMark does — its colour, its paint top to bottom, or its outline.
+ */
 function StillMark({
   bot,
   icon,
@@ -2231,6 +2275,8 @@ function StillMark({
   size: number;
 }) {
   const still = useMemo(() => markStill(bot, icon ?? null), [bot, icon]);
+  const paint = useId();
+  const body = still.paint ? `url(#${paint})` : still.ink;
   return (
     <svg
       width={size}
@@ -2239,12 +2285,33 @@ function StillMark({
       aria-hidden
       className="shrink-0"
     >
+      {still.paint && (
+        <defs>
+          <linearGradient id={paint} x1="0" y1="0" x2="0" y2="1">
+            {still.paint.map((color, index, all) => (
+              <stop
+                key={`${color}-${index / Math.max(1, all.length - 1)}`}
+                offset={index / Math.max(1, all.length - 1)}
+                style={{ stopColor: color }}
+              />
+            ))}
+          </linearGradient>
+        </defs>
+      )}
       <path
         d={still.head}
-        style={{ fill: still.paint ? still.paint[0] : still.ink }}
+        style={
+          still.outline
+            ? { fill: "none", stroke: body, strokeWidth: 14 }
+            : { fill: body }
+        }
       />
       {still.eyes.map((eye) => (
-        <path key={eye} d={eye} style={{ fill: "var(--background)" }} />
+        <path
+          key={eye}
+          d={eye}
+          style={{ fill: still.outline ? body : "var(--background)" }}
+        />
       ))}
     </svg>
   );
@@ -2288,7 +2355,6 @@ function Scoreboard({
     .slice(0, BOARD_CREW);
   return (
     <div
-      aria-hidden
       className="office-fade pointer-events-none absolute top-0 left-0 origin-top-left"
       style={{
         width: stage.board.w,
@@ -2299,7 +2365,10 @@ function Scoreboard({
     >
       <div className="absolute inset-x-0 top-0 flex h-85 border-2 border-foreground/30 bg-background/70 text-foreground/40">
         <div className="flex min-w-0 flex-1 flex-col justify-between px-9 pt-7 pb-8">
-          <div className="flex items-baseline justify-between gap-6 font-semibold text-[26px] uppercase tracking-[0.18em]">
+          <div
+            aria-hidden
+            className="flex items-baseline justify-between gap-6 font-semibold text-[26px] uppercase tracking-[0.18em]"
+          >
             <span className="truncate">{label}</span>
             <span className="shrink-0">{SIGN_WORDS[sign]}</span>
           </div>
@@ -2307,18 +2376,22 @@ function Scoreboard({
             <SegmentTime seconds={seconds} tall={BOARD_TIME} />
           </div>
         </div>
-        <div className="flex w-105 shrink-0 flex-col gap-1.5 border-foreground/30 border-l-2 px-7 pt-6">
+        {/* eight rows of 28 with their gaps fit the frame under its heading */}
+        <div
+          aria-hidden
+          className="flex w-105 shrink-0 flex-col gap-1 border-foreground/30 border-l-2 px-7 pt-6"
+        >
           <span className="mb-1 flex justify-between font-mono text-[19px] uppercase tracking-[0.2em]">
             <span>Crew</span>
             <span>Steps</span>
           </span>
           {crew.map(({ bot, steps }, rank) => (
-            <div key={bot} className="flex h-8 items-center gap-3 text-[24px]">
+            <div key={bot} className="flex h-7 items-center gap-3 text-[22px]">
               <span className="w-5 font-mono text-[18px]">{rank + 1}</span>
               <StillMark
                 bot={bot}
                 icon={faces.find((one) => one.name === bot)?.icon}
-                size={26}
+                size={24}
               />
               <span className="min-w-0 flex-1 truncate font-medium text-foreground/65">
                 {bot}
@@ -2334,8 +2407,14 @@ function Scoreboard({
         </div>
       </div>
       {/* its two posts, down behind the wall to the ground */}
-      <span className="absolute top-85 left-24 h-40 w-0.5 bg-foreground/30" />
-      <span className="absolute top-85 right-24 h-40 w-0.5 bg-foreground/30" />
+      <span
+        aria-hidden
+        className="absolute top-85 left-24 h-40 w-0.5 bg-foreground/30"
+      />
+      <span
+        aria-hidden
+        className="absolute top-85 right-24 h-40 w-0.5 bg-foreground/30"
+      />
     </div>
   );
 }

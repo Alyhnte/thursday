@@ -627,19 +627,18 @@
   --animate-office-tape: office-tape 1.4s linear infinite;
   --animate-office-work: office-work 1.6s ease-in-out infinite;
   --animate-office-screen: office-screen 0.9s steps(4, end) infinite;
-  --animate-office-plate: office-plate 160ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
-  --animate-office-ask:
-    office-plate 160ms cubic-bezier(0.2, 0.7, 0.3, 1) both,
-    office-ask 700ms 160ms ease-out both;
+  --animate-office-plate: office-plate 160ms cubic-bezier(0.2, 0.7, 0.3, 1)
+    backwards;
+  --animate-office-ask: office-ask 700ms 160ms ease-out both;
   --animate-office-card-up: office-card-up 220ms cubic-bezier(0.2, 0.7, 0.3, 1)
-    both;
+    backwards;
   --animate-office-card-down: office-card-down 220ms
-    cubic-bezier(0.2, 0.7, 0.3, 1) both;
+    cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
   --animate-office-sign-out: office-sign-out 200ms ease-in both;
   --animate-office-tape-out: office-tape-out 380ms
     cubic-bezier(0.5, 0, 0.7, 0.4) both;
   --animate-office-paint: office-paint 600ms 180ms
-    cubic-bezier(0.3, 0.6, 0.3, 1) both;
+    cubic-bezier(0.3, 0.6, 0.3, 1) backwards;
   --animate-office-sink: office-sink 220ms ease-in both;
   --animate-office-rise: office-rise 300ms 120ms cubic-bezier(0.2, 0.7, 0.3, 1)
     both;
@@ -729,7 +728,8 @@
     }
   }
 
-  /* A plate that has just come to want the user rings once, not on and on. */
+  /* A plate that has just come to want the user rings once, not on and on: a ring of its own
+     spreading from the plate's, which stays as it is. */
   @keyframes office-ask {
     from {
       box-shadow: 0 0 0 0 color-mix(in oklab, var(--waiting) 45%, transparent);

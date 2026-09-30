@@ -403,6 +403,8 @@ function ThreadTabs({
   // A bot pointed at in the office lights its tab as if hovered; pointing at a tab unfolds its
   // plate there (thread.store officePointed)
   const pointed = useOfficePointed();
+  // pointed at as it went (Esc, another thread): no pointerleave comes
+  useEffect(() => () => officePointed.set(null), []);
   return (
     <Tabs
       value={side ?? thread.bot.name}

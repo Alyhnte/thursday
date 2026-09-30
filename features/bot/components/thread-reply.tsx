@@ -569,6 +569,8 @@ function Choices({
           loading={picked === option}
           disabled={busy}
           onClick={() => onChoose(option)}
+          // what the office's "Paused — waiting on Continue" takes the user to (bot-room)
+          data-continue={option === THREAD_CONTINUE ? "" : undefined}
           className="h-7 gap-1.5 rounded-full bg-background px-3 text-[12.5px] hover:bg-background/60 dark:hover:bg-background/60"
         >
           {option === THREAD_CONTINUE && picked !== option && (

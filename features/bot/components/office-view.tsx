@@ -50,7 +50,8 @@ export function OfficeBackdrop({
   } else if (shown !== thread) setShown(thread);
   useEffect(() => {
     if (!was) return;
-    const out = window.setTimeout(() => setWas(null), 240);
+    // kept until the new one has risen (120 + 300 ms); the old one stays gone meanwhile
+    const out = window.setTimeout(() => setWas(null), 440);
     return () => window.clearTimeout(out);
   }, [was]);
   return (

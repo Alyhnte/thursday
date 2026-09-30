@@ -81,8 +81,8 @@ its tab in the room, shows its name, and lights the tab. Pressing a bot opens it
 the report for the thread's bot, below it at your counter; otherwise the question it asks or its
 last answer — and its tab in the room; pressing it again, or tapping the floor, puts them away.
 The office's top left names the job and says how it stands: at work and how many helpers are back,
-your turn and who asks (in orange; pressing it takes you to the question in the room), paused,
-stopped or done. Once the job is done, it also says how many bots worked on it and lists the files
+your turn and who asks, paused waiting on **Continue** (both in orange; pressing it takes you to
+the question, or to **Continue**, in the room), stopped or done. Once the job is done, it also says how many bots worked on it and lists the files
 it handed over; pressing one opens it. Past three, the rest fold under **+N more**, which opens
 them in place. Behind the building, at its top left, a scoreboard keeps how long the job has run
 and lists its bots with the steps each has taken, most first. How the job stands is also written in

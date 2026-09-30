@@ -370,6 +370,8 @@ export type Mug = {
  */
 export type Screen = {
   id: string;
+  /** Its desk's bot: until that bot is at its desk, a working screen shows dim (office-stage). */
+  bot: string;
   matrix: string;
   w: number;
   h: number;
@@ -411,7 +413,7 @@ export type Stage = {
   /** The floor's plane (plan x and y at the floor's height) on screen, for what lies on it. */
   floor: string;
   /** A soft pool of light on the floor under each desk whose bot is at work, in plan units. */
-  pools: { id: string; cx: number; cy: number; r: number }[];
+  pools: { id: string; bot: string; cx: number; cy: number; r: number }[];
 
   /** The ground under the building, `w` by `d` in the plan's own units, laid on screen by `matrix`. */
   ground: { matrix: string; w: number; d: number };
@@ -852,6 +854,7 @@ export function stageOf(
       ),
       screen: {
         id: `screen-${bot}`,
+        bot,
         matrix: `matrix(${[axes.x[0] * s, axes.x[1] * s, -axes.z[0] * s, -axes.z[1] * s, tx, ty].map(r2).join(",")})`,
         w: 2 * LAP.w - 0.9,
         h: LAP.h - 6.1 - 0.75,
@@ -890,6 +893,7 @@ export function stageOf(
     if (seatAt(scene, desk.bot).key === "run")
       pools.push({
         id: `pool-${desk.bot}`,
+        bot: desk.bot,
         cx: (desk.x0 + desk.x1) / 2 + 1,
         cy: (desk.y0 + desk.y1) / 2 - 1,
         r: 15,
@@ -1620,6 +1624,8 @@ export type Moment = {
   tossed: Sheet[];
   /** Sheets are in the air: the plates step back so they are seen. */
   hush: boolean;
+  /** The bots in the office at this moment: at their desks or on their way. */
+  here: Set<string>;
   /** Papers in their short flight from the hands to where they land. */
   flying: {
     id: string;
@@ -2013,7 +2019,8 @@ export function momentOf(
   const flying: Moment["flying"] = [];
   for (const trip of trips) {
     const going = trip.out;
-    if (!going) continue;
+    // an update refused at the door is stamped there and carried back, not put down
+    if (!going || going === "note") continue;
     const span = going === "result" ? FLY_BOARD : FLY;
     if (t < trip.arrive || t >= trip.arrive + span) continue;
     const p = easeOut((t - trip.arrive) / span);
@@ -2022,7 +2029,7 @@ export function momentOf(
     const from = { x: sx + size * 0.1, y: sy - size - 16 };
     const desk = plan.byBot.get(trip.event.to);
     const onto: [number, number, number] =
-      going === "question" || going === "report" || going === "note"
+      going === "question" || going === "report"
         ? [29, 77, 8.2]
         : going === "result"
           ? [12, 0.3, 9.5]
@@ -2147,6 +2154,7 @@ export function momentOf(
     pins,
     tossed,
     hush,
+    here: new Set(walkers.map((walker) => walker.bot)),
     flying,
     trail,
     shades,

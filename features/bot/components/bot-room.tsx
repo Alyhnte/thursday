@@ -393,11 +393,17 @@ export const BotRoom = memo(function BotRoom() {
               [drawn.value.id]: bot === drawn.value.bot.name ? null : bot,
             }))
           }
-          // Its ember line takes the user to what they are asked here, as `@` does
+          // Its ember line takes the user to what they are asked here: Continue for a job the
+          // app paused, else the box to answer in, as `@` does
           onAnswer={() =>
-            panel.current
-              ?.querySelector<HTMLTextAreaElement>("textarea:not(:disabled)")
-              ?.focus()
+            (
+              panel.current?.querySelector<HTMLElement>(
+                "[data-continue]:not(:disabled)",
+              ) ??
+              panel.current?.querySelector<HTMLElement>(
+                "textarea:not(:disabled)",
+              )
+            )?.focus()
           }
           className="pointer-events-auto mr-4 min-h-0 min-w-0 flex-1 self-stretch"
         />
