@@ -4972,6 +4972,36 @@ test("a bot's runs in one thread send the same instructions and cache key, and t
   }
 });
 
+test("a bot that opens a note sends the same instructions on its next run in the thread", async () => {
+  const { createNoteWithFacts, readNotes, deleteAllNotes } = await import(
+    "../features/memory/memory.query.ts"
+  );
+  const system = (prompt: string) => JSON.stringify(JSON.parse(prompt)[0]);
+  const fact = (text: string) => [{ text }];
+  await createNoteWithFacts("topics/apples", "Apples", fact("Red"), "user");
+  await createNoteWithFacts("topics/pears", "Pears", fact("Green"), "user");
+  try {
+    plans.set("Alpha", [() => text("First pass")]);
+    const id = await startThread({
+      bot: "Alpha",
+      request: "Memory order fixture",
+      label: "Memory order",
+      from: "user",
+    });
+    await waitFor(id, "done");
+    // What `memory_recall` does to a note (memory.tool countReads): it is the warmest now
+    await readNotes(["topics/pears"], { touch: true });
+    plans.set("Alpha", [() => text("Second pass")]);
+    await answerThread(id, "Once more.");
+    await waitFor(id, "done");
+    const [first, second] = (inputs.get("Alpha") ?? []).slice(-2);
+    assert.match(system(first), /topics\/apples.*topics\/pears/);
+    assert.equal(system(second), system(first));
+  } finally {
+    await deleteAllNotes();
+  }
+});
+
 test("a note about a file reaches the thread that reported it, even after that thread was taken up again", async () => {
   const { readFileThread, tellFileThread } = await import(
     "../features/bot/thread.file.ts"

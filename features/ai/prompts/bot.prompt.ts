@@ -31,7 +31,10 @@ import { listBotWork } from "@/features/bot/thread.query";
 import { findPinnedTools } from "@/features/connectors/mcp.query";
 import type { McpToolRef } from "@/features/connectors/mcp.schema";
 import { listNoteIndex } from "@/features/memory/memory.query";
-import type { MemoryIndexEntry } from "@/features/memory/memory.schema";
+import {
+  isAlwaysListed,
+  type MemoryIndexEntry,
+} from "@/features/memory/memory.schema";
 import {
   loadSkills,
   type SkillMetadata,
@@ -194,13 +197,22 @@ ${role}`;
  * long an answer runs — and are hers to act on, not a bot's.
  */
 function memory(index: MemoryIndexEntry[]): string {
+  // By path, not by how warm a note is (listNoteIndex): opening a note warms it, and a
+  // listing that moved with that made a bot's own `memory_recall` change its instructions
+  // for the next run in the thread, which then read none of the conversation from the
+  // provider's cache (bot.run promptCacheOptions). The always-listed ones stay first.
+  const listed = [...index].sort(
+    (a, b) =>
+      Number(isAlwaysListed(b.path)) - Number(isAlwaysListed(a.path)) ||
+      (a.path < b.path ? -1 : a.path > b.path ? 1 : 0),
+  );
   return `## Thursday's memory of the user
 
 What Thursday keeps from talking with them. When the job needs something about them, open the note with \`${TOOL_NAMES.memory_recall}\`; a fact marked \`said\` came from a call. What you learn about them goes in your answer — Thursday decides what to keep.
 
 path — what it is about (facts)
 
-${noteLines(index)}`;
+${noteLines(listed)}`;
 }
 
 /**
