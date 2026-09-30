@@ -19,7 +19,9 @@ import {
 } from "./routine.schema";
 
 // What starts a routine. The clock only opens threads: from there a run is a job like any
-// other (bot.runner), so its questions, stops and result reach the user the way a job's do.
+// other (bot.runner), so its questions, stops and result reach the user the way a job's do —
+// but for a stop the app makes, which ends a run rather than park it on Continue (room.query
+// `endStopped`): left waiting, it would hold every later start below.
 
 const isOpen = (run: RoutineRun | null | undefined) =>
   run?.status === "running" || run?.status === "waiting";

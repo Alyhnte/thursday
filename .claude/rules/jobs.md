@@ -1,5 +1,5 @@
 ---
-checked: 2026-09-27
+checked: 2026-09-30
 paths:
   - "features/bot/{bot,room,thread}.{action,file,memory,query,run,runner,schema}.ts"
   - "features/routine/**"
@@ -12,7 +12,8 @@ paths:
 # Bots and jobs
 
 Work handed to a bot runs on the server to its end, call or no call, tab or no tab; when it
-cannot go on it waits for a person, and everything it did stays as rows.
+cannot go on it waits for a person — a routine's run, which nobody handed over, ends stopped
+instead — and everything it did stays as rows.
 
 ## Start here
 - `features/bot/bot.runner.ts` — start, answer, stop and remove a job; launches turns, retries a

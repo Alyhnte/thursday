@@ -3022,6 +3022,134 @@ test("a routine opens one thread when it is due, skips while its last run is ope
   for (const run of [first, second, third]) await deleteThread(run.id);
 });
 
+test("a routine's run the app has to stop ends there, and the routine starts again at its next time", async () => {
+  const { routineTable } = await import("../database/tables.ts");
+  const { createRoutine, deleteRoutine, findRoutine } = await import(
+    "../features/routine/routine.query.ts"
+  );
+  const { startDueRoutines } = await import(
+    "../features/routine/routine.clock.ts"
+  );
+  const { insertThread, deleteThread } = await import(
+    "../features/bot/thread.query.ts"
+  );
+  const { claimRoomWork } = await import("../features/bot/room.query.ts");
+  const { sweepThreads } = await import("../features/bot/bot.runner.ts");
+  const routine = await createRoutine({
+    bot: "Alpha",
+    label: "Inbox check",
+    request: "Check what came in since the last run.",
+    schedule: { kind: "every", hours: 1 },
+  });
+  const due = () =>
+    database
+      .update(routineTable)
+      .set({ nextRunAt: new Date(Date.now() - 60_000) })
+      .where(eq(routineTable.id, routine.id));
+  const runs = async () => (await findRoutine(routine.id))!.runs;
+  const stops = async (id: string) =>
+    (await listRoomRelays()).filter(
+      (relay) => relay.threadId === id && relay.kind === "interrupted",
+    );
+
+  // A provider's refusal: any other job would wait on Continue
+  plans.set("Alpha", [
+    () => [
+      {
+        type: "error",
+        error: new APICallError({
+          message: "Invalid API key",
+          url: "https://provider.test/v1",
+          requestBodyValues: {},
+          statusCode: 401,
+          isRetryable: false,
+        }),
+      },
+    ],
+  ]);
+  await due();
+  await startDueRoutines();
+  const first = (await runs())[0];
+  const ended = await waitFor(first.id, "cancelled");
+  assert.equal(ended.outcome, "Invalid API key (401)");
+  assert.equal(ended.pending, null);
+  assert.ok(ended.endedAt);
+  assert.equal(ended.seen, false, "an ending nobody has read");
+  assert.ok(
+    (await listRoomWork(first.id)).every((row) => row.state === "cancelled"),
+    "nothing is left to continue",
+  );
+  // The call and a phone hear of it once, in its own words
+  assert.deepEqual(
+    (await stops(first.id)).map((relay) => relay.text),
+    ["Invalid API key (401)"],
+  );
+  // and why it stopped is there for a follow-up that picks it back up
+  assert.ok(
+    (await rowsOf(first.id)).some(
+      (row) => row.note && String(row.content).startsWith("Invalid API key"),
+    ),
+  );
+
+  // Its next time starts a run, which stands in for the one that failed
+  plans.set("Alpha", [() => text("Nothing new.")]);
+  await due();
+  await startDueRoutines();
+  const second = (await runs())[0];
+  assert.notEqual(second.id, first.id);
+  await waitFor(second.id, "done");
+  assert.equal((await findThread(first.id))?.seen, true);
+  assert.equal((await stops(first.id)).length, 0);
+
+  // The room's own limit ends a run the same way
+  const turns = BOT_RUN.turns;
+  BOT_RUN.turns = 2;
+  plans.set("Alpha", [
+    () => ask("Beta", "Price the chair"),
+    () => text("Waiting for Beta."),
+  ]);
+  plans.set("Beta", [() => text("Chair: $40.")]);
+  let limited = "";
+  try {
+    limited = await startThread({
+      bot: "Alpha",
+      request: "Price it",
+      label: "Inbox check",
+      from: "user",
+      routine: { id: routine.id, when: "Every hour", last: null },
+    });
+    assert.match(
+      (await waitFor(limited, "cancelled")).outcome ?? "",
+      /turn limit/,
+    );
+  } finally {
+    BOT_RUN.turns = turns;
+  }
+  assert.ok(
+    (await listRoomWork(limited)).every(
+      (row) => row.state === "done" || row.state === "cancelled",
+    ),
+  );
+
+  // and so does a restart that finds one running
+  const left = await insertThread({
+    bot: "Alpha",
+    request: "Left running",
+    label: "Inbox check",
+    routineId: routine.id,
+    opening: "Left running",
+  });
+  await claimRoomWork(left.id);
+  await sweepThreads();
+  const swept = await findThread(left.id);
+  assert.equal(swept?.status, "cancelled");
+  assert.match(swept?.outcome ?? "", /The server restarted/);
+
+  await deleteRoutine(routine.id);
+  for (const id of [first.id, second.id, limited, left.id])
+    await deleteThread(id);
+});
+
 test("a once-only routine waits out an open run, and the schedule it has, sent again, restarts nothing", async () => {
   const { routineTable } = await import("../database/tables.ts");
   const { createRoutine, deleteRoutine, findRoutine, updateRoutine } =

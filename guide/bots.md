@@ -289,6 +289,10 @@ answer, so "what came since last time" works. A routine's row opens its settings
 **Run now** starts one at once, unless the last run is still open.
 
 - If the last run is still working or waiting when the next time comes, that time is skipped.
+- A run the app has to stop — a model that broke twice, a provider that refused, a step limit, the
+  app restarting — ends there instead of waiting on **Continue**: it shows as stopped, its thread
+  and the routine's list of runs say why, and the routine starts again at its next time. A
+  question the bot asks still waits for an answer.
 - Switching a routine off keeps it; deleting it keeps the threads it opened.
 - A routine whose bot is switched off waits until it is back on; one whose bot was deleted asks for
   another bot.
@@ -300,5 +304,6 @@ stop them, and routines still start. When a phone is connected, questions and en
 (`phone.md`). A spoken call ends when its tab closes; the work it handed over goes on.
 
 A computer that sleeps pauses everything, and work carries on when it wakes. When Thursday itself
-stops — its terminal is quit, or the computer restarts — a running job waits for **Continue**. A
-routine time missed while it was not running starts once when it is back.
+stops — its terminal is quit, or the computer restarts — a running job waits for **Continue**, and
+a routine's run ends stopped. A routine time missed while it was not running starts once when it
+is back.

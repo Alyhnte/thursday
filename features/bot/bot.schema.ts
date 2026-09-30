@@ -304,9 +304,10 @@ export const workHandle = (id: string) => id.slice(0, 6);
 
 /**
  * `waiting`: a bot asked the user something, or the app stopped the work; the
- * answer resumes the same thread. `cancelled`: the user stopped it. A model that
- * breaks pauses the job as `waiting` rather than ending it, so nothing ends as a
- * failure. `done` and `cancelled` can be picked back up with a follow-up.
+ * answer resumes the same thread. `cancelled`: the user stopped it, or the app ended
+ * a routine's run it had to stop, whose outcome then says why (room.query
+ * `endStopped`). A model that breaks pauses any other job as `waiting` rather than
+ * ending it. `done` and `cancelled` can be picked back up with a follow-up.
  */
 const THREAD_STATUSES = ["running", "waiting", "done", "cancelled"] as const;
 

@@ -166,7 +166,8 @@ export function openWork(threads: Thread[]): OpenWork[] {
     const loose = relays.filter(
       (relay) => !questions.some((question) => question.id === relay.messageId),
     );
-    // A cancel is the user's own and already seen; nothing about it is news
+    // A cancel is the user's own and already seen; nothing about it is news. A routine's run
+    // the app ended is stopped too, and its one relay below says why
     const ended = thread.status === "done";
     const stopped = thread.status === "waiting" && isAppStop(thread.ask);
 

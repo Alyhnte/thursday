@@ -866,14 +866,19 @@ export async function settleRoom(threadId: string) {
       return;
     }
     if (all.some((row) => !terminal(row.state)) || room.wrapped) {
+      const why =
+        room.turns >= BOT_RUN.turns
+          ? "The room reached its automatic turn limit. Continue from the saved conversation."
+          : "Work is paused. Continue from the saved conversation.";
+      if (room.routineId) {
+        await endStopped(tx, threadId, all, why);
+        return;
+      }
       await tx
         .update(thread)
         .set({
           status: "waiting",
-          outcome:
-            room.turns >= BOT_RUN.turns
-              ? "The room reached its automatic turn limit. Continue from the saved conversation."
-              : "Work is paused. Continue from the saved conversation.",
+          outcome: why,
           pending: { options: [THREAD_CONTINUE] },
           updatedAt: new Date(),
         })
@@ -903,7 +908,55 @@ export async function settleRoom(threadId: string) {
   changed();
 }
 
-/** `refused`: the provider that turned down the key or sign-in the run was on, when that is why. */
+/**
+ * Ends a routine's run where the app would park any other job on Continue. Nobody handed that
+ * run over, so nobody is there to press it, and a run left open holds its routine's next start
+ * (routine.clock): one failure kept the routine from ever starting again. What is still open in
+ * the room closes with it, as a person's stop closes it (`cancelRoom`); the thread ends stopped
+ * and unread with `why` as its outcome, and one relay carries that to the call and a phone. The
+ * routine's next run stands in for it (routine.clock `open`), so a routine that fails every
+ * time is one ending to read, not one per run. A question a bot asks still waits.
+ */
+async function endStopped(
+  tx: Tx,
+  threadId: string,
+  all: RoomWork[],
+  why: string,
+) {
+  for (const row of all.filter((row) => !terminal(row.state)))
+    await tx
+      .update(work)
+      .set({ state: "cancelled", generation: row.generation + 1 })
+      .where(eq(work.id, row.id));
+  // What it said before is settled by how it ended
+  await tx
+    .update(relay)
+    .set({ accepted: true })
+    .where(eq(relay.threadId, threadId));
+  await tx
+    .update(thread)
+    .set({
+      status: "cancelled",
+      outcome: why,
+      pending: null,
+      seen: false,
+      endedAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(thread.id, threadId));
+  await tx.insert(relay).values({
+    key: crypto.randomUUID(),
+    threadId,
+    bot: all.find((row) => !row.parentId)?.bot ?? "Bot",
+    text: why,
+    kind: "interrupted",
+  });
+}
+
+/**
+ * `refused`: the provider that turned down the key or sign-in the run was on, when that is why.
+ * A routine's run is not parked: it ends there (`endStopped`).
+ */
 export async function pauseRoom(
   threadId: string,
   why: string,
@@ -911,14 +964,25 @@ export async function pauseRoom(
 ) {
   await database.transaction(async (tx) => {
     const all = await tx.select().from(work).where(eq(work.threadId, threadId));
+    const [room] = await tx
+      .select({ routineId: thread.routineId })
+      .from(thread)
+      .where(eq(thread.id, threadId));
+    const ends = Boolean(room?.routineId);
     for (const row of all.filter(
       (row) => row.state === "running" || row.state === "queued",
     )) {
-      await tx
-        .update(work)
-        .set({ state: "paused", generation: row.generation + 1 })
-        .where(eq(work.id, row.id));
+      if (!ends)
+        await tx
+          .update(work)
+          .set({ state: "paused", generation: row.generation + 1 })
+          .where(eq(work.id, row.id));
+      // Kept for a run that ends too: a follow-up that picks it back up reads why it stopped
       await append(tx, threadId, breakNote(row, why));
+    }
+    if (ends) {
+      await endStopped(tx, threadId, all, why);
+      return;
     }
     await tx
       .update(thread)
