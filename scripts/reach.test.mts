@@ -668,6 +668,57 @@ test("an older turn is carried as words alone, and the one just answered whole",
   assert.ok(said.endsWith("…"));
 });
 
+test("a reply made words of once is carried as it is from then on, its last words still on it", async () => {
+  made = [
+    {
+      role: "assistant",
+      content: [
+        { type: "text", text: `Let me check. ${"a".repeat(700)}` },
+        {
+          type: "tool-call",
+          toolCallId: "t-2",
+          toolName: "thread_status",
+          input: { thread: "all" },
+        },
+      ],
+    },
+    {
+      role: "tool",
+      content: [
+        {
+          type: "tool-result",
+          toolCallId: "t-2",
+          toolName: "thread_status",
+          output: { type: "json", value: { threads: [] } },
+        },
+      ],
+    },
+    {
+      role: "assistant",
+      content: [{ type: "text", text: `${"b".repeat(700)} The answer is 42.` }],
+    },
+  ];
+  inbox.push(message(7, "what is the answer?"));
+  await until(() => made === null, "answered");
+  await until(
+    () => saidTo(7).at(-1) === "Heard: what is the answer?",
+    "and sent",
+  );
+  const reply = (at: number) =>
+    String(
+      (turns.at(at)?.messages ?? []).find((one) =>
+        String(one.content).startsWith("Let me check."),
+      )?.content,
+    );
+  // The turn after the next is the first to carry it as words; the one after that, the second
+  for (const words of ["one", "two", "three"]) {
+    inbox.push(message(7, words));
+    await until(() => saidTo(7).at(-1) === `Heard: ${words}`, words);
+  }
+  assert.ok(reply(-2).endsWith("The answer is 42."), "both steps, whole");
+  assert.equal(reply(-1), reply(-2));
+});
+
 test("past its size the conversation is cut deep, from where they speak", async () => {
   made = Array.from({ length: 60 }, (_, at) => ({
     role: at % 2 ? "assistant" : "user",

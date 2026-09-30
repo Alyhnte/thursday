@@ -801,9 +801,21 @@ function carried(messages: ModelMessage[]): ModelMessage[] {
     messages.findLastIndex((message) => message.role === "user"),
     0,
   );
+  // What an earlier turn already made words of stays as it is. Made words of again, a reply
+  // of two steps — each clipped, then joined as one message — was clipped once more as one,
+  // which cut the answer it ended on, and changed a message two turns back under the
+  // provider's cache. A reply still whole is one whose step is not yet a plain message
+  const whole = messages.findIndex(
+    (message, at) =>
+      at < last &&
+      (message.role === "tool" ||
+        (message.role === "assistant" && typeof message.content !== "string")),
+  );
+  const reduced = whole < 0 ? last : whole;
   const kept = [
+    ...messages.slice(0, reduced),
     ...asWords(
-      messages.slice(0, last),
+      messages.slice(reduced, last),
       (name, input) => toolLine(name, JSON.stringify(input ?? {})) ?? name,
       (text) =>
         text.length > REACH.oldChars
