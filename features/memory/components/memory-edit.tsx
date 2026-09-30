@@ -106,10 +106,21 @@ export function MemoryEdit({ notes }: { notes: MemoryNote[] }) {
     return () => clearTimeout(clear);
   }, [status, failed, messages.length, setMessages]);
 
+  // A run that was refused — a key turned away, no credit, no network — gives the words
+  // back: nothing was done with them, and they were typed once
+  const sent = useRef("");
+  useEffect(() => {
+    if (!error || !sent.current) return;
+    const said = sent.current;
+    sent.current = "";
+    setDraft((now) => now || said);
+  }, [error]);
+
   const submit = (event: SubmitEvent) => {
     event.preventDefault();
     const said = draft.trim();
     if (!said || !ready || running) return;
+    sent.current = said;
     setDraft("");
     setPicking(false);
     clearError();
