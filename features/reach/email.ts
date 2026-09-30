@@ -534,10 +534,13 @@ export function createEmail(
       await writeConfig(EMAIL_SEEN_KEY, JSON.stringify(now));
       if (!mail || repeat) continue;
       const thread = threads.get(mail.chat);
-      // A new subject says what the mail is about; the same one again says nothing new
+      // A new subject says what the mail is about; the same one again says nothing new. It is
+      // named as one, as a mail shows it: bare above the words, she took it for a line of them
       const words =
         mail.subject && bareSubject(mail.subject) !== (thread?.subject ?? null)
-          ? [mail.subject, mail.words].filter(Boolean).join("\n\n")
+          ? [`Subject: ${mail.subject}`, mail.words]
+              .filter(Boolean)
+              .join("\n\n")
           : mail.words;
       // Only a mail vouched for is answered in its thread: one that is not may be a stranger's,
       // whose subject and Message-ID her next answer would otherwise carry
