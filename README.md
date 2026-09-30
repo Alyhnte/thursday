@@ -89,7 +89,7 @@ Pages, charts, videos, slides, docs and scripts, saved as files on your machine.
 
 ## How it works
 
-Thursday is an open-source voice assistant that runs on your own computer. OpenAI's GPT-Live 1 holds the call, on your ChatGPT plan in the voice the Codex CLI uses or on an OpenAI key, and a Responses model runs its tools. Anything slower than a few seconds goes to a background bot: a text model from OpenAI, Anthropic, Google or xAI, with a shell, a real browser, your files, Agent Skills and MCP servers. Bots hand parts of a job to each other and ask you when a decision is yours; their results and questions come back into the live call, and jobs keep running after you hang up. Routines start jobs on a schedule. What she knows about you is plain notes you can read. You can write to her instead of talking, from the app or from Telegram, Discord or Slack. [Read more →](docs/how-it-works.md)
+Thursday is an open-source voice assistant that runs on your own computer. OpenAI's GPT-Live 1 holds the call, on your ChatGPT plan in the voice the Codex CLI uses or on an OpenAI key, and a Responses model runs its tools. Anything slower than a few seconds goes to a background bot: a text model from OpenAI, Anthropic, Google or xAI, with a shell, a real browser, your files, Agent Skills and MCP servers. Bots hand parts of a job to each other and ask you when a decision is yours; their results and questions come back into the live call, and jobs keep running after you hang up. Routines start jobs on a schedule. What she knows about you is plain notes you can read. You can write to her instead of talking, from the app, from Telegram, Discord or Slack, or by email. [Read more →](docs/how-it-works.md)
 
 ## Before you run it
 

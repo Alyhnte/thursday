@@ -1,14 +1,16 @@
 # From a phone
 
-Thursday can be written to from a phone through Telegram, Discord or Slack, while the app runs on
-the computer. Nothing on the computer is opened to the internet. Telegram is the quickest to set
-up. More than one can be on: work started from one comes back to it, and anything else goes to the
-one they last wrote from.
+Thursday can be written to from a phone through Telegram, Discord or Slack, or by email to a
+mailbox of her own, while the app runs on the computer. Nothing on the computer is opened to the
+internet. Telegram is the quickest to set up. More than one can be on: work started from one comes
+back to it, and anything else goes to the one they last wrote from.
 
-**Settings › Phone** lists the three chat apps, one line each. A folded line says where it stands:
-*Not set*, *1 of 2 tokens in*, *Connecting…*, *Listening as … — waiting for your first message*,
-*Listening as … . … is let in.*, *Reconnecting…*, or in red *Stopped — … turned the token away* or
-*Stopped — the saved token can't be unlocked any more*.
+**Settings › Phone** lists the three chat apps and Email, one line each. A folded line says where it
+stands: *Not set*, *1 of 2 tokens in*, *Connecting…*, *Listening as … — waiting for your first
+message*, *Listening as … . … is let in.*, *Reconnecting…*, or in red *Stopped — … turned the token
+away* or *Stopped — the saved token can't be unlocked any more*. Email's line says *Listening as … —
+name your own address*, *Listening as … . … can write.*, or in red *Stopped — the mail service
+turned her mailbox's sign-in away*.
 Opening a line shows its four steps, each ticked as it is done. Tokens are pasted in the steps that
 ask for them.
 
@@ -70,6 +72,26 @@ Slack takes an app of your own and two tokens.
 4. In Slack, open the app under **Apps** and write in its **Messages** tab. A question with a code
    appears on the computer: press **Allow** if Slack shows the same code.
 
+## Setting it up: Email
+
+Email takes a mailbox of her own, so your own inbox is never read. It works with a mail service
+that gives app passwords — Gmail, iCloud, Fastmail and most others; Outlook.com and Microsoft 365 no
+longer do, so they cannot be her mailbox.
+
+1. Make a new account for her at such a service, turn on two-step sign-in there, and create an app
+   password for Thursday. Step 1 links to how on Gmail, iCloud and Fastmail.
+2. Type her address and the app password and press **Save**. The servers her mailbox is read and
+   sent through are looked up from the address. Where its service does not publish them (a company
+   domain, some services), the step asks for them: a **Reading server** (IMAP) and a **Sending
+   server** (SMTP), each with its port, as the service's help pages give them. Port 993 and 465 use
+   an encrypted connection from the start; any other port must offer one (STARTTLS), or nothing is
+   sent. Once in, the step shows the address and servers, never the password; **Change** replaces
+   them, and **Remove** stops Email (the mailbox itself is not touched).
+3. Type your own address, the one you will write to her from, and press **Save**. Only mail from it
+   reaches her. It cannot be her own address.
+4. From that address, write anything to hers: **Write to …** opens your mail app, and **Copy her
+   address** copies it. She answers in the same thread.
+
 ## Who is let in
 
 One person per chat app. Whoever is let in can talk to her and, through her, start work on the
@@ -83,6 +105,23 @@ someone else.
   for the same bot keeps whoever is let in; a token for another bot starts over. **Remove** stops
   that chat app and lets the person go.
 - **Let them go**, under the steps, lets the person go and keeps the bot.
+
+Email lets in the address named in its step 3, and nobody writes first to be let in: anyone can
+send mail to an address, and anyone can put another's address on a mail. So a mail reaches her
+only when:
+
+- it is from the named address, and that address's own mail service vouches it sent it — the mail
+  carries its signature (DKIM) and passes the domain's DMARC check. Gmail, iCloud, Fastmail and most
+  others sign their mail; a domain of your own needs DKIM and DMARC set up.
+- it is written to her address, in To or Cc (not Bcc), and was written in the last 48 hours: an old
+  mail of yours, still signed, could otherwise be sent to her again by anyone it once went to.
+- it was not sent by a machine: an out-of-office reply is never answered, and her own mail is marked
+  as automatic so yours does not answer it.
+
+A mail from the named address that fails one of these is not read, and she writes back to that
+address saying why. Mail from any other address is never answered: an answer would go to whoever it
+claimed to be from. **Change** under step 3 names another address, and **Remove** there leaves
+nobody who can write by email.
 
 ## What works from a phone
 
@@ -114,6 +153,16 @@ back.
   the way are not sent. A bot's choices come as buttons that answer it directly; anything else
   written back goes to her.
 
+By email it is the same, but for what a mail is:
+
+- **Her answer and its files are one mail**, in the thread of what you wrote, the files attached.
+  Files go while together they stay under 14 MB; the rest are listed under *Not sent — still on
+  this computer*. If her mail service refuses the files, her answer still goes, without them, and
+  says why.
+- **A bot's choices** are listed under its question; reply with one, and she passes it on.
+- **What you write** is read without the earlier mail quoted under it. A mail over 50 MB is not
+  read, and she says so.
+
 Work handed over from the phone keeps running whether or not the app is open in a browser, as long
 as the app is running on the computer. A computer that is off or asleep does nothing until it is
 back.
@@ -132,7 +181,13 @@ back.
 - **No network or the service is down**: the line says *Reconnecting…* with why, and it tries again
   by itself.
 - **The computer is asleep or the app is not running**: on Telegram, messages wait and are answered
-  when it is back; on Discord and Slack, what was written meanwhile is not seen.
+  when it is back; on Discord and Slack, what was written meanwhile is not seen. By email, mail
+  waits in her mailbox and is answered when the app is back, if it was written in the last 48 hours.
+- **Email's sign-in turned away** (a wrong app password, or one that stopped working when the
+  account's own password changed): the line is red, step 2 opens with what the mail server said, and
+  a new app password pasted there starts it again.
+- **A mail you sent that she did not answer**: she writes back saying why (see Who is let in). No
+  answer at all means it did not reach her mailbox, or it was not from the named address.
 - **The GPT Subscription's limit**: with an OpenAI key set, she answers on the key, and the chat is
   told so once a conversation, with when the plan resets. With no key, the chat says the limit and
   that an OpenAI key in **Settings › API keys** would let her answer.

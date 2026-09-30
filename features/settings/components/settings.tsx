@@ -293,7 +293,7 @@ export const SECTIONS: readonly {
     id: "phone",
     label: "Phone",
     group: "app",
-    hint: "Write to Thursday from a chat app",
+    hint: "Write to Thursday from a chat app or by email",
     icon: Smartphone,
     Component: PhoneSetting,
     Badge: ReachBadge,

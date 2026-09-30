@@ -13,6 +13,7 @@ import {
 } from "@/features/ai/model.schema";
 import {
   DISCORD_TOKEN_KEY,
+  EMAIL_PASSWORD_KEY,
   SLACK_APP_TOKEN_KEY,
   SLACK_BOT_TOKEN_KEY,
   TELEGRAM_TOKEN_KEY,
@@ -289,6 +290,12 @@ export const CONFIG_GROUPS: ConfigGroup[] = [
         label: "Slack · bot token",
         site: "slack.com",
         hint: "starts with xoxb- — speaks as the app",
+      },
+      // Her address and its servers are kept beside it, not secret (reach.schema)
+      {
+        key: EMAIL_PASSWORD_KEY,
+        label: "Email · app password",
+        hint: "the app password her mailbox's service made for Thursday — saved with her address in Settings › Phone",
       },
     ],
   },

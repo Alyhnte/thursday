@@ -172,6 +172,22 @@ export const CALL_IDLE = {
  *   changes after it in the same burst are one look: a working bot changes threads many times
  *   a second. Longer holds a bot's question or ending that much longer before the phone gets
  *   it; shorter reads the inbox more often while bots work.
+ * - `mailFreshMs`  how old a mail may be and still be read (reach/email), by when it was
+ *   written and when it arrived. It bounds the backlog answered after the app was off, and
+ *   an old mail of theirs, still carrying their mail service's signature, being sent to her
+ *   again by someone it once went to. Longer answers mail from further back; shorter turns
+ *   away one that was slow on its way.
+ * - `mailChecks`  how many times a mail's sender is checked when their mail service's
+ *   records cannot be looked up (no network), before the mail is passed over. The mailbox
+ *   waits on it meanwhile: more rides out a longer outage, fewer lets one mail from a broken
+ *   domain hold up everything after it for less time.
+ * - `mailPushAfterMs`  how long the mailbox's connection is quiet before the server is asked
+ *   to say when mail arrives (IMAP IDLE). A mail that arrives before then waits for it: the
+ *   library's own 15 seconds made every answer to a quick reply that much later. Lower asks
+ *   sooner, at two extra round trips when a command follows within it.
+ * - `mailLookMs`  how often the mailbox is looked through even when the mail server has not
+ *   said anything arrived. A server's word that mail arrived can be lost with a connection
+ *   that drops quietly; shorter finds such a mail sooner, longer asks the server less.
  */
 export const REACH = {
   pollSeconds: 50,
@@ -189,6 +205,10 @@ export const REACH = {
   pictures: 9,
   drawMs: 60_000,
   lookMs: 2_000,
+  mailFreshMs: 48 * 60 * 60_000,
+  mailChecks: 3,
+  mailPushAfterMs: 1_000,
+  mailLookMs: 5 * 60_000,
 };
 
 /**

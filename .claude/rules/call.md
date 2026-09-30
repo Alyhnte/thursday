@@ -31,6 +31,7 @@ takes a glance on the spot and hands anything longer to a bot.
 - `features/ai/prompts/thursday.prompt.ts` — what the backend hears, on every way in.
 - `features/thursday/open-work.ts` — background work as a call is told about it.
 - `features/reach/reach.ts` — Thursday from a phone chat.
+- `features/reach/email.ts` — a mailbox of hers as a phone channel: IMAP in, SMTP out, whose mail is vouched for.
 
 ## How it fits
 A spoken call is two models on one Live connection: `openCallAction` builds the voice's prompt, the

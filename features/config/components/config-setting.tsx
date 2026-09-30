@@ -119,7 +119,7 @@ export const PhoneSetting = () => (
     footer={
       <SettingRailNote>
         Nothing on this computer is opened to the internet: the app asks the
-        chat service what was written.
+        chat service, or her mailbox, what was written.
       </SettingRailNote>
     }
   >

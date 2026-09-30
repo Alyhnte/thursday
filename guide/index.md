@@ -15,7 +15,7 @@ When a wish needs a setting, say which one and where, rather than agreeing to it
 | `bots.md` | Bots, the work they take, threads, stopping and questions, what they made and where it is kept, routines |
 | `memory.md` | What she keeps about the user, and how they change it |
 | `setup.md` | The first run, the buttons and Settings list, keys, models, skills, connected services, sign-ins, its own window and how it is started, where the files live, what it costs |
-| `phone.md` | Writing to her from a phone through a chat app: setting it up, who is let in, what reaches the phone |
+| `phone.md` | Writing to her from a phone through a chat app or by email: setting it up, who is let in, what reaches the phone |
 | `trouble.md` | A call that will not open or ended, the wake phrase, a job that stopped, a bot that cannot do something, a saved key asked for again (can't be unlocked), a key set in the environment that Settings cannot remove, starting over, where to ask when nothing here answers |
 
 Two things hold everywhere:

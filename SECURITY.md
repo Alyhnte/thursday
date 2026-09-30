@@ -66,14 +66,19 @@ What the app does to keep that narrow:
   Nothing in the app or the skill asks you before it attaches; without the
   extension installed, the tab of its own is not there to take.
 - **From a phone, one person, let in at the computer.** Settings › Phone
-  connects the app out to Telegram, Discord or Slack; nothing on the computer
-  is opened to the internet. Each service lets in one person, and only once
-  someone at the computer presses Allow on the code that person's phone was
-  sent (`features/reach/reach.ts`). What that cannot cover: whoever holds that
+  connects the app out to Telegram, Discord, Slack or a mailbox of hers;
+  nothing on the computer is opened to the internet. Each chat app lets in one
+  person, and only once someone at the computer presses Allow on the code that
+  person's phone was sent (`features/reach/reach.ts`). What that cannot cover: whoever holds that
   chat account can start work on this computer, shell and all — a stolen
   account is that too. Messages and the files sent with them pass through the
   chat service, and its bot tokens are kept in the local database with your
-  keys.
+  keys. By email, the one person is an address named at the computer, and a
+  mail reaches her only when its sender's domain signs it and passes DMARC,
+  it is written to her address and it is under 48 hours old
+  (`features/reach/email.ts`); whoever controls that mail account, or that
+  domain's signing key, is that person. Her mailbox's app password is kept
+  sealed with your keys.
 - **Work goes on with nobody watching.** A job keeps running after its tab
   closes, a routine starts at its time with nothing open, and `npx
   thursday-agent start` (macOS) keeps the server running in the background and

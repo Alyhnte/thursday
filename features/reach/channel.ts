@@ -4,8 +4,8 @@ import type { ChatText } from "./chat-text";
 /**
  * What reach needs from a chat service, and nothing more: hear one person, answer them, put
  * buttons under a question. Each service is one file that returns this (telegram, discord,
- * slack); reach itself never learns which one it is talking through. Every one of them
- * connects outward — a long poll or a socket the app opens — so nothing calls in.
+ * slack, email); reach itself never learns which one it is talking through. Every one of them
+ * connects outward — a long poll, a socket or a mailbox the app opens — so nothing calls in.
  */
 
 /**
@@ -31,6 +31,12 @@ export type Incoming =
       files: IncomingFile[];
       /** It carried something reach cannot read yet (a voice note, a video). */
       unreadable: boolean;
+      /**
+       * Why the service cannot vouch that it came from `chat` (a mail its sender's domain
+       * does not stand behind), in words for them. Such a message never reaches her: it is
+       * only answered with this, and only to the one who may write, since it came in their name.
+       */
+      unproven?: string;
     }
   | {
       kind: "press";
@@ -58,6 +64,17 @@ export type OutgoingFile = {
 
 export type Channel = {
   /**
+   * Who may write is named on the screen (NAMED_CHANNELS), not let in from a first message:
+   * anyone else who writes is neither answered nor asked about. A mailbox takes mail from
+   * anyone, and an answer to a stranger would go to whoever they claimed to be.
+   */
+  named?: true;
+  /**
+   * One message carries words and files together (a mail): the files an answer names go
+   * with it, in its `say`, rather than after it in `sendFiles`.
+   */
+  attaches?: true;
+  /**
    * Connects, reports the bot's own name once known, then hands over what arrives until
    * `signal` aborts. Only one-to-one conversations are handed over: her answers are one
    * person's. Throws `ChannelRefusal` when the service turns the token away — asking again
@@ -80,9 +97,15 @@ export type Channel = {
   ): Promise<void>;
   /**
    * A text drawn in the service's own marks (chat-text), in as many messages as its length
-   * takes; `buttons` go under the last, one to a row.
+   * takes; `buttons` go under the last, one to a row. `files` go only to a service that
+   * `attaches` them.
    */
-  say(chat: string, text: ChatText, buttons?: Button[]): Promise<void>;
+  say(
+    chat: string,
+    text: ChatText,
+    buttons?: Button[],
+    files?: OutgoingFile[],
+  ): Promise<void>;
   /** "typing…", for a few seconds. */
   typing(chat: string): Promise<void>;
   /** Takes the buttons off a message once one was pressed, and writes the answer under it. */

@@ -6,6 +6,7 @@ import {
   Copy,
   ExternalLink,
   KeyRound,
+  Mail,
 } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { encode } from "uqr";
@@ -37,9 +38,15 @@ import {
 import { useServerAction } from "@/lib/protocol/use-server-action";
 import { revalidate, useServerRoute } from "@/lib/protocol/use-server-route";
 import { cn, WAITING_INK } from "@/lib/utils";
-import { forgetReachAction } from "../reach.action";
+import {
+  forgetReachAction,
+  nameReachAction,
+  removeMailboxAction,
+  saveMailboxAction,
+} from "../reach.action";
 import {
   DISCORD_TOKEN_KEY,
+  EMAIL_PASSWORD_KEY,
   REACH_CHANNELS,
   REACH_KEYS,
   REACH_LABEL,
@@ -52,7 +59,7 @@ import {
 } from "../reach.schema";
 
 /**
- * Settings › Phone, whole: one row per chat app, the one being connected open on its steps.
+ * Settings › Phone, whole: one row per chat app or mailbox, the one being connected open on its steps.
  * The steps are the state — each is done, waiting on the user, or not yet — so nothing says
  * twice where the user has got to, and a service that needs nothing is a single line. The
  * server knows only three things about a service (its keys, whether it connected or turned a
@@ -60,7 +67,8 @@ import {
  * (`guide/phone.md`) tells Thursday the same, manifest included.
  */
 
-const SITE: Record<ReachChannelName, string> = {
+/** Each chat app's own site, whose icon marks its row; email is any service's, and has a mark of its own. */
+const SITE: Record<Exclude<ReachChannelName, "email">, string> = {
   telegram: "telegram.org",
   discord: "discord.com",
   slack: "slack.com",
@@ -105,6 +113,12 @@ type Slot =
   | { open: string; label: string }
   | { key: string; looks: string }
   | { manifest: true }
+  /** Email: her mailbox — address, app password, and its servers where none are published. */
+  | { mailbox: true }
+  /** Email: the user's own address, the one that may write. */
+  | { person: true }
+  /** Email: the way to write to her, once both addresses are in. */
+  | { write: true }
   /**
    * The address the service named for this bot, drawn for a phone to read. `does` is what
    * pressing it does, for an address too long to read as a label.
@@ -223,6 +237,48 @@ const STEPS: Record<ReachChannelName, Step[]> = {
       ),
     },
   ],
+  email: [
+    {
+      body: (
+        <>
+          Make a <B>mailbox of her own</B> — a new account at a mail service
+          that gives app passwords (Outlook no longer does). Turn on{" "}
+          <B>two-step sign-in</B> there and create an <B>app password</B> for
+          Thursday: how on{" "}
+          <Link href="https://support.google.com/accounts/answer/185833">
+            Gmail
+          </Link>
+          , <Link href="https://support.apple.com/en-us/102654">iCloud</Link>,{" "}
+          <Link href="https://www.fastmail.help/hc/en-us/articles/360058752854-App-passwords">
+            Fastmail
+          </Link>
+          . Your own inbox stays out of it.
+        </>
+      ),
+    },
+    {
+      body: <>Her address and the app password.</>,
+      slot: { mailbox: true },
+    },
+    {
+      body: (
+        <>
+          Your own address. Only mail from it reaches her, and only once its
+          mail service vouches it was sent from there.
+        </>
+      ),
+      slot: { person: true },
+    },
+    {
+      body: (
+        <>
+          From your address, write anything to hers. She answers in the same
+          thread.
+        </>
+      ),
+      slot: { write: true },
+    },
+  ],
 };
 
 /** How a step is drawn. `flat` is a step the app cannot see the end of — it happens elsewhere. */
@@ -261,6 +317,26 @@ function stepStates(
   });
 }
 
+/**
+ * Email's steps from what the server says of it: her mailbox saved (and not turned away or
+ * unreadable), the user's own address named. Writing to her happens in a mail app, where the
+ * app cannot see it, so the last step waits on nobody once it is open.
+ */
+function mailStates(facts: {
+  mailbox: boolean;
+  stopped: boolean;
+  named: boolean;
+  connected: boolean;
+}): StepState[] {
+  const inbox = facts.mailbox && !facts.stopped;
+  return [
+    inbox ? "done" : "flat",
+    inbox ? "done" : "now",
+    !inbox ? "later" : facts.named ? "done" : "now",
+    inbox && facts.named && facts.connected ? "flat" : "later",
+  ];
+}
+
 export function ReachGuide() {
   const config = useServerRoute<ConfigStatus[]>(queryKey.config);
   const reach = useServerRoute<ReachStatus>(queryKey.reach);
@@ -270,7 +346,11 @@ export function ReachGuide() {
   const isLost = (key: string) => isConfigUnreadable(config.data, key);
   const statusOf = (name: ReachChannelName) =>
     reach.data?.channels.find((one) => one.name === name) ?? null;
-  const keyed = (name: ReachChannelName) => REACH_KEYS[name].every(isSet);
+  // Email's address and servers are no secrets, so they are not among the keys' states
+  const keyed = (name: ReachChannelName) =>
+    name === "email"
+      ? Boolean(statusOf(name)?.mailbox)
+      : REACH_KEYS[name].every(isSet);
   const letIn = (name: ReachChannelName) => Boolean(statusOf(name)?.allowed);
 
   // The app opens on what is unfinished: a service that stopped — its token turned away, or
@@ -302,9 +382,10 @@ export function ReachGuide() {
         ))}
       </SettingItems>
       <SettingNote>
-        Only the one person you allow can write, and only direct messages are
-        read. Work started here runs whether or not a tab is open, while
-        Thursday is running on this computer.
+        Only the one person you allow can write: direct messages in a chat app,
+        and by email only mail from the address you name. Nobody else is ever
+        written back to. Work started here runs whether or not a tab is open,
+        while Thursday is running on this computer.
       </SettingNote>
     </div>
   );
@@ -331,13 +412,23 @@ function Channel({
 }) {
   const steps = STEPS[name];
   const refused = status?.refused ?? null;
-  const states = stepStates(steps, isSet, {
-    connected: Boolean(status?.bot),
-    allowed: Boolean(status?.allowed),
-    refused,
-  });
-  // It is listening and nobody has written yet: the last step is where that waits
-  const waiting = Boolean(status?.bot) && !status?.allowed && !refused;
+  const email = name === "email";
+  const states = email
+    ? mailStates({
+        mailbox: Boolean(status?.mailbox),
+        stopped: Boolean(refused) || isLost(EMAIL_PASSWORD_KEY),
+        named: Boolean(status?.allowed),
+        connected: Boolean(status?.bot),
+      })
+    : stepStates(steps, isSet, {
+        connected: Boolean(status?.bot),
+        allowed: Boolean(status?.allowed),
+        refused,
+      });
+  // It is listening and nobody has written yet: the last step is where that waits. Email's
+  // first mail is written where the app cannot see it
+  const waiting =
+    !email && Boolean(status?.bot) && !status?.allowed && !refused;
 
   return (
     <div>
@@ -347,19 +438,27 @@ function Channel({
         aria-expanded={open}
         className="flex w-full items-center gap-3 px-4 py-3 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
       >
-        <SiteIcon
-          host={SITE[name]}
-          className="size-4 rounded-[4px]"
-          fallback={<KeyRound className="size-4 text-muted-foreground" />}
-        />
+        {email ? (
+          <Mail className="size-4 text-muted-foreground" />
+        ) : (
+          <SiteIcon
+            host={SITE[name]}
+            className="size-4 rounded-[4px]"
+            fallback={<KeyRound className="size-4 text-muted-foreground" />}
+          />
+        )}
         <span className="text-sm font-medium">{REACH_LABEL[name]}</span>
         <span className="min-w-0 flex-1 truncate">
-          <ChannelWords
-            status={status}
-            tokensIn={tokensIn}
-            tokens={REACH_KEYS[name].length}
-            lost={REACH_KEYS[name].some(isLost)}
-          />
+          {email ? (
+            <MailWords status={status} lost={isLost(EMAIL_PASSWORD_KEY)} />
+          ) : (
+            <ChannelWords
+              status={status}
+              tokensIn={tokensIn}
+              tokens={REACH_KEYS[name].length}
+              lost={REACH_KEYS[name].some(isLost)}
+            />
+          )}
         </span>
         <ChevronRight
           className={cn(
@@ -395,10 +494,13 @@ function Channel({
                 }
                 link={status?.link ?? null}
                 waiting={waiting && at === steps.length - 1}
+                status={status}
+                lostPassword={email && isLost(EMAIL_PASSWORD_KEY)}
               />
             ))}
           </ol>
-          {status?.allowed && (
+          {/* Email's own address is changed or taken out in its step */}
+          {status?.allowed && !email && (
             <LetGo
               name={name}
               who={status.allowed.name}
@@ -472,6 +574,56 @@ function ChannelWords({
   );
 }
 
+/** Email's folded line, as ChannelWords says a chat app's. */
+function MailWords({
+  status,
+  lost,
+}: {
+  status: ReachChannelStatus | null;
+  /** The saved app password can no longer be read. */
+  lost: boolean;
+}) {
+  const small = "text-xs";
+  if (lost)
+    return (
+      <span className={cn(small, "text-destructive")}>
+        Stopped — the saved app password can't be unlocked any more
+      </span>
+    );
+  if (!status?.mailbox)
+    return <span className={cn(small, "text-muted-foreground")}>Not set</span>;
+  if (status.refused)
+    return (
+      <span className={cn(small, "text-destructive")}>
+        Stopped — the mail service turned her mailbox's sign-in away
+      </span>
+    );
+  if (status.problem)
+    return (
+      <ShinyText
+        text={`${status.bot ? "Reconnecting" : "Connecting"} ${status.problem}`}
+        className={cn(small, "align-middle")}
+      />
+    );
+  if (!status.bot)
+    return (
+      <ShinyText text="Connecting…" className={cn(small, "align-middle")} />
+    );
+  if (status.allowed)
+    return (
+      <span className={cn(small, "text-muted-foreground")}>
+        Listening as {status.bot}. {status.allowed.name} can write.
+      </span>
+    );
+  return (
+    <ShinyText
+      text={`Listening as ${status.bot} — name your own address`}
+      tone="waiting"
+      className={cn(small, "align-middle")}
+    />
+  );
+}
+
 function Row({
   n,
   step,
@@ -481,6 +633,8 @@ function Row({
   refused,
   link,
   waiting,
+  status,
+  lostPassword,
 }: {
   n: number;
   step: Step;
@@ -495,6 +649,10 @@ function Row({
   link: string | null;
   /** This is the step the first message from the phone is being waited for in. */
   waiting: boolean;
+  /** What the server says of the service: email's steps draw from it. */
+  status: ReachChannelStatus | null;
+  /** Email: the saved app password can no longer be read. */
+  lostPassword: boolean;
 }) {
   return (
     <li className="flex gap-3 text-[13px] leading-relaxed">
@@ -518,6 +676,8 @@ function Row({
           refused={refused}
           link={link}
           waiting={waiting}
+          status={status}
+          lostPassword={lostPassword}
         />
       </div>
     </li>
@@ -559,6 +719,8 @@ function Doing({
   refused,
   link,
   waiting,
+  status,
+  lostPassword,
 }: {
   slot?: Slot;
   state: StepState;
@@ -567,11 +729,35 @@ function Doing({
   refused: string | null;
   link: string | null;
   waiting: boolean;
+  status: ReachChannelStatus | null;
+  lostPassword: boolean;
 }) {
   const held = waiting && (
     <ShinyText text="Waiting for your first message…" tone="waiting" />
   );
   if (state === "later") return null;
+  if (slot && "mailbox" in slot)
+    return (
+      <MailboxField
+        mailbox={status?.mailbox ?? null}
+        refused={
+          status?.refused
+            ? (status.problem ?? "")
+            : lostPassword
+              ? lostWords(
+                  "The app password saved here",
+                  "Save her mailbox again.",
+                )
+              : null
+        }
+      />
+    );
+  if (slot && "person" in slot)
+    return <PersonField who={status?.allowed?.chat ?? null} />;
+  if (slot && "write" in slot)
+    return status?.mailbox ? (
+      <WriteTo address={status.mailbox.address} />
+    ) : null;
   if (slot && "key" in slot)
     return (
       <KeyField
@@ -847,6 +1033,369 @@ function LetGo({
         }}
       >
         Let them go
+      </Button>
+    </div>
+  );
+}
+
+/** A mailbox server as it is kept (`host:port`), split for its two fields. */
+const splitServer = (server: string | undefined, port: number) => {
+  const at = server?.lastIndexOf(":") ?? -1;
+  return at > 0 && server
+    ? { host: server.slice(0, at), port: server.slice(at + 1) }
+    : { host: "", port: String(port) };
+};
+
+/**
+ * Email's step 2: her address and app password, saved together with the servers her mail
+ * service publishes (mail-servers). Where it publishes none, the same form asks for them,
+ * keeping what was typed. Once saved it is a line — address and servers, never the password —
+ * until the user asks to change it; one the server turned away stands open, with its words.
+ */
+function MailboxField({
+  mailbox,
+  refused,
+}: {
+  mailbox: ReachChannelStatus["mailbox"];
+  /** What the mail server said when it turned the sign-in away, or why the saved password is lost. */
+  refused: string | null;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [address, setAddress] = useState(mailbox?.address ?? "");
+  const [password, setPassword] = useState("");
+  // Opened when the address's domain publishes no servers, and kept open once typed in
+  const [servers, setServers] = useState(false);
+  const [imap, setImap] = useState(() => splitServer(undefined, 993));
+  const [smtp, setSmtp] = useState(() => splitServer(undefined, 465));
+  const { data: config } = useServerRoute<ConfigStatus[]>(queryKey.config);
+  const done = () => {
+    setPassword("");
+    setEditing(false);
+    setServers(false);
+    revalidate(queryKey.config);
+    revalidate(queryKey.reach);
+  };
+  const [save, saving] = useServerAction(saveMailboxAction, {
+    onOk: (saved) => {
+      if (saved?.found) return done();
+      setServers(true);
+    },
+  });
+  const [remove, removing] = useServerAction(removeMailboxAction, {
+    onOk: done,
+  });
+  const confirmRemove = async () => {
+    const confirmed = await notify.confirm({
+      title: "Remove her mailbox?",
+      description:
+        "Email stops, and the address that could write is let go. The mailbox itself is not touched.",
+      okText: "Remove",
+      destructive: true,
+    });
+    if (confirmed) void remove();
+  };
+
+  if (isConfigFromEnv(config, EMAIL_PASSWORD_KEY))
+    return (
+      <>
+        <p className="max-w-xl text-muted-foreground">
+          {envWords("Her mailbox's app password")}
+        </p>
+        {refused && <p className="max-w-xl text-destructive">{refused}</p>}
+      </>
+    );
+
+  if (mailbox && !editing && refused === null)
+    return (
+      <div className="space-y-1">
+        <p className="font-mono text-[11px] text-muted-foreground">
+          {mailbox.address} · {mailbox.imap} · {mailbox.smtp}
+        </p>
+        <Button
+          size="xs"
+          variant="ghost"
+          // What is saved now, which the screen may have learned after this field first drew
+          onClick={() => {
+            setAddress(mailbox.address);
+            setEditing(true);
+          }}
+          className="-ml-2 text-muted-foreground"
+        >
+          Change
+        </Button>
+      </div>
+    );
+
+  const domain = address.includes("@")
+    ? address.slice(address.lastIndexOf("@") + 1)
+    : "Its domain";
+  const field = "grid gap-1 font-mono text-[11px] text-muted-foreground";
+  return (
+    <>
+      <form
+        className="space-y-2.5"
+        onSubmit={(event) => {
+          event.preventDefault();
+          // The same address keeps the servers it was saved with: a new password is not a
+          // reason to ask for them again
+          const kept =
+            !servers &&
+            mailbox?.address.toLowerCase() === address.trim().toLowerCase();
+          void save({
+            address: address.trim(),
+            password,
+            ...(servers
+              ? {
+                  imap: `${imap.host.trim()}:${imap.port.trim()}`,
+                  smtp: `${smtp.host.trim()}:${smtp.port.trim()}`,
+                }
+              : kept
+                ? { imap: mailbox.imap, smtp: mailbox.smtp }
+                : {}),
+          });
+        }}
+      >
+        <div className="flex flex-wrap items-end gap-2">
+          <label className={field}>
+            Address
+            <Input
+              value={address}
+              onChange={(event) => {
+                setAddress(event.target.value);
+                setServers(false);
+              }}
+              placeholder="thursday@example.com"
+              type="email"
+              autoComplete="off"
+              spellCheck={false}
+              className="w-64 font-sans"
+            />
+          </label>
+          <label className={field}>
+            App password
+            <Input
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="paste it here"
+              // A key to her mailbox: kept out of sight, as every key field keeps its value
+              type="password"
+              autoComplete="off"
+              spellCheck={false}
+              className="w-52 placeholder:font-sans"
+            />
+          </label>
+        </div>
+        {servers && (
+          <>
+            <p className="max-w-xl text-muted-foreground">
+              {domain} doesn't say where its mail servers are. Its help pages
+              name them — one for reading mail (IMAP) and one for sending it
+              (SMTP).
+            </p>
+            <div className="flex flex-wrap items-end gap-2">
+              <ServerFields
+                label="Reading server"
+                looks={`imap.${domain}`}
+                value={imap}
+                onChange={setImap}
+              />
+              <ServerFields
+                label="Sending server"
+                looks={`smtp.${domain}`}
+                value={smtp}
+                onChange={setSmtp}
+              />
+            </div>
+          </>
+        )}
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="submit"
+            size="sm"
+            loading={saving}
+            disabled={
+              !address.includes("@") ||
+              password.trim().length < 8 ||
+              (servers && !(imap.host.trim() && smtp.host.trim()))
+            }
+          >
+            {mailbox ? "Replace" : "Save"}
+          </Button>
+          {mailbox && (
+            <>
+              {refused === null && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setEditing(false)}
+                >
+                  Cancel
+                </Button>
+              )}
+              {/* set apart from what saves, at the far end and in red */}
+              <Button
+                size="sm"
+                variant="ghost"
+                loading={removing}
+                onClick={() => void confirmRemove()}
+                className="ml-auto text-destructive hover:text-destructive"
+              >
+                Remove
+              </Button>
+            </>
+          )}
+        </div>
+      </form>
+      {refused && <p className="max-w-xl text-destructive">{refused}</p>}
+    </>
+  );
+}
+
+function ServerFields({
+  label,
+  looks,
+  value,
+  onChange,
+}: {
+  label: string;
+  looks: string;
+  value: { host: string; port: string };
+  onChange: (value: { host: string; port: string }) => void;
+}) {
+  const field = "grid gap-1 font-mono text-[11px] text-muted-foreground";
+  return (
+    <>
+      <label className={field}>
+        {label}
+        <Input
+          value={value.host}
+          onChange={(event) => onChange({ ...value, host: event.target.value })}
+          placeholder={looks}
+          autoComplete="off"
+          spellCheck={false}
+          className="w-52 font-mono"
+        />
+      </label>
+      <label className={field}>
+        Port
+        <Input
+          value={value.port}
+          onChange={(event) => onChange({ ...value, port: event.target.value })}
+          inputMode="numeric"
+          autoComplete="off"
+          className="w-18 font-mono"
+        />
+      </label>
+    </>
+  );
+}
+
+/**
+ * Email's step 3: the user's own address, the only one whose mail reaches her. A line once
+ * named, until they ask to change it; taking it out leaves nobody who can write.
+ */
+function PersonField({ who }: { who: string | null }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState("");
+  const done = () => {
+    setValue("");
+    setEditing(false);
+    revalidate(queryKey.reach);
+  };
+  const [name, naming] = useServerAction(nameReachAction, { onOk: done });
+  const [forget, forgetting] = useServerAction(forgetReachAction, {
+    onOk: done,
+  });
+
+  if (who && !editing)
+    return (
+      <div className="space-y-1">
+        <p className="font-mono text-[11px] text-muted-foreground">{who}</p>
+        <Button
+          size="xs"
+          variant="ghost"
+          onClick={() => setEditing(true)}
+          className="-ml-2 text-muted-foreground"
+        >
+          Change
+        </Button>
+      </div>
+    );
+
+  return (
+    <form
+      className="flex flex-wrap items-center gap-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void name("email", value.trim());
+      }}
+    >
+      <Input
+        value={value}
+        onChange={(event) => setValue(event.target.value)}
+        placeholder="you@example.org"
+        aria-label="Your own address"
+        type="email"
+        autoComplete="email"
+        spellCheck={false}
+        className="w-64"
+      />
+      <Button
+        type="submit"
+        size="sm"
+        loading={naming}
+        disabled={!value.includes("@")}
+      >
+        {who ? "Replace" : "Save"}
+      </Button>
+      {who && (
+        <>
+          <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            loading={forgetting}
+            onClick={async () => {
+              // Nobody can write to her by email after this, so it is asked like a delete
+              const sure = await notify.confirm({
+                title: `Stop reading mail from ${who}?`,
+                description:
+                  "Nobody can write to Thursday by email until an address is named again.",
+                okText: "Stop",
+                destructive: true,
+              });
+              if (sure) void forget("email");
+            }}
+            className="ml-auto text-destructive hover:text-destructive"
+          >
+            Remove
+          </Button>
+        </>
+      )}
+    </form>
+  );
+}
+
+/** Email's step 4: her address, to open in a mail app or to copy into one. */
+function WriteTo({ address }: { address: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <OutLink href={`mailto:${address}`}>Write to {address}</OutLink>
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={() =>
+          void navigator.clipboard.writeText(address).then(() => {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2_000);
+          })
+        }
+      >
+        {copied ? <Check /> : <Copy />}
+        {copied ? "Copied" : "Copy her address"}
       </Button>
     </div>
   );

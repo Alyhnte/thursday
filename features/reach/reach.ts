@@ -37,23 +37,30 @@ import { filesOnDisk, insideWorkspace } from "@/features/workspace/workspace";
 import { keepGivenFiles } from "@/features/workspace/workspace.query";
 import { toDate } from "@/lib/date-like";
 import { logger } from "@/lib/logger";
-import { isPublicError } from "@/lib/public-error";
+import { isPublicError, publicError } from "@/lib/public-error";
 import {
+  type Button,
   type Channel,
   ChannelRefusal,
   type Incoming,
   type IncomingFile,
+  type OutgoingFile,
   type Pressed,
 } from "./channel";
-import { literal } from "./chat-text";
+import { type ChatText, literal } from "./chat-text";
 import { createDiscord } from "./discord";
+import { createEmail } from "./email";
 import { pdfOf, picturesOf } from "./pictures";
 import {
+  EMAIL_ADDRESS_KEY,
+  EMAIL_IMAP_KEY,
+  EMAIL_SMTP_KEY,
   REACH_CHANNELS,
   REACH_KEYS,
   REACH_LABEL,
   type ReachAsking,
   type ReachChannelName,
+  type ReachMailbox,
   type ReachPerson,
   type ReachStatus,
   reachPersonKey,
@@ -63,7 +70,8 @@ import { createTelegram } from "./telegram";
 
 /**
  * Thursday from a phone. The server connects outward to a chat service the user set up —
- * their own bot on Telegram, Discord or Slack, nothing opened to the outside — and answers
+ * their own bot on Telegram, Discord or Slack, or a mailbox of hers, nothing opened to the
+ * outside — and answers
  * with the backend a call in writing runs (thursday.text): same prompt, memory, tools and
  * rows, so it is a call like any other, held here instead of by a page. One person may
  * write through each service, and the screen is where they are let in: someone who can
@@ -81,11 +89,13 @@ import { createTelegram } from "./telegram";
  * has no use for.
  */
 
-/** How each service is made from its keys, in `REACH_KEYS` order. The one place that knows there are three. */
+/** How each service is made from its keys, in `REACH_KEYS` order. The one place that knows there are four. */
 const MAKE: Record<ReachChannelName, (...keys: string[]) => Channel> = {
   telegram: (token) => createTelegram(token),
   discord: (token) => createDiscord(token),
   slack: (app, bot) => createSlack(app, bot),
+  email: (address, password, imap, smtp) =>
+    createEmail(address, password, imap, smtp),
 };
 
 /** The conversation with one person, for as long as it is kept going (REACH.idleMs, or work it started). */
@@ -219,9 +229,18 @@ export async function readReachStatus(): Promise<ReachStatus> {
         asking: live.asking,
         refused: live.refused,
         problem: live.problem,
+        mailbox: live.name === "email" ? await readMailbox() : null,
       })),
     ),
   };
+}
+
+/** Email's mailbox as it was saved; none of it is secret (reach.schema). */
+async function readMailbox(): Promise<ReachMailbox | null> {
+  const [address, imap, smtp] = await Promise.all(
+    [EMAIL_ADDRESS_KEY, EMAIL_IMAP_KEY, EMAIL_SMTP_KEY].map(readConfig),
+  );
+  return address && imap && smtp ? { address, imap, smtp } : null;
 }
 
 /** The calls held open here for someone on a phone: no tab holds them, so none leaving closes them (instrumentation). */
@@ -368,11 +387,20 @@ type Written = Extract<Incoming, { kind: "message" }>;
 
 async function take(live: Live, incoming: Incoming) {
   const person = await readPerson(live.name);
+  // Not vouched for as theirs: never heard, and said only to the one who may write, in whose
+  // name it came — to anyone else it would go to whoever they claimed to be
+  if (incoming.kind === "message" && incoming.unproven !== undefined) {
+    if (person?.chat === incoming.chat)
+      await live.channel.say(incoming.chat, { plain: incoming.unproven });
+    return;
+  }
   if (incoming.kind === "press") {
     if (person?.chat !== incoming.chat) return;
     return choose(live, person, incoming.data, incoming.under);
   }
   if (person?.chat === incoming.chat) return written(live, person, incoming);
+  // Who may write is named on the screen: nobody else is answered, or asked about
+  if (live.channel.named) return;
   if (person)
     return live.channel.say(incoming.chat, {
       plain: "This Thursday already answers someone else.",
@@ -560,6 +588,33 @@ export function declineReach(
 const isAsking = (live: Live | undefined, chat: string, code: string) =>
   live?.asking?.chat === chat && live.asking.code === code ? live.asking : null;
 
+/**
+ * Names who may write through a service that takes no first message to let them in
+ * (channel.ts `named`): the user's own address, for email. It is kept with the mailbox it was
+ * named for, so another mailbox starts with nobody (settle). Whoever was named before goes,
+ * with what waited for them.
+ */
+export async function nameReach(
+  name: ReachChannelName,
+  address: string,
+): Promise<void> {
+  const mailbox = (await readConfig(EMAIL_ADDRESS_KEY))?.toLowerCase();
+  if (!mailbox) publicError("Save her mailbox first.");
+  const chat = address.trim().toLowerCase();
+  if (chat === mailbox)
+    publicError(
+      "That is her own address. Name the address you will write to her from.",
+    );
+  const live = state.live.get(name);
+  if (live) {
+    live.notes = [];
+    live.calls.clear();
+    await hangUp(live);
+  }
+  await writePerson(name, { chat, name: address.trim(), bot: mailbox });
+  changed();
+}
+
 /** Nobody may write through that service any more; the bot stays, so the next to write asks to be let in. */
 export async function forgetReach(name: ReachChannelName): Promise<void> {
   await removeConfig(reachPersonKey(name));
@@ -691,10 +746,14 @@ async function answer(
     // app's own "— Checking · projects/presentation" read as part of her reply (D12). Her words
     // are markdown, drawn in the service's own marks; the line is words, whatever it holds
     const did = [...new Set(result.did)].join(" · ");
-    await channel.say(person.chat, {
+    const reply = {
       markdown: result.text?.trim() || (did ? `— ${literal(did)}` : "…"),
-    });
-    await sendFiles(live, person, result.text);
+    };
+    if (channel.attaches) await sayAttached(live, person, reply, result.text);
+    else {
+      await channel.say(person.chat, reply);
+      await sendFiles(live, person, result.text);
+    }
   } catch (cause) {
     live.notes.unshift(...facts);
     // A conversation that never had a turn is no call to keep open: an open call is taken
@@ -753,55 +812,14 @@ function carried(messages: ModelMessage[]): ModelMessage[] {
  * the chat as still on this computer, and she is left the fact.
  */
 async function sendFiles(live: Live, person: ReachPerson, text: string) {
-  const named = await filesOnDisk(pathsIn(text), null);
-  const left: Lost[] = named
-    .slice(0, Math.max(named.length - REACH.files, 0))
-    .map((path) => ({
-      name: path,
-      why: `only ${REACH.files} files go with one answer`,
-    }));
-  const { limits } = live.channel;
-  const most = Math.min(limits.file, REACH.fileBytes);
-  for (const path of named.slice(-REACH.files)) {
-    const full = await insideWorkspace(path);
-    const info = full ? await stat(full).catch(() => null) : null;
-    if (!full || !info) continue;
+  const { named, left } = await namedFiles(text);
+  for (const path of named) {
     try {
-      // A page drawn for the phone goes as its pictures, never itself (D12): sent, the file
-      // showed as code in the chat, and the pictures inside it never opened on a phone. Its
-      // own size is then beside the point; its PDF's is what goes
-      const pictures = await picturesOf(full);
-      if (pictures.length) {
-        const pdf = await pdfOf(full);
-        const fits = pdf && pdf.bytes.length <= most;
-        await live.channel.sendFiles(
-          person.chat,
-          fits ? [...pictures, pdf] : pictures,
-        );
-        if (!fits)
-          left.push({
-            name: path,
-            why: pdf
-              ? `sent as pictures above; as a PDF it is ${megabytes(pdf.bytes.length)}, and the most that goes to ${REACH_LABEL[live.name]} is ${megabytes(most)}`
-              : "sent as pictures above; the page itself opens on the computer",
-          });
-        continue;
-      }
-      if (info.size > most) {
-        left.push({
-          name: path,
-          why: `it is ${megabytes(info.size)}, and the most that goes to ${REACH_LABEL[live.name]} is ${megabytes(most)}`,
-        });
-        continue;
-      }
-      await live.channel.sendFiles(person.chat, [
-        {
-          bytes: await readFile(full),
-          name: path.split("/").pop() ?? "file",
-          // One past what the service draws still goes, as a file
-          picture: viewKindOf(path) === "image" && info.size <= limits.picture,
-        },
-      ]);
+      const out = await outgoingOf(live, path);
+      if (!out) continue;
+      if (out.files.length)
+        await live.channel.sendFiles(person.chat, out.files);
+      if (out.left) left.push(out.left);
     } catch (cause) {
       logger.warn(`reach ${live.name}: could not send ${path}`, cause);
       left.push({ name: path, why: reasonOf(cause) });
@@ -809,15 +827,152 @@ async function sendFiles(live: Live, person: ReachPerson, text: string) {
   }
   if (!left.length) return;
   await live.channel
-    .say(person.chat, {
-      plain: [
-        "Not sent — still on this computer:",
-        ...left.map(({ name, why }) => `• ${name}: ${why}`),
-      ].join("\n"),
-    })
+    .say(person.chat, { plain: notSent(left) })
     .catch((cause) =>
       logger.warn(`reach ${live.name}: could not say so`, cause),
     );
+  leftBehind(live, left);
+}
+
+/**
+ * Her words with the files they name attached, for a service whose one message carries both
+ * (channel.ts `attaches`: a mail). Files go while together they fit what one message takes;
+ * what does not is named under the words. When the service refuses the files, the words go
+ * without them, and say why: an answer is never lost to what came with it. Throws only when
+ * the words themselves did not go.
+ */
+async function sayAttached(
+  live: Live,
+  person: ReachPerson,
+  words: ChatText,
+  text: string,
+  buttons?: Button[],
+) {
+  const { named, left } = await namedFiles(text);
+  const most = Math.min(live.channel.limits.file, REACH.fileBytes);
+  const files: OutgoingFile[] = [];
+  const going: string[] = [];
+  let bytes = 0;
+  for (const path of named) {
+    try {
+      const out = await outgoingOf(live, path);
+      if (!out) continue;
+      const size = out.files.reduce((sum, file) => sum + file.bytes.length, 0);
+      if (size && bytes + size > most) {
+        left.push({
+          name: path,
+          why: `with the files before it, it passes the ${megabytes(most)} one ${REACH_LABEL[live.name]} message takes`,
+        });
+        continue;
+      }
+      if (size) going.push(path);
+      files.push(...out.files);
+      bytes += size;
+      if (out.left) left.push(out.left);
+    } catch (cause) {
+      logger.warn(`reach ${live.name}: could not send ${path}`, cause);
+      left.push({ name: path, why: reasonOf(cause) });
+    }
+  }
+  const withLeft = (lost: Lost[]): ChatText =>
+    !lost.length
+      ? words
+      : "plain" in words
+        ? { plain: `${words.plain}\n\n${notSent(lost)}` }
+        : { markdown: `${words.markdown}\n\n${literal(notSent(lost))}` };
+  try {
+    await live.channel.say(person.chat, withLeft(left), buttons, files);
+  } catch (cause) {
+    if (!files.length) throw cause;
+    logger.warn(`reach ${live.name}: could not send with its files`, cause);
+    left.push(...going.map((name) => ({ name, why: reasonOf(cause) })));
+    await live.channel.say(person.chat, withLeft(left), buttons);
+  }
+  if (left.length) leftBehind(live, left);
+}
+
+/** The files her words name, the newest REACH.files of them, and the rest as left behind. */
+async function namedFiles(
+  text: string,
+): Promise<{ named: string[]; left: Lost[] }> {
+  const named = await filesOnDisk(pathsIn(text), null);
+  return {
+    named: named.slice(-REACH.files),
+    left: named
+      .slice(0, Math.max(named.length - REACH.files, 0))
+      .map((path) => ({
+        name: path,
+        why: `only ${REACH.files} files go with one answer`,
+      })),
+  };
+}
+
+/**
+ * What goes to the service for one file her words name, and why any of it stays on this
+ * computer; null for a path that is not a file here.
+ */
+async function outgoingOf(
+  live: Live,
+  path: string,
+): Promise<{ files: OutgoingFile[]; left: Lost | null } | null> {
+  const full = await insideWorkspace(path);
+  const info = full ? await stat(full).catch(() => null) : null;
+  if (!full || !info) return null;
+  const { limits } = live.channel;
+  const most = Math.min(limits.file, REACH.fileBytes);
+  const to = REACH_LABEL[live.name];
+  // A page drawn for the phone goes as its pictures, never itself (D12): sent, the file
+  // showed as code in the chat, and the pictures inside it never opened on a phone. Its
+  // own size is then beside the point; its PDF's is what goes
+  const pictures = await picturesOf(full);
+  if (pictures.length) {
+    const pdf = await pdfOf(full);
+    const fits = pdf && pdf.bytes.length <= most;
+    // A mail carries the pictures with the words, not above them
+    const sent = live.channel.attaches
+      ? "sent as pictures"
+      : "sent as pictures above";
+    return {
+      files: fits ? [...pictures, pdf] : pictures,
+      left: fits
+        ? null
+        : {
+            name: path,
+            why: pdf
+              ? `${sent}; as a PDF it is ${megabytes(pdf.bytes.length)}, and the most that goes to ${to} is ${megabytes(most)}`
+              : `${sent}; the page itself opens on the computer`,
+          },
+    };
+  }
+  if (info.size > most)
+    return {
+      files: [],
+      left: {
+        name: path,
+        why: `it is ${megabytes(info.size)}, and the most that goes to ${to} is ${megabytes(most)}`,
+      },
+    };
+  return {
+    files: [
+      {
+        bytes: await readFile(full),
+        name: path.split("/").pop() ?? "file",
+        // One past what the service draws still goes, as a file
+        picture: viewKindOf(path) === "image" && info.size <= limits.picture,
+      },
+    ],
+    left: null,
+  };
+}
+
+const notSent = (left: Lost[]) =>
+  [
+    "Not sent — still on this computer:",
+    ...left.map(({ name, why }) => `• ${name}: ${why}`),
+  ].join("\n");
+
+/** She is left the fact of what stayed behind, as they were told it. */
+function leftBehind(live: Live, left: Lost[]) {
   live.notes.push({
     text: `[Named in what went to their phone, and not sent: ${left.map(({ name, why }) => `${name} (${why})`).join("; ")}. They have been told.]`,
     said: false,
@@ -948,22 +1103,21 @@ async function tell(
     return { text: option, data };
   });
 
+  // Whose it is and which thread, as words, over what the bot wrote, in its own marks
+  const words = {
+    markdown: `${literal(`${item.show.line} · ${item.show.name}`)}\n\n${item.text || "…"}`,
+  };
   try {
-    // Whose it is and which thread, as words, over what the bot wrote, in its own marks
-    await live.channel.say(
-      person.chat,
-      {
-        markdown: `${literal(`${item.show.line} · ${item.show.name}`)}\n\n${item.text || "…"}`,
-      },
-      buttons,
-    );
+    if (live.channel.attaches)
+      await sayAttached(live, person, words, item.text, buttons);
+    else await live.channel.say(person.chat, words, buttons);
   } catch (cause) {
     // Still open, so the next look tries again
     logger.warn(`reach ${live.name}: could not tell ${item.key}`, cause);
     state.told.delete(item.key);
     return;
   }
-  await sendFiles(live, person, item.text);
+  if (!live.channel.attaches) await sendFiles(live, person, item.text);
   live.notes.push({
     // With the time, in the prompt's own clock: a fact that waited a night reads as just now otherwise
     text: `${item.line}\n[The user has had this on their phone, as ${item.show.bot} wrote it, since ${clockNow()}.]`,
