@@ -29,6 +29,12 @@ import { type SubscriptionUsage, TEXT_MODEL_PROVIDERS } from "./model.schema";
  * model is the Responses API behind chatgpt.com, which takes less than api.openai.com does;
  * `codexFetch` is the difference. A picture is drawn there too, the way the Codex CLI draws
  * one (`chatGptImageModel`).
+ *
+ * OpenAI's own way for an open-source app to use a plan, Sign in with ChatGPT's plan usage
+ * (developers.openai.com/siwc, a preview), was measured on 09-30 and not taken: it refuses
+ * audio input and the Live session route, so no spoken call on the plan, and image generation;
+ * and the same 5,064-token prefix sent six times read nothing from the cache, where this route
+ * read 4,864 of it.
  */
 
 /** The Codex CLI's public OAuth client. */
