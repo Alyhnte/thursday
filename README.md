@@ -3,7 +3,7 @@
 <a href="https://youtu.be/7XmsAtwQGjo">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/cgoinglove/thursday/main/docs/images/hero-dark.png">
-    <img src="https://raw.githubusercontent.com/cgoinglove/thursday/main/docs/images/hero-light.png" alt="Thursday — you talk, a whole team does the work: a job drawn as an office, done, its bots leaping with their papers in the air" width="880">
+    <img src="https://raw.githubusercontent.com/cgoinglove/thursday/main/docs/images/hero-light.png" alt="Thursday, a voice assistant: you talk, a whole team does the work. Above, she says your launch kit is ready, over the office where her bots made it, its scoreboard at the back and DONE on the floor" width="880">
   </picture>
 </a>
 

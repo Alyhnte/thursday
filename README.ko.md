@@ -3,7 +3,7 @@
 <a href="https://youtu.be/7XmsAtwQGjo">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/cgoinglove/thursday/main/docs/images/hero-dark.png">
-    <img src="https://raw.githubusercontent.com/cgoinglove/thursday/main/docs/images/hero-light.png" alt="Thursday — 나는 말하고, 팀 하나가 일한다. 사무실로 그려진 일이 끝나고, 봇들이 서류를 던지며 뛰어오른다" width="880">
+    <img src="https://raw.githubusercontent.com/cgoinglove/thursday/main/docs/images/hero-light.png" alt="Thursday, 음성 비서 — 나는 말하고, 팀 하나가 일한다. 위에서 그녀가 런칭 키트가 준비됐다고 말하고, 그 아래 봇들이 일을 끝낸 사무실이 있다. 뒤에는 전광판, 바닥에는 DONE" width="880">
   </picture>
 </a>
 
