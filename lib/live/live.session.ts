@@ -553,6 +553,37 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
     if (!closing && !closed) release(response);
     activity();
   };
+  /**
+   * A tool's result for the backend. One the connection will not carry is answered in its
+   * place, as a picture is (sendImage): thrown, it left the backend holding a call with no
+   * output and the turn never going on, so the voice waited on a hand-over that never came.
+   */
+  const sendOutput = (callId: string, output: string) => {
+    const send = (text: string) =>
+      transport.send({
+        type: "response.item.create",
+        event_id: crypto.randomUUID(),
+        item: { type: "function_call_output", call_id: callId, output: text },
+      });
+    try {
+      send(output);
+    } catch (cause) {
+      const reason = errorToString(cause);
+      logger.warn("Live tool output not sent", {
+        reason,
+        chars: output.length,
+      });
+      try {
+        send(
+          `Error: the result was too large to return (${output.length.toLocaleString("en")} characters: ${reason}). Ask for a smaller part of it.`,
+        );
+      } catch (again) {
+        logger.warn("Live tool output not answered", {
+          reason: errorToString(again),
+        });
+      }
+    }
+  };
   /** A fact for the backend alone, as a developer message. */
   const sendFact = (text: string) =>
     transport.send({
@@ -838,17 +869,7 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
             .catch((cause) => `Error: ${errorToString(cause)}`)
             .then((output) => {
               tools.delete(item.call_id);
-              if (!closed && !closing) {
-                transport.send({
-                  type: "response.item.create",
-                  event_id: crypto.randomUUID(),
-                  item: {
-                    type: "function_call_output",
-                    call_id: item.call_id,
-                    output,
-                  },
-                });
-              }
+              if (!closed && !closing) sendOutput(item.call_id, output);
               activity();
             });
           response.calls.set(item.call_id, running);

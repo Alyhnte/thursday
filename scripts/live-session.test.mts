@@ -486,6 +486,24 @@ test("a picture held behind a tool turn that the connection will not carry is sa
   assert.match(warnings[0], /inbox\/photo\.png did not go through/);
 });
 
+test("a tool result the connection will not carry is answered in its place, and the turn still goes on", async () => {
+  const long = "x".repeat(5_000);
+  refuses = (event) => JSON.stringify(event).includes(long);
+  await connect({ runTool: async () => long });
+  nested({ type: "response.created", response: { id: "r1" } });
+  functionCall("a");
+  nested({ type: "response.completed", response: { id: "r1", output: [] } });
+  await tick();
+  // The call has its output, and the backend is asked to go on from it
+  assert.deepEqual(backendOrder(), ["function_call_output:a", "continue"]);
+  const answered = sent.find((event) => event.type === "response.item.create")
+    ?.item as { output: string };
+  assert.match(
+    answered.output,
+    /^Error: the result was too large to return \(5,000 characters: Message too large\)/,
+  );
+});
+
 test("a fact put down while the backend waits on its tools goes in after their outputs, in order with the picture it names", async () => {
   const pending = new Map<string, (value: string) => void>();
   const { session } = await connect({
