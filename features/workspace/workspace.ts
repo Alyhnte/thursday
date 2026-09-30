@@ -329,7 +329,8 @@ export type ListedBrowser = {
 
 /**
  * The browsers `list --json` names for `env`. A CLI that printed nothing lists none; one that
- * printed anything but its JSON throws, and each caller decides what that means.
+ * failed — timed out under load, or is not there — or printed anything but its JSON throws,
+ * and each caller decides what that means: a list that did not run is not an empty one.
  */
 export async function listBrowsers(
   sandbox: Sandbox,
@@ -339,6 +340,10 @@ export async function listBrowsers(
     env,
     timeoutMs: BROWSER_CLI.readMs,
   });
+  if (listed.exitCode !== 0)
+    throw new Error(
+      `playwright-cli list failed (${listed.exitCode}): ${listed.stderr.trim()}`,
+    );
   const { browsers } = JSON.parse(listed.stdout || "{}") as {
     browsers?: ListedBrowser[];
   };
@@ -355,7 +360,19 @@ export async function listBrowsers(
  */
 export async function closeHiddenBrowser(threadId: string): Promise<void> {
   // The job's files have aged out, and so have its profiles, but for a window still up
-  await forgetBrowserData(threadId, await closeBrowsers(threadId, false));
+  await forgetUnlessUnread(threadId, await closeBrowsers(threadId, false));
+}
+
+/**
+ * Profiles go only when it is known which browsers are still running. With a list that
+ * could not be read, removing them would take the profile from under a browser that is
+ * up, and with its thread gone nothing would ever close it.
+ */
+async function forgetUnlessUnread(threadId: string, open: string[] | null) {
+  if (open) return forgetBrowserData(threadId, open);
+  logger.warn(
+    `thread ${threadId}: its browsers could not be listed, so they and their profiles are left as they are`,
+  );
 }
 
 /** A cancel closes every participant's window, but never an attached personal browser. The thread can still be picked back up, so its profiles stay. */
@@ -363,9 +380,32 @@ export async function closeJobShell(threadId: string): Promise<void> {
   await closeBrowsers(threadId, true);
 }
 
-/** A removed thread takes its browsers and what they kept with it. */
-export async function removeJobBrowsers(threadId: string): Promise<void> {
-  await forgetBrowserData(threadId, await closeBrowsers(threadId, true));
+/**
+ * A removed thread takes its browsers and what they kept with it. `listed` is the workspace's
+ * browsers as a batch already read them (listJobBrowsers): with it nothing is listed or
+ * pruned here, and the batch prunes once when it is done.
+ */
+export async function removeJobBrowsers(
+  threadId: string,
+  listed?: ListedBrowser[],
+): Promise<void> {
+  await forgetUnlessUnread(
+    threadId,
+    await closeBrowsers(threadId, true, listed),
+  );
+}
+
+/**
+ * Every browser the CLI lists in this workspace, for a batch that removes many threads: one
+ * `list` a thread is a process each, a quarter of a second, and a thousand finished threads
+ * cleared at once waited minutes on them. Null when the list cannot be read, and each
+ * thread then asks for itself as before. Only for threads that are over: nothing opens a
+ * browser for one after the list is read.
+ */
+export async function listJobBrowsers(): Promise<ListedBrowser[] | null> {
+  const sandbox = await openWorkspace();
+  // Any session's environment lists them all: the list is the workspace's
+  return listBrowsers(sandbox, jobShellEnv(null)).catch(() => null);
 }
 
 /**
@@ -425,23 +465,24 @@ async function browserDataFolder(): Promise<string> {
   );
 }
 
-/** Closes the thread's browsers and answers with the sessions it left running. */
+/**
+ * Closes the thread's browsers and answers with the sessions it left running; null when the
+ * list could not be read, which closes nothing (closeHiddenBrowser).
+ */
 async function closeBrowsers(
   threadId: string,
   visible: boolean,
-): Promise<string[]> {
+  listed?: ListedBrowser[],
+): Promise<string[] | null> {
   const sandbox = await openWorkspace();
   const env = jobShellEnv(threadId);
-  // A list that cannot be read closes nothing (closeHiddenBrowser)
-  const sessions = await listBrowsers(sandbox, env)
-    .then((browsers) =>
-      browsers.filter(
-        (b) =>
-          b.name === env.PLAYWRIGHT_CLI_SESSION ||
-          b.name.startsWith(`${env.PLAYWRIGHT_CLI_SESSION}-`),
-      ),
-    )
-    .catch((): ListedBrowser[] => []);
+  const all = listed ?? (await listBrowsers(sandbox, env).catch(() => null));
+  if (!all) return null;
+  const sessions = all.filter(
+    (b) =>
+      b.name === env.PLAYWRIGHT_CLI_SESSION ||
+      b.name.startsWith(`${env.PLAYWRIGHT_CLI_SESSION}-`),
+  );
   // A running session always has its entry in the CLI's folder: none there means the CLI
   // names it otherwise now, and a removed thread would leave its profiles on disk unseen
   const folder = sessions.length ? await browserDataFolder() : "";
@@ -462,7 +503,7 @@ async function closeBrowsers(
       })
       .catch(() => {});
   }
-  await pruneJobFiles();
+  if (!listed) await pruneJobFiles();
   return left;
 }
 

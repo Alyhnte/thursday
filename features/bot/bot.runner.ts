@@ -16,6 +16,8 @@ import {
   closeJobShell,
   filesOnDisk,
   jobScratch,
+  type ListedBrowser,
+  listJobBrowsers,
   listScratchFolders,
   pruneJobFiles,
   removeJobBrowsers,
@@ -518,11 +520,11 @@ export async function cancelThread(id: string) {
 export async function removeThread(id: string) {
   return threadLock(id, () => removeLockedThread(id));
 }
-async function removeLockedThread(id: string) {
+async function removeLockedThread(id: string, listed?: ListedBrowser[]) {
   const thread = await findThread(id);
   await cancelRoom(id);
   await stopRuns(id);
-  await removeJobBrowsers(id);
+  await removeJobBrowsers(id, listed);
   const removed = await deleteThread(id);
   if (removed && thread) await removeJobScratch(id, thread.label);
   return removed;
@@ -545,6 +547,10 @@ export async function removeFinishedThreads(
     cutoff === undefined ||
     (thread.endedAt ?? thread.updatedAt).getTime() < cutoff;
   let removed = 0;
+  // The workspace's browsers, read once for all of them rather than once a thread
+  // (listJobBrowsers); undefined until a first thread needs it, and when it cannot be read
+  let listed: ListedBrowser[] | undefined;
+  let asked = false;
   for (const thread of await listThreadFolders()) {
     if (thread.status !== "done" && thread.status !== "cancelled") continue;
     if (!over(thread)) continue;
@@ -552,9 +558,15 @@ export async function removeFinishedThreads(
       const current = await findThread(thread.id);
       if (current?.status !== "done" && current?.status !== "cancelled") return;
       if (!over(current)) return;
-      if (await removeLockedThread(thread.id)) removed += 1;
+      if (!asked) {
+        asked = true;
+        listed = (await listJobBrowsers()) ?? undefined;
+      }
+      if (await removeLockedThread(thread.id, listed)) removed += 1;
     });
   }
+  // What each thread's own close would have pruned, once
+  if (listed) await pruneJobFiles();
   return removed;
 }
 

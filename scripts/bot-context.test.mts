@@ -34,6 +34,9 @@ const [command, arg] = process.argv.slice(2).filter((one) => one !== "--raw");
 // What the app sets on a browser's context (signins.query), one file a session
 const mark = path.join(root, "marks", String(process.env.PLAYWRIGHT_CLI_SESSION));
 if (command === "list") {
+  fs.appendFileSync(path.join(root, "listed.txt"), "list\\n");
+  // The CLI failing, as it does when it times out under load
+  if (fs.existsSync(path.join(root, "list-fails"))) process.exit(1);
   const fixture = path.join(root, "browsers.json");
   console.log(fs.existsSync(fixture) ? fs.readFileSync(fixture, "utf8") : '{"browsers":[]}');
 } else if (command === "close") {
@@ -5328,4 +5331,94 @@ test("a job handed over from the screen keeps the user's words as its name up to
     labelOfWords(unspaced),
     `${"字".repeat(THREAD_LABEL_CHARS - 1)}…`,
   );
+});
+
+test("clearing finished threads lists the workspace's browsers once and closes each thread's own", async () => {
+  const { removeFinishedThreads } = await import(
+    "../features/bot/bot.runner.ts"
+  );
+  const ids: string[] = [];
+  for (const label of ["First", "Second", "Third"]) {
+    plans.set("Alpha", [() => text(`${label} is done.`)]);
+    const id = await startThread({
+      bot: "Alpha",
+      request: `${label} clearing fixture`,
+      label: `Clearing ${label}`,
+      from: "user",
+    });
+    await waitFor(id, "done");
+    ids.push(id);
+  }
+  // The second left a browser with no window, and a job that is not over has one too
+  await writeFile(
+    join(home, "browsers.json"),
+    JSON.stringify({
+      browsers: [
+        { name: `thread-${ids[1]}`, headed: false },
+        { name: "thread-still-working", headed: false },
+      ],
+    }),
+  );
+  for (const name of ["listed.txt", "closed.txt"])
+    await rm(join(home, name), { force: true });
+  try {
+    assert.ok((await removeFinishedThreads()) >= 3);
+    for (const id of ids) assert.equal(await findThread(id), null);
+    // One `list` for all of them, where each thread asked for its own
+    assert.equal(await readFile(join(home, "listed.txt"), "utf8"), "list\n");
+    assert.equal(
+      await readFile(join(home, "closed.txt"), "utf8"),
+      `thread-${ids[1]}\n`,
+    );
+    // A thread removed by itself still asks for itself
+    plans.set("Alpha", [() => text("Alone is done.")]);
+    const alone = await startThread({
+      bot: "Alpha",
+      request: "Alone clearing fixture",
+      label: "Clearing alone",
+      from: "user",
+    });
+    await waitFor(alone, "done");
+    const { removeThread } = await import("../features/bot/bot.runner.ts");
+    await removeThread(alone);
+    assert.equal(
+      await readFile(join(home, "listed.txt"), "utf8"),
+      "list\nlist\n",
+    );
+  } finally {
+    await rm(join(home, "browsers.json"), { force: true });
+  }
+});
+
+test("a browser list that failed is not an empty one: nothing is closed, and the thread still goes", async () => {
+  const { removeThread } = await import("../features/bot/bot.runner.ts");
+  const { listBrowsers, jobShellEnv, openWorkspace } = await import(
+    "../features/workspace/workspace.ts"
+  );
+  plans.set("Alpha", [() => text("Done.")]);
+  const id = await startThread({
+    bot: "Alpha",
+    request: "Failed list fixture",
+    label: "Failed list",
+    from: "user",
+  });
+  await waitFor(id, "done");
+  await writeFile(
+    join(home, "browsers.json"),
+    JSON.stringify({ browsers: [{ name: `thread-${id}`, headed: false }] }),
+  );
+  await writeFile(join(home, "list-fails"), "");
+  await rm(join(home, "closed.txt"), { force: true });
+  try {
+    await assert.rejects(
+      listBrowsers(await openWorkspace(), jobShellEnv(id)),
+      /playwright-cli list failed \(1\)/,
+    );
+    assert.equal(await removeThread(id), true);
+    assert.equal(await findThread(id), null);
+    await assert.rejects(readFile(join(home, "closed.txt"), "utf8"), /ENOENT/);
+  } finally {
+    await rm(join(home, "list-fails"), { force: true });
+    await rm(join(home, "browsers.json"), { force: true });
+  }
 });
