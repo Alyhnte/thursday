@@ -1,12 +1,12 @@
 "use client";
 
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { queryKey } from "@/app/api/query-key";
 import { Button } from "@/components/ui/button";
 import { ShinyText } from "@/components/ui/shiny-text";
 import { ThursdayMark } from "@/features/thursday/components/thursday-mark";
 import { revalidate, useServerRoute } from "@/lib/protocol/use-server-route";
-import { openSettings } from "../settings.store";
+import { openSettings, useSettingsStore } from "../settings.store";
 import type { Update } from "../update";
 import { closeUpdateNoticeAction } from "../update.action";
 import { followUpdate, moveTo, useUpdateStore } from "../update.store";
@@ -33,11 +33,25 @@ export function UpdateNotice({ hidden }: { hidden: boolean }) {
     if (going) void followUpdate(going);
   }, [going]);
 
+  // A server of another version than the one this page was loaded from: moved in another
+  // tab, or from a terminal. That tab's card went and the page stayed the old one, so it
+  // loads again, as the tab that pressed Update does (update.store followUpdate)
+  const loaded = useRef<string | null>(null);
+  const current = data?.current ?? null;
+  useEffect(() => {
+    if (!current) return;
+    if (!loaded.current) loaded.current = current;
+    else if (loaded.current !== current) window.location.reload();
+  }, [current]);
+
   // Put away on this page at once; the server keeps the notice away for the day
   const [closed, setClosed] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState<string | null>(null);
 
-  if (hidden) return null;
+  // Settings opens over the corner and stops 4px short of the window's edge: the card's dark
+  // surface showed past it as a strip
+  const settings = useSettingsStore((state) => state.open);
+  if (hidden || settings) return null;
 
   if (to)
     return (
