@@ -257,9 +257,12 @@ async function unproven(
   const dmarc = checked.dmarc;
   const result = dmarc ? dmarc.status.result : "none";
   // A signing key that could not be fetched leaves DMARC failing though nothing is wrong
-  // with the mail: the key lookup not answering is as much "not yet" as the policy's
+  // with the mail: the key lookup not answering is as much "not yet" as the policy's. Only
+  // for a signature of the sender's own domain (mailauth's `aligned`): any other can never
+  // make DMARC pass, and anyone can add one whose domain never answers — each such mail
+  // written in the sender's name would hold every mail behind it for REACH.mailHoldMs.
   const keyUnread = (checked.dkim?.results ?? []).some(
-    (one) => one.status.result === "temperror",
+    (one) => one.status.result === "temperror" && one.status.aligned,
   );
   if (
     result === "temperror" ||

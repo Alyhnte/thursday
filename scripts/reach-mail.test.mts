@@ -81,7 +81,7 @@ const now = new Date();
 /** A mail as its sender's service sends it: composed, and signed by example.org unless not. */
 async function mail(
   fields: Record<string, unknown> = {},
-  sign: { maxBodyLength?: number } | false = {},
+  sign: { maxBodyLength?: number; signingDomain?: string } | false = {},
 ): Promise<Buffer> {
   const raw = await new MailComposer({
     from: "Alex Kim <Alex@Example.org>",
@@ -269,6 +269,23 @@ test("a signing key that does not answer holds the mail too, and held long enoug
     assert.match(given?.unproven ?? "", /Write it again\./);
   } finally {
     records.set("s1._domainkey.example.org", key);
+  }
+});
+
+test("another domain's signature whose key does not answer holds nothing: the mail is refused as unvouched", async () => {
+  // Anyone can write a mail in the sender's name and sign it with a domain of their own
+  // whose DNS never answers. Held, each would keep every mail behind it waiting
+  records.set("s1._domainkey.stranger.example", "ETIMEOUT");
+  try {
+    const forged = await read(
+      await mail({}, { signingDomain: "stranger.example" }),
+    );
+    assert.match(
+      forged?.unproven ?? "",
+      /does not vouch that it came from alex@example\.org/,
+    );
+  } finally {
+    records.delete("s1._domainkey.stranger.example");
   }
 });
 
