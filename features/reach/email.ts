@@ -545,11 +545,13 @@ export function createEmail(
     incoming: (incoming: Incoming) => void,
     wanted: Wanted,
   ): Promise<{ seen: Seen; later: string | null }> {
-    // Listed first: the connection runs one command at a time, and a fetch holds it
+    // Listed first: the connection runs one command at a time, and a fetch holds it. With
+    // who each says it is from: her address is what bots give to sites, so most of what
+    // arrives is nobody's to answer, and is passed over without being fetched (take)
     const arrived = (
       await client.fetchAll(
         `${seen.uid + 1}:*`,
-        { uid: true, size: true, internalDate: true },
+        { uid: true, size: true, internalDate: true, envelope: true },
         { uid: true },
       )
     )
@@ -566,6 +568,7 @@ export function createEmail(
           one.size ?? 0,
           one.internalDate,
           wanted,
+          one.envelope?.from?.[0]?.address?.toLowerCase() ?? null,
         );
       } catch (cause) {
         if (!(cause instanceof CheckLater)) throw cause;
@@ -616,7 +619,10 @@ export function createEmail(
 
   /**
    * One mail read whole, or null for one that is nobody's to answer: from someone reach does
-   * not want, or sent by a machine (readMail).
+   * not want, or sent by a machine (readMail). `listed` is who the server says it is from,
+   * when the listing said: a mail from someone not wanted is left where it is, not fetched
+   * and parsed whole — attachments and all — to learn the same. One from someone wanted is
+   * still checked on its own header and vouched for once read (readMail).
    */
   async function take(
     client: ImapFlow,
@@ -624,16 +630,21 @@ export function createEmail(
     size: number,
     internalDate: Date | string | undefined,
     wanted: Wanted,
+    listed: string | null,
   ): Promise<Mail | null> {
     const arrived = new Date(internalDate ?? Date.now());
+    if (listed && !(await wanted(listed))) return null;
     if (size > MAIL_TAKE) {
       // Not read, so not vouched for: said only to the one who may write, in whose name it came
-      const head = await client.fetchOne(
-        String(uid),
-        { envelope: true },
-        { uid: true },
-      );
-      const from = head && head.envelope?.from?.[0]?.address?.toLowerCase();
+      const from =
+        listed ??
+        (await client
+          .fetchOne(String(uid), { envelope: true }, { uid: true })
+          .then(
+            (head) =>
+              (head && head.envelope?.from?.[0]?.address?.toLowerCase()) ||
+              null,
+          ));
       if (!from || !(await wanted(from))) return null;
       return {
         kind: "message",

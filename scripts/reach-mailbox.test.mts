@@ -16,7 +16,13 @@ import MailComposer from "nodemailer/lib/mail-composer";
 const home = await mkdtemp(join(tmpdir(), "thursday-mailbox-"));
 process.env.THURSDAY_HOME = home;
 
-type Stored = { uid: number; source: Buffer; internalDate: Date };
+type Stored = {
+  uid: number;
+  source: Buffer;
+  internalDate: Date;
+  /** Who the server says it is from, as its envelope names them. */
+  from: string;
+};
 /** The inbox, and what was asked of it. */
 const inbox: Stored[] = [];
 const downloads: number[] = [];
@@ -42,6 +48,7 @@ class FakeImap extends EventEmitter {
       uid: one.uid,
       size: one.source.length,
       internalDate: one.internalDate,
+      envelope: { from: [{ address: one.from }] },
     }));
   }
   async fetchOne(uid: string, query: { source?: boolean }) {
@@ -111,9 +118,9 @@ const resolve = async (name: string) => {
 const mailbox = "thursday@example.com";
 let nextUid = 1;
 /** A signed mail from the one who may write arrives, and the server says so. */
-async function arrive(subject: string) {
+async function arrive(subject: string, from = "alex@example.org") {
   const raw = await new MailComposer({
-    from: "Alex Kim <alex@example.org>",
+    from: `Alex Kim <${from}>`,
     to: mailbox,
     subject,
     date: new Date(),
@@ -135,13 +142,14 @@ async function arrive(subject: string) {
     uid: nextUid++,
     source: Buffer.concat([Buffer.from(signatures), raw]),
     internalDate: new Date(),
+    from,
   });
   current?.emit("exists");
 }
 
 type Got = { words: string; unproven?: string };
 /** Listens as reach does, keeping what it is handed and what it is told is held. */
-function listen() {
+function listen(wanted: (chat: string) => Promise<boolean> = async () => true) {
   const got: Got[] = [];
   const holding: (string | null)[] = [];
   const stop = new AbortController();
@@ -155,7 +163,7 @@ function listen() {
     {
       ready() {},
       incoming: (incoming) => void got.push(incoming as Got),
-      wanted: async () => true,
+      wanted,
       holding: (why) => {
         if (holding.at(-1) !== why) holding.push(why);
       },
@@ -236,6 +244,20 @@ test("held too long, it is refused for what held it, and what came after it is r
   await until(() => heard.got.length === 2, "the next is read");
   assert.equal(heard.got[1].unproven, undefined);
   assert.equal(heard.holding.at(-1), null);
+  heard.stop.abort();
+  await heard.done;
+});
+
+test("a mail from someone who may not write is passed over without being fetched", async () => {
+  const heard = listen(async (chat) => chat === "alex@example.org");
+  await until(() => connects === 3, "connected");
+  const before = downloads.length;
+  await arrive("A newsletter", "news@shop.example");
+  await arrive("Fifth");
+  await until(() => heard.got.length === 1, "theirs is read");
+  assert.equal(heard.got[0].words, "Subject: Fifth\n\nhello");
+  assert.deepEqual(downloads.slice(before), [6], "and only theirs was fetched");
+  assert.equal(await seenUid(), 6, "the inbox moves past both");
   heard.stop.abort();
   await heard.done;
 });
