@@ -5017,3 +5017,28 @@ test("a report naming a file by a full path, from a data folder since moved, sti
   const found = await readFileThread(page);
   assert.equal(found.state === "open" && found.thread.id, id);
 });
+
+test("a job handed over from the screen keeps the user's words as its name up to THREAD_LABEL_CHARS, cut at a word", async () => {
+  const { THREAD_LABEL_CHARS } = await import("../config.ts");
+  const { labelOfWords } = await import("../features/bot/bot.schema.ts");
+  // A request of a sentence is its own name, on one line
+  const sentence =
+    "Compare the three cheapest flights from Lisbon to Berlin next Friday";
+  assert.equal(
+    labelOfWords(`  ${sentence.replace(" to ", "\n to ")}  `),
+    sentence,
+  );
+  // A longer one ends on a whole word within the count
+  const long = `${sentence} and book the one with the shortest layover, then add it to my calendar with the booking reference`;
+  const named = labelOfWords(long);
+  assert.ok(named.length <= THREAD_LABEL_CHARS);
+  assert.ok(named.endsWith("…"));
+  assert.ok(long.startsWith(named.slice(0, -1)));
+  assert.equal(long[named.length - 1], " ");
+  // Words written without spaces are cut where the count ends
+  const unspaced = "字".repeat(THREAD_LABEL_CHARS * 2);
+  assert.equal(
+    labelOfWords(unspaced),
+    `${"字".repeat(THREAD_LABEL_CHARS - 1)}…`,
+  );
+});

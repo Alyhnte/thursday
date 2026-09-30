@@ -23,7 +23,7 @@ import {
   removeThread,
   startThread,
 } from "./bot.runner";
-import { BotFormSchema } from "./bot.schema";
+import { BotFormSchema, labelOfWords } from "./bot.schema";
 import { findBotSeed } from "./bot.seed";
 import { acceptRoomRelays, withdrawDelivery } from "./room.query";
 import { aboutFile, readFileThread, tellFileThread } from "./thread.file";
@@ -103,16 +103,6 @@ export const setBotMemoryOnAction = serverAction(async (on: unknown) => {
 // hands one over from the screen. Each returns at once, the run itself continues
 // as promises held by bot.runner.
 
-/** Words a label keeps; the rest of the message is the request, which the bot reads in full. */
-const LABEL_WORDS = 4;
-
-/** Two or three words naming the job, the same shape `delegate` asks the model for. */
-function labelFor(request: string): string {
-  const words = request.replace(/\s+/g, " ").trim().split(" ");
-  const head = words.slice(0, LABEL_WORDS).join(" ");
-  return (words.length > LABEL_WORDS ? `${head}…` : head).slice(0, 60);
-}
-
 /** Takes back words the user stepped in with, before the bot reads them (room.query withdrawDelivery). */
 export const withdrawStepInAction = serverAction(
   async (threadId: unknown, key: unknown) => {
@@ -171,7 +161,7 @@ async function handOver(bot: unknown, request: string, words: string) {
   const worker = await findJobBot(z.string().parse(bot));
   if (!worker || worker.disabled)
     publicError(`No enabled bot called "${bot}".`);
-  const label = labelFor(words);
+  const label = labelOfWords(words);
   const id = await startThread({
     bot: worker.name,
     request,

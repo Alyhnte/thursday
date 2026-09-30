@@ -1,5 +1,9 @@
 import z from "zod";
-import { COMMON_VALIDATE, MAX_PINNED_TOOLS } from "@/config";
+import {
+  COMMON_VALIDATE,
+  MAX_PINNED_TOOLS,
+  THREAD_LABEL_CHARS,
+} from "@/config";
 import {
   type Effort,
   effortSchema,
@@ -219,6 +223,19 @@ export function rosterLine(bot: Pick<JobBot, "description" | "ownLine">) {
   const said = bot.description.trim();
   if (!bot.ownLine) return said;
   return `${said}${/[.!?。…]$/.test(said) ? "" : "."} ${bot.ownLine}`;
+}
+
+/**
+ * A job handed over from the screen is named by the user's own words, on one line, up to
+ * `THREAD_LABEL_CHARS`: cut at the last space in the second half, else where the count ends
+ * (a script written without spaces). The bot reads the request in full either way.
+ */
+export function labelOfWords(words: string): string {
+  const said = words.replace(/\s+/g, " ").trim();
+  if (said.length <= THREAD_LABEL_CHARS) return said;
+  const cut = said.slice(0, THREAD_LABEL_CHARS - 1);
+  const space = cut.lastIndexOf(" ");
+  return `${(space > cut.length / 2 ? cut.slice(0, space) : cut).trimEnd()}…`;
 }
 
 // A bot's own memory (features/bot/bot.memory): the setting behind it. The files

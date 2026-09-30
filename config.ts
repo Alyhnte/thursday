@@ -573,6 +573,15 @@ export const MAX_PINNED_TOOLS = 10;
 export const THREAD_LABEL_REACH = 20;
 
 /**
+ * Characters of the user's own words a job handed over from the screen keeps as its label
+ * (bot.schema labelOfWords), cut at a word. The label names the thread on screen and to the
+ * model, which quotes it back whole to find the thread, so every update Thursday is given
+ * carries it. More keeps more of a long request in the name and in each of those lines; fewer
+ * cuts it sooner.
+ */
+export const THREAD_LABEL_CHARS = 120;
+
+/**
  * Lines of one tool's result read when the room opens it whole (thread.query readToolResult);
  * a web search's is read as far in the thread's list, to find the pages its row names. Past it
  * the rest is not sent, so one log file cannot flatten the browser; more sends and draws more

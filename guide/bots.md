@@ -126,7 +126,8 @@ The **@** at the left end of the pill, or the `@` key, opens the line at the foo
 (`calls.md`, writing to her) on the list of who to write to, Thursday first: pick a bot there, type
 its name after the `@`, or later with the chip at the line's left. That pick lasts for one message.
 Files can go with the words (at most 8 at a time, 25 MB each). The bot cannot hear the call, so the
-message has to say the whole job. Enter sends it, and the room opens on the thread it started.
+message has to say the whole job. Enter sends it, and the room opens on the thread it started,
+named by the message itself, up to its first 120 characters.
 
 An open thread's own message box takes files the same way. Once more than one bot is in a thread,
 the box says who it is addressed to and can be changed. Only the bot the job went to brings other

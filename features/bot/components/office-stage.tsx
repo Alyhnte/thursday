@@ -707,7 +707,7 @@ function OfficeHead({
       )}
     >
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <h2 className="max-w-[28rem] text-balance font-semibold text-[22px] leading-tight tracking-tight">
+        <h2 className="line-clamp-2 max-w-[28rem] text-balance font-semibold text-[22px] leading-tight tracking-tight">
           {label}
         </h2>
         <StateLine scene={scene} sign={sign} onAnswer={onAnswer} />
