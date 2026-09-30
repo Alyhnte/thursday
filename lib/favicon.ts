@@ -4,7 +4,8 @@ import { FAVICON } from "@/config";
  * A site's icon, asked for by this server (config FAVICON). Only a public host name is
  * fetched — letters and dots with a letter TLD, never an address or `localhost` — so a
  * page's URL cannot turn this into a way to reach the machine's own network. What a site
- * answered, icon or nothing, is kept for the life of the process.
+ * answered, icon or nothing, is kept for the life of the process. A site that could not be
+ * asked at all (`Unreached`) answered nothing, so nothing is kept: it is asked again.
  */
 export type Favicon = { body: ArrayBuffer; type: string };
 
@@ -16,29 +17,57 @@ const AGENT = "Mozilla/5.0 (compatible; thursday-agent favicon)";
 
 const kept = new Map<string, Favicon | null>();
 
+/**
+ * The site could not be asked: no network, a name that does not resolve just now, a wait that
+ * ran out, a certificate this machine does not trust (a VPN that reads the traffic). That is
+ * the computer's moment, not the site's answer — kept as "no icon", every site asked while a
+ * VPN was on stayed without one until the server restarted.
+ */
+export class Unreached extends Error {}
+
+/** Sites that could not be asked, and when: left alone for FAVICON.againMs, then asked again. */
+const unreached = new Map<string, number>();
+
+/** One more under the cap, the oldest going first. */
+function keep<V>(map: Map<string, V>, name: string, value: V) {
+  if (!map.has(name) && map.size >= FAVICON.kept) {
+    const oldest = map.keys().next().value;
+    if (oldest !== undefined) map.delete(oldest);
+  }
+  map.set(name, value);
+}
+
+/** The site's icon, or null when it has none. Throws `Unreached` when it could not be asked. */
 export async function readFavicon(host: string): Promise<Favicon | null> {
   const name = host.trim().toLowerCase().replace(/\.$/, "");
   if (!HOST.test(name) || name.endsWith(".local")) return null;
   if (kept.has(name)) return kept.get(name) ?? null;
+  const missed = unreached.get(name);
+  if (missed !== undefined && Date.now() - missed < FAVICON.againMs)
+    throw new Unreached(name);
 
-  const found = await fetchIcon(name).catch(() => null);
-  if (kept.size >= FAVICON.kept) {
-    const oldest = kept.keys().next().value;
-    if (oldest !== undefined) kept.delete(oldest);
+  let found: Favicon | null;
+  try {
+    found = await fetchIcon(name);
+  } catch (cause) {
+    keep(unreached, name, Date.now());
+    throw new Unreached(name, { cause });
   }
-  kept.set(name, found);
+  unreached.delete(name);
+  keep(kept, name, found);
   return found;
 }
 
 /**
  * `/favicon.ico` first; a site without one names its icon in its front page's head
  * (`<link rel="icon" href>`), read from the first FAVICON.pageBytes of it. The icon
- * it names is fetched only from a public host, like the site itself.
+ * it names is fetched only from a public host, like the site itself. A fetch that fails
+ * before any answer throws, for readFavicon to tell from a site that answered with none.
  */
 async function fetchIcon(host: string): Promise<Favicon | null> {
   const direct = await fetchImage(`https://${host}/favicon.ico`);
   if (direct) return direct;
-  const named = await namedIcon(host).catch(() => null);
+  const named = await namedIcon(host);
   return named ? fetchImage(named) : null;
 }
 
@@ -75,7 +104,7 @@ async function fetchImage(url: string): Promise<Favicon | null> {
   const response = await publicFetch(url, {
     signal: AbortSignal.timeout(FAVICON.timeoutMs),
     headers: { accept: "image/*", "user-agent": AGENT },
-  }).catch(() => null);
+  });
   if (!response?.ok) return null;
   const type = response.headers.get("content-type") ?? "";
   if (!type.startsWith("image/")) return null;

@@ -1029,8 +1029,11 @@ export const SEARCH = { sources: 3, excerptChars: 1_200, timeoutMs: 30_000 };
  * site for it, so neither the browser nor a third party learns which pages came up.
  * - `timeoutMs`  one site's wait; past it the chip draws the site's first letter.
  * - `maxBytes`  larger is not an icon; it is refused and the letter drawn instead.
- * - `kept`  sites remembered for the life of the server, found or not; the oldest go
- *   first. More asks fewer sites twice at the cost of memory.
+ * - `kept`  sites whose answer — an icon, or none — is remembered for the life of the server;
+ *   the oldest go first. More asks fewer sites twice at the cost of memory.
+ * - `againMs`  how long a site that could not be asked (no network, a VPN's certificate) is
+ *   left before it is asked again. Shorter brings icons back sooner once the network does;
+ *   longer asks a site that never answers less often.
  * - `pageBytes`  how much of a front page is read for the icon it names, when the site
  *   has no `/favicon.ico`. The head is at the top; more reads pages that bury it.
  */
@@ -1038,6 +1041,7 @@ export const FAVICON = {
   timeoutMs: 4_000,
   maxBytes: 300_000,
   kept: 500,
+  againMs: 60_000,
   pageBytes: 65_536,
 };
 
