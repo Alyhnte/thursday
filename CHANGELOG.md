@@ -1,5 +1,54 @@
 # Changelog
 
+## [0.26.0](https://github.com/cgoinglove/thursday/compare/thursday-agent-v0.25.0...thursday-agent-v0.26.0) (2026-09-30)
+
+
+### Features
+
+* **update:** a newer version is said as the app opens, and Update moves the background copy to it ([2bd57af](https://github.com/cgoinglove/thursday/commit/2bd57afc882cf8d14ba6e2e9eb2cf5d75810a1df))
+
+
+### Fixes
+
+* **bots:** opening a note no longer costs a bot the cache of its thread ([8c817ad](https://github.com/cgoinglove/thursday/commit/8c817ad5f877c6998aa8fc6a5a224febc86a0acb))
+* **bots:** the memory switch goes back when its write fails ([c28ac1c](https://github.com/cgoinglove/thursday/commit/c28ac1c4ca8d9b71c8a3f7866fc1e5e415b21d0d))
+* **call:** a refused microphone is named as one, and a blocked wake word can be tried again ([640d578](https://github.com/cgoinglove/thursday/commit/640d57839fb9e736044f512004a5db0f97183e6b))
+* **call:** a tool result too large for the line no longer leaves the turn hanging ([c815df7](https://github.com/cgoinglove/thursday/commit/c815df7621e727f23c88fa68547a7990c64285eb))
+* **call:** the microphone stops at the hang-up, not at its confirmation ([d408bea](https://github.com/cgoinglove/thursday/commit/d408bea0283adde7797dcf45cb760c66d08b68cf))
+* **call:** where they are no longer drops out of a call once it has been found ([485ba72](https://github.com/cgoinglove/thursday/commit/485ba7279cf383598cb1bd6b9a48ea75924f8023))
+* **connectors:** a server whose read failed says so in its dialog ([042c162](https://github.com/cgoinglove/thursday/commit/042c162d31969db99c140702c9ad9e3287069734))
+* **jobs:** clearing finished threads lists the browsers once, and a failed list closes nothing ([96a7043](https://github.com/cgoinglove/thursday/commit/96a7043535813f2e78325020ff4fa6d467f33963))
+* **mcp:** a session whose connection is gone is dropped, not kept for the idle wait ([e4a2440](https://github.com/cgoinglove/thursday/commit/e4a244054ab697f824d5df6323aed72392af9d67))
+* **memory:** an edit that was refused gives the instruction back ([8afe96a](https://github.com/cgoinglove/thursday/commit/8afe96ab6a62bb473c30172ef7926bc6be2a8969))
+* **reach:** a stranger's signature cannot hold her mailbox shut ([23b26af](https://github.com/cgoinglove/thursday/commit/23b26af2cb4be10db8cc11acbdd87b0056586181))
+* **reach:** an answer made words of once is not cut a second time ([0de55bb](https://github.com/cgoinglove/thursday/commit/0de55bb80de28b21bccd6051f22240ec793045fb))
+* **reach:** forgetting who may write stops the turn that is answering them ([3303c10](https://github.com/cgoinglove/thursday/commit/3303c1078242ea9af08e58609ae00c06f3843c6d))
+* **reach:** open work is not sent to the phone twice ([f5f071f](https://github.com/cgoinglove/thursday/commit/f5f071f5234097fcb923cd4fb4f4712a0d4c2198))
+* **room:** files put down beside a thread's draft are no longer lost ([45587d8](https://github.com/cgoinglove/thursday/commit/45587d8327b7d7525200369598fac5212118b416))
+* **routine:** a run the app has to stop ends instead of waiting on Continue ([a9e4af4](https://github.com/cgoinglove/thursday/commit/a9e4af4e48af49e21abd81a339259758466f2da7))
+* **sandbox:** a command's output is folded as it arrives, not held whole ([65d1b99](https://github.com/cgoinglove/thursday/commit/65d1b9949c47e7a770ca296f5d4681a9876ce6ff))
+* **signins:** a kept sign-in survives a write that fails ([1d00ee9](https://github.com/cgoinglove/thursday/commit/1d00ee9f3aea2b8252aa6e7b7a3f998168e02387))
+* **update:** a second failed update is said again, and the card no longer says the old one runs when nothing answers ([4085ea1](https://github.com/cgoinglove/thursday/commit/4085ea12f975979a65cbd9a79e83dd8c445b6b9e))
+* **update:** the card goes while Settings is open, and a tab left on the old version loads again ([9f0abf7](https://github.com/cgoinglove/thursday/commit/9f0abf772e249a10a1356a200755aac7971267cf))
+* **update:** the notice is a square card under the settings corner, not a toast ([1fe6637](https://github.com/cgoinglove/thursday/commit/1fe6637d53267b6fd910023488316e87ef9df2ee))
+* **update:** the update command starts from the home folder, not from the copy it replaces ([775818e](https://github.com/cgoinglove/thursday/commit/775818e8a32e6ab2c86802470e99057d95fc2e7e))
+
+
+### Performance
+
+* **bundle:** zod's locales no longer ship to the home page ([8af5cea](https://github.com/cgoinglove/thursday/commit/8af5ceae5b81ccd0e666579ecf37e29579223e88))
+* **call:** a call no longer waits on where they are; the page looks it up ahead ([fbd3176](https://github.com/cgoinglove/thursday/commit/fbd3176c2a32bcc4e16a6add9bfec90cd734a203))
+* **call:** opening a call no longer reads ten transcripts to use none ([99538c7](https://github.com/cgoinglove/thursday/commit/99538c7eab5a81afdba90b3f54b85d6274aec052))
+* **face:** she stops drawing while Settings covers her ([256b4ab](https://github.com/cgoinglove/thursday/commit/256b4abf80ffb5494fecef84eb63074052a58b4b))
+* **reach:** mail from someone who may not write is no longer fetched to find that out ([400c7a0](https://github.com/cgoinglove/thursday/commit/400c7a0f830194cd295f11627ecdee9615fdaabb))
+* **room:** an opened tool result is not read again for every row a bot writes ([040002e](https://github.com/cgoinglove/thursday/commit/040002ec7c923f5cfe109404ca3b152692b9a577))
+
+
+### Docs
+
+* **maps:** the jobs map says a stop made outside pauseRoom strands a routine ([614db31](https://github.com/cgoinglove/thursday/commit/614db31e932b5fada56e379769ce2c3821b6a713))
+* **taste:** the pick for how a newer version is said ([9b18306](https://github.com/cgoinglove/thursday/commit/9b1830625c0c8b2b4327cae742914c98ad5723e6))
+
 ## [0.25.0](https://github.com/cgoinglove/thursday/compare/thursday-agent-v0.24.0...thursday-agent-v0.25.0) (2026-09-30)
 
 
