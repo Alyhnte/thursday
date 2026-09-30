@@ -90,7 +90,7 @@ large letters on the ground beside the building: at work, your turn, paused, sto
 the app has stopped the job and waits on **Continue**, the ground around the building goes faintly
 red. Once the job is done, the report is brought to your counter; writing on after it, the bot
 carries the report back to its desk. A file dropped on the office goes to the
-thread, as one dropped on the room does. The office opens at 50%, pans by dragging and zooms with
+thread, as one dropped on the room does. The office opens at 70%, pans by dragging and zooms with
 the wheel or the buttons at its bottom left, from 30% to 400%; the frame button brings it back.
 Her face fades out as the office comes and back in as it goes; opening another thread while one is
 open, the office before sinks away as the new one builds. A call that is on shows her last words at

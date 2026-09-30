@@ -73,12 +73,8 @@ import { cn } from "@/lib/utils";
 const ZOOMS = [
   0.3, 0.4, 0.5, 0.7, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4,
 ];
-/**
- * The zoom the office opens at, and comes back to, of the fit to its box: half of it, so the
- * building has room around it for the plates, the words opened over its bots and the scoreboard
- * standing behind it.
- */
-const ZOOM_START = 0.5;
+/** The zoom the office opens at, and comes back to, of the fit to its box. */
+const ZOOM_START = 0.7;
 
 /** How long the zoom buttons and the frame button take to get where they go (ms). */
 const GLIDE_MS = 300;
