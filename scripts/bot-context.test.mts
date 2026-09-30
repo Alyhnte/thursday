@@ -3108,7 +3108,7 @@ test("with nobody picking, a bot runs on the plan before a key, and a picked def
     // is the middle model, while a Free plan runs the one model it opens
     assert.deepEqual(await resolveDefaultModel(), {
       provider: "chatgpt",
-      model: "gpt-6-sol",
+      model: "gpt-6.1-sol",
     });
     await writeConfig(plan, signIn("free"));
     assert.equal((await resolveDefaultModel()).model, "gpt-6-luna");

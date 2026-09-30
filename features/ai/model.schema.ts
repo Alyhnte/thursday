@@ -509,11 +509,11 @@ export const TEXT_MODEL_PROVIDERS: Record<
         efforts: ["none", "low", "medium", "high", "xhigh"],
       },
       {
-        id: "gpt-6-sol",
-        label: "6 Sol",
+        id: "gpt-6.1-sol",
+        label: "6.1 Sol",
         tier: "mid",
         context: 1_050_000,
-        efforts: ["none", "low", "medium", "high", "xhigh"],
+        efforts: ["low", "medium", "high", "xhigh"],
       },
       {
         id: "gpt-6-astra",
@@ -528,7 +528,7 @@ export const TEXT_MODEL_PROVIDERS: Record<
    * The Codex models a ChatGPT plan carries, reached by signing in (ai/chatgpt). Which ones a
    * plan opens differs — a Free plan lists Luna alone — and the backend caps every
    * window at 272k, whatever the same model takes over the API. Nobody picking, a plan runs
-   * its middle one (6 Sol): it is paid for either way (the maintainer, 09-26). A Free plan
+   * its middle one (6.1 Sol): it is paid for either way (the maintainer, 09-26). A Free plan
    * runs Luna, the one it opens (ai/model resolveDefaultModel).
    */
   chatgpt: {
@@ -544,11 +544,11 @@ export const TEXT_MODEL_PROVIDERS: Record<
         efforts: ["none", "low", "medium", "high", "xhigh"],
       },
       {
-        id: "gpt-6-sol",
-        label: "6 Sol",
+        id: "gpt-6.1-sol",
+        label: "6.1 Sol",
         tier: "mid",
         context: 272_000,
-        efforts: ["none", "low", "medium", "high", "xhigh"],
+        efforts: ["low", "medium", "high", "xhigh"],
       },
       {
         id: "gpt-6-astra",
@@ -665,8 +665,8 @@ export const TEXT_MODEL_PROVIDERS: Record<
         tier: "mid",
       },
       {
-        id: "openai/gpt-6-sol",
-        label: "GPT 6 Sol",
+        id: "openai/gpt-6.1-sol",
+        label: "GPT 6.1 Sol",
         tier: "mid",
         context: 1_050_000,
       },
@@ -727,8 +727,8 @@ export const TEXT_MODEL_PROVIDERS: Record<
         context: 1_000_000,
       },
       {
-        id: "openai/gpt-6-sol",
-        label: "GPT 6 Sol",
+        id: "openai/gpt-6.1-sol",
+        label: "GPT 6.1 Sol",
         tier: "mid",
         context: 1_050_000,
       },
