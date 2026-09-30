@@ -942,6 +942,9 @@ export const createLiveSession = ({ initialize, audio, on }: LiveOptions) => {
         cleanup();
       }, LIVE_CALL.closeMs);
       audio.element.muted = true;
+      // The close is confirmed by the far end, which may take until closeMs: the caller
+      // hung up now, so the microphone goes now
+      transport.hush();
       transport.send({ type: "session.close", event_id: crypto.randomUUID() });
       return closePromise;
     },

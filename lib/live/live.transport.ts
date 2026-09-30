@@ -50,6 +50,11 @@ export function createWebRtcTransport<Incoming, Outgoing>({
   limit(): number | null;
   /** Whether the call's events go through the server (the plan's line). */
   relayed(): boolean;
+  /**
+   * Stops the caller's microphone and leaves the line up: a call that is closing still
+   * waits on the far end (LIVE_CALL.closeMs), and nothing said meanwhile is to be heard.
+   */
+  hush(): void;
   close(): void;
 } {
   let peer: RTCPeerConnection | null = null;
@@ -246,6 +251,9 @@ export function createWebRtcTransport<Incoming, Outgoing>({
     },
     relayed() {
       return relay !== null;
+    },
+    hush() {
+      stopTracks(microphone);
     },
     close,
   };

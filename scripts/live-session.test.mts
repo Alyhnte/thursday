@@ -19,6 +19,8 @@ let wire: {
 };
 let sent: Record<string, unknown>[] = [];
 let released = false;
+/** Whether the caller's microphone was stopped while the line stayed up. */
+let hushed = false;
 /** A message the data channel throws on, as it does on one past its limit. */
 let refuses: ((event: Record<string, unknown>) => boolean) | null = null;
 /** The largest message the connection says it carries, as `limit` answers; null before it says. */
@@ -39,6 +41,9 @@ mock.module("../lib/live/live.transport.ts", {
         limit: () => messageBytes,
         // A key's call: its events ride the media connection
         relayed: () => false,
+        hush: () => {
+          hushed = true;
+        },
         close: () => {
           released = true;
         },
@@ -1041,8 +1046,11 @@ test("closing never starts a late tool", async () => {
 
 test("closing waits for session.closed and reports the reason and billed seconds", async () => {
   const { session, closes, failures } = await connect();
+  hushed = false;
   const closing = session.close();
   assert.equal(sent.at(-1)?.type, "session.close");
+  // The microphone stops at the press; the line stays up for the confirmation
+  assert.equal(hushed, true);
   assert.equal(released, false);
   wire.on.event({
     type: "session.closed",
