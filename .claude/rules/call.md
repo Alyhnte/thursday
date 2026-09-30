@@ -55,6 +55,7 @@ how this machine reaches her. Background work reaches a call through `open-work`
 - The AI SDK answers a call it cannot take (a tool she lacks, a misfit input) itself; `thursday.plan` also handing it to the page gives one call id two results.
 - An open call row keeps `isAnyCallLive` true, so `bot.runner` sends no desktop notice: a way into a call that does not end its row wherever the call ends silences them. A row the server holds rather than a tab is swept shut when the last tab goes unless `heldCalls` lists it.
 - `take`'s check of the one person let in is all that stands between a phone channel and her: an `Incoming` kind that reaches her or a bot without it lets whoever sent it run commands on this computer through her.
+- `take` checks `unproven` before anything else: a channel's `Incoming` that carries it and still reaches `hear` lets a mail forged in the named address's name run work through her; a `named` channel answers nobody but the named person.
 
 ## Check
 `pnpm test:live` (the Live wire, what is put down, both call prompts, call history) and
