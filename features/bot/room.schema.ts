@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 
 export const RoomMessageSchema = z.object({
   to: z.string().trim().min(1),

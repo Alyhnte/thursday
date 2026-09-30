@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 
 export const LIVE_MODEL = "gpt-live-1";
 export const LIVE_BACKEND_MODEL = "gpt-6-luna";

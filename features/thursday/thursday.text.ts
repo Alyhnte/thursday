@@ -16,7 +16,7 @@ import {
   type UserContent,
   validateUIMessages,
 } from "ai";
-import { z } from "zod";
+import * as z from "zod";
 import { queryKey } from "@/app/api/query-key";
 import { LOOK, TEXT_CALL } from "@/config";
 import { LIVE_PROVIDER, type LiveSettings } from "@/features/ai/live.schema";

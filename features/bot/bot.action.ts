@@ -1,6 +1,6 @@
 "use server";
 
-import { z } from "zod";
+import * as z from "zod";
 import { BOT_ROSTER } from "@/config";
 import { textModelProviderSchema } from "@/features/ai/model.schema";
 import { removeBotFolder } from "@/features/workspace/workspace";

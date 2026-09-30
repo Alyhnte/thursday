@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { ModelMessage } from "ai";
 import { and, desc, eq, inArray, max, or, sql } from "drizzle-orm";
-import type { z } from "zod";
+import type * as z from "zod";
 import { appEvents } from "@/app/api/events/app-event.server";
 import { BOT_RUN, PROMPT_LINE } from "@/config";
 import { database } from "@/database/db";

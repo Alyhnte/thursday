@@ -1,7 +1,7 @@
 "use server";
 
 import { unzipSync } from "fflate";
-import { z } from "zod";
+import * as z from "zod";
 import { SKILL_FILES } from "@/config";
 import {
   deleteSkill,

@@ -1,5 +1,5 @@
 import { tool } from "ai";
-import z from "zod";
+import * as z from "zod";
 import { PATHS, SKILL_FILES_LISTED, SKILLS_FOLDED } from "@/config";
 import { TOOL_NAMES } from "@/features/ai/tools/tool-name";
 import {

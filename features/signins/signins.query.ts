@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
-import { z } from "zod";
+import * as z from "zod";
 import { appEvents } from "@/app/api/events/app-event.server";
 import { BROWSER_CLI, DATA_DIR, PATHS } from "@/config";
 import {

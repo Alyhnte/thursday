@@ -8,7 +8,7 @@ import {
   wrapLanguageModel,
 } from "ai";
 import { formatDistanceToNowStrict } from "date-fns";
-import { z } from "zod";
+import * as z from "zod";
 import { CHATGPT_SIGN_IN, CHATGPT_USAGE_HIGH, LIVE_CALL } from "@/config";
 import {
   missingKeyWords,

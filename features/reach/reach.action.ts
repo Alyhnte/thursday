@@ -1,6 +1,6 @@
 "use server";
 
-import { z } from "zod";
+import * as z from "zod";
 import { serverAction } from "@/lib/protocol/server-action";
 import { removeMailbox, saveMailbox } from "./mailbox";
 import { allowReach, declineReach, forgetReach, nameReach } from "./reach";

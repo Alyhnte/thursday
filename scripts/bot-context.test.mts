@@ -2571,7 +2571,7 @@ test("a late inbox message queues another turn atomically with completion", asyn
 
 test("provider adapters serialize interrupted tool history as complete exchanges", async () => {
   const { generateText, tool } = await import("ai");
-  const { z } = await import("zod");
+  const z = await import("zod");
   const { createOpenAI } = await import("@ai-sdk/openai");
   const { createAnthropic } = await import("@ai-sdk/anthropic");
   const { createGoogleGenerativeAI } = await import("@ai-sdk/google");

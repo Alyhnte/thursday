@@ -1,6 +1,6 @@
 "use server";
 
-import { z } from "zod";
+import * as z from "zod";
 import { KEY_MIN } from "@/config";
 import { startChatGptSignIn } from "@/features/ai/chatgpt";
 import { LIVE_PROVIDER } from "@/features/ai/live.schema";

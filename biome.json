@@ -46,6 +46,17 @@
       },
       "style": {
         "noNamespace": "error",
+        "noRestrictedImports": {
+          "level": "error",
+          "options": {
+            "paths": {
+              "zod": {
+                "importNames": ["z", "default"],
+                "message": "Write `import * as z from \"zod\"`: Turbopack ships every zod locale to the browser for `import z` and `import { z }`."
+              }
+            }
+          }
+        },
         "useAsConstAssertion": "error",
         "useArrayLiterals": "off"
       },

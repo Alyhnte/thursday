@@ -1,5 +1,5 @@
 import { type ToolSet, tool } from "ai";
-import z from "zod";
+import * as z from "zod";
 import { COMMON_VALIDATE } from "@/config";
 import { TOOL_NAMES } from "@/features/ai/tools/tool-name";
 import { ownLineOf, writeOwnLine } from "@/features/bot/bot.query";

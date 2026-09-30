@@ -1,6 +1,6 @@
 import { relative } from "node:path";
 import { type ToolSet, tool } from "ai";
-import z from "zod";
+import * as z from "zod";
 import { EXEC_TIMEOUT_MS } from "@/config";
 import { TOOL_NAMES } from "@/features/ai/tools/tool-name";
 import { holdBotMemory, keepBotMemory } from "@/features/bot/bot.memory";

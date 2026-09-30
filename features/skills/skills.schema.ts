@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 
 /**
  * Where a skill lives, which decides who reads it and what the user may do with it:

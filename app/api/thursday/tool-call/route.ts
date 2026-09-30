@@ -1,5 +1,5 @@
 import { asSchema } from "ai";
-import z from "zod";
+import * as z from "zod";
 import { LIVE_DEFAULTS } from "@/features/ai/live.schema";
 import { loadTools } from "@/features/ai/load-tools";
 import { modelErrorToString } from "@/features/ai/model";

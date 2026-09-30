@@ -6,7 +6,7 @@ import {
   toUIMessageStream,
   validateUIMessages,
 } from "ai";
-import { z } from "zod";
+import * as z from "zod";
 import { MEMORY_EDIT } from "@/config";
 import { loadTools } from "@/features/ai/load-tools";
 import { getTextModel, modelErrorToString } from "@/features/ai/model";

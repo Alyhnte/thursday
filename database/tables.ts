@@ -8,7 +8,7 @@ import {
 } from "drizzle-orm/sqlite-core";
 import { int, text } from "drizzle-orm/sqlite-core/columns";
 import { sqliteTable } from "drizzle-orm/sqlite-core/table";
-import z from "zod";
+import * as z from "zod";
 import type { Effort, TextModelProviderId } from "@/features/ai/model.schema";
 import {
   botIconSchema,

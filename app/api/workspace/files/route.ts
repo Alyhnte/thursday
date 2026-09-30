@@ -1,4 +1,4 @@
-import z from "zod";
+import * as z from "zod";
 import { statFiles } from "@/features/workspace/workspace.query";
 import { serverRoute } from "@/lib/protocol/server-route";
 

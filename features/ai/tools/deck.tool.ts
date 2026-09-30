@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, extname, join, relative, sep } from "node:path";
 import { promisify } from "node:util";
 import { type ToolSet, tool } from "ai";
-import z from "zod";
+import * as z from "zod";
 import { APP_DIR, DECK, LOOK, PATHS } from "@/config";
 import { TOOL_NAMES } from "@/features/ai/tools/tool-name";
 import { viewKindOf } from "@/features/workspace/file-kind";

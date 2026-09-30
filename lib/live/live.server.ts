@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import { LIVE_CALL } from "@/config";
 import { logger } from "@/lib/logger";
 import { publicError } from "@/lib/public-error";

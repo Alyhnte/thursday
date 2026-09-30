@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import { DateLikeSchema } from "@/lib/date-like";
 
 /** Protocol shapes (config, tool info, oauth) and the rows the screen draws; the protocol shape is the stored shape. */

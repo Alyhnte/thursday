@@ -7,7 +7,7 @@ import {
   transcribe,
 } from "ai";
 import { format } from "date-fns";
-import z from "zod";
+import * as z from "zod";
 import { LOOK } from "@/config";
 import {
   buildImageModel,

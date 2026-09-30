@@ -1,6 +1,6 @@
 "use client";
 
-import { z } from "zod";
+import * as z from "zod";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { LiveSettingsSchema } from "@/features/ai/live.schema";

@@ -1,4 +1,4 @@
-import z from "zod";
+import * as z from "zod";
 import { ROUTINE } from "@/config";
 import { DateLikeSchema } from "@/lib/date-like";
 

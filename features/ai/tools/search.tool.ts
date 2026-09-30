@@ -1,5 +1,5 @@
 import { generateText, type ToolSet, tool } from "ai";
-import z from "zod";
+import * as z from "zod";
 import { SEARCH } from "@/config";
 import type { TextModel } from "@/features/ai/model";
 import { TOOL_NAMES } from "@/features/ai/tools/tool-name";

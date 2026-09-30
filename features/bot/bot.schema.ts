@@ -1,4 +1,4 @@
-import z from "zod";
+import * as z from "zod";
 import {
   COMMON_VALIDATE,
   MAX_PINNED_TOOLS,

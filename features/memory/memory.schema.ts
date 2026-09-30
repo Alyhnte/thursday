@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import { MEMORY_LIMITS } from "@/config";
 import { type DateLike, DateLikeSchema, toDate } from "@/lib/date-like";
 

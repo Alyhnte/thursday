@@ -1,7 +1,7 @@
 "use server";
 
 import { asSchema } from "ai";
-import z from "zod";
+import * as z from "zod";
 import { reclaim } from "@/database/db";
 import { readChatGptPlan } from "@/features/ai/chatgpt";
 import {

@@ -1,5 +1,5 @@
 import type { UIMessage } from "ai";
-import z from "zod";
+import * as z from "zod";
 import { queryKey } from "@/app/api/query-key";
 import {
   TEXT_MODEL_PROVIDERS,

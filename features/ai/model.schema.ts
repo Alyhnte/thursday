@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import { BOT_RUN } from "@/config";
 
 /** Providers and model catalogs. Nothing is stored here; a model is named by whatever runs on it. */

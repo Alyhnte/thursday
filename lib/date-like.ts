@@ -1,5 +1,5 @@
 import { format, isToday, isYesterday } from "date-fns";
-import { z } from "zod";
+import * as z from "zod";
 
 /**
  * A timestamp on both sides of the wire: drizzle returns a `Date`, JSON carries

@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod";
 import { COMMON_VALIDATE } from "@/config";
 import { LIVE_BACKEND_MODEL } from "@/lib/live/live.schema";
 import {

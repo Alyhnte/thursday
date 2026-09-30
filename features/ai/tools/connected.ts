@@ -1,4 +1,4 @@
-import z from "zod";
+import * as z from "zod";
 import { CONNECTED_TOOL_TIMEOUT_MS, STUDIO_SERVER } from "@/config";
 import {
   McpAuthRequiredError,

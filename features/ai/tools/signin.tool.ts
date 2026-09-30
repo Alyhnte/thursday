@@ -1,5 +1,5 @@
 import { type ToolSet, tool } from "ai";
-import z from "zod";
+import * as z from "zod";
 import { BROWSER_CLI } from "@/config";
 import { TOOL_NAMES } from "@/features/ai/tools/tool-name";
 import {
