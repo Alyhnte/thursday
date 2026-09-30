@@ -58,6 +58,7 @@ import { faceMoment, useFaceMoment } from "./face-moment";
 import { finished, goodbye } from "./face-words";
 import { hereDue, hereShown } from "./here-day";
 import { loadWorld } from "./here-map";
+import { micProblem } from "./mic-problem";
 import {
   openWork,
   startedLine,
@@ -193,6 +194,23 @@ function lineFailure(line: LiveLine | null, opening: boolean): string {
         ? " on your OpenAI key"
         : "";
   return opening ? `Could not start the call${on}` : `The call${on} failed`;
+}
+
+/**
+ * A call that did not start because the browser did not hand over the microphone, in words
+ * that name it and what to do. The browser's own ("Permission denied") names neither, and a
+ * first call asks for their place on the same press, so it read as either. Null for any
+ * other failure, which keeps its own words.
+ */
+function micRefusal(cause: unknown): string | null {
+  const problem = micProblem(cause);
+  if (problem === "refused")
+    return "This page is not allowed the microphone. The icon at the left of the address bar opens the site's settings: set Microphone to Allow, then call her again.";
+  if (problem === "missing")
+    return "No microphone was found. Plug one in or switch it on, then call her again.";
+  if (problem === "busy")
+    return "The microphone would not start. Another app may be using it: close that app, then call her again.";
+  return null;
 }
 
 /** Another tab of the app has a call on: said as that, not as a call that failed. */
@@ -1322,7 +1340,7 @@ export function useThursday(
         // Before the line was asked for (the microphone, the lock) it is not the line's to fix
         toast.add({
           type: "error",
-          description: errorToString(cause),
+          description: micRefusal(cause) ?? errorToString(cause),
           title: reached.server
             ? lineFailure(on, true)
             : "Could not start the call",
@@ -1381,6 +1399,9 @@ export function useThursday(
   // The seam is `enabled` and `onWake` / `onError` only, so the recognizer can be swapped
   const wake = useThursdayStore((state) => state.wake);
   const [wakeBlocked, setWakeBlocked] = useState(false);
+  // Blocked until the switch or the phrase is touched again: the microphone allowed or
+  // plugged in since, switching it off and on is the retry, where only a reload was
+  useEffect(() => setWakeBlocked(false), [wake.enabled, wake.phrase]);
   // The first-run intro holds both ways in off while it is up, and places the first call itself
   const held = useCallHeld();
   useEffect(() => callSignal.onPlace(() => void call()), [call]);

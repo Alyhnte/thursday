@@ -57,6 +57,7 @@ import {
   useTurnFocus,
 } from "@/features/thursday/components/side-captions";
 import { awake } from "@/features/thursday/face-words";
+import { micProblem } from "@/features/thursday/mic-problem";
 import { silentVoice } from "@/features/thursday/silent-voice";
 import type { CallStatus, FaceWord } from "@/features/thursday/thursday.schema";
 import { useThursdayStore } from "@/features/thursday/thursday.store";
@@ -823,17 +824,18 @@ type MicFailure = { what: string; next: string };
  */
 function micFailure(error: unknown): MicFailure {
   const name = error instanceof DOMException ? error.name : "";
-  if (name === "NotAllowedError")
+  const problem = micProblem(error);
+  if (problem === "refused")
     return {
       what: "This page is not allowed the microphone yet.",
       next: "The icon at the left of the address bar opens the site's settings: set Microphone to Allow and come back. Or just go on.",
     };
-  if (name === "NotFoundError")
+  if (problem === "missing")
     return {
       what: "No microphone was found.",
       next: "Plug one in or switch it on, then turn it on here again. Or just go on.",
     };
-  if (name === "NotReadableError")
+  if (problem === "busy")
     return {
       what: "The microphone would not start.",
       next: "Another app may be using it: close that app and turn it on here again. Or just go on.",

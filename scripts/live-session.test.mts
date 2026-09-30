@@ -2270,3 +2270,24 @@ test("the position is taken as the page opens where the browser already lets it,
   assert.equal(asked, 1);
   assert.equal(found?.where.place, "Lisbon, Portugal");
 });
+
+test("a microphone the browser did not hand over is read off the name it refused with, and nothing else is guessed at", async () => {
+  const { micProblem } = await import("../features/thursday/mic-problem.ts");
+  assert.equal(
+    micProblem(new DOMException("Permission denied", "NotAllowedError")),
+    "refused",
+  );
+  assert.equal(
+    micProblem(new DOMException("Requested device not found", "NotFoundError")),
+    "missing",
+  );
+  assert.equal(
+    micProblem(new DOMException("Could not start", "NotReadableError")),
+    "busy",
+  );
+  assert.equal(micProblem(new DOMException("Aborted", "AbortError")), null);
+  assert.equal(
+    micProblem(new Error("The call closed before connecting.")),
+    null,
+  );
+});

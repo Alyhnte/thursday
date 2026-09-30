@@ -26,8 +26,8 @@ Say what happened and the one thing that fixes it; most problems are a setting o
 The wake phrase comes on when the microphone is turned on in the first run; skipped there, it is
 off until it is switched on in **Settings › Thursday › Starting a call**, where the phrase can also
 be changed. It needs a browser with speech recognition, the microphone, and the
-app's tab open. When it cannot start, the screen says "Wake word off" with the reason. Tapping her
-face always works.
+app's tab open. When it cannot start, the screen says "Wake word off" with the reason; once that
+is fixed, switching it off and on there tries again. Tapping her face always works.
 
 ## A job stopped
 
