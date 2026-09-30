@@ -45,7 +45,7 @@ import {
   untagSpeaker,
 } from "./bot.schema";
 import { messageKey } from "./room.query";
-import { RESUME_CHECK, ROOM_THURSDAY } from "./room.schema";
+import { RESUME_CHECK, ROOM_THURSDAY, type RoomView } from "./room.schema";
 
 // Threads and their messages. Bots themselves (roster, pinned tools) are bot.query.
 
@@ -247,6 +247,17 @@ export async function findThreadView(id: string): Promise<Thread | null> {
   return thread ?? null;
 }
 
+/** One thread's room — who is in it, what they ask — without its transcript. null if missing. */
+export async function findThreadRoom(id: string): Promise<RoomView | null> {
+  const [row] = await database
+    .select(threadView)
+    .from(threadTable)
+    .where(eq(threadTable.id, id));
+  if (!row) return null;
+  const [thread] = await withLines([row], () => false);
+  return thread?.room ?? null;
+}
+
 export async function findThread(id: string) {
   const [thread] = await database
     .select()
@@ -323,7 +334,10 @@ export async function listThreadOverview(): Promise<Thread[]> {
       desc(threadTable.id),
     )
     .limit(THREAD_STATUS_LIMIT);
-  return withLines(rows);
+  // Read as a call opens and on a tool call the voice waits on, and what reads it uses the
+  // lines of a running thread alone (load-tools `threadActivity`): every other transcript
+  // was read and parsed whole to be dropped
+  return withLines(rows, (row) => row.status === "running");
 }
 
 /** All threads, newest first, one page at a time. `before` is a cursor (last page's updatedAt), not an offset, because rows move in between. */

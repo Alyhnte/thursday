@@ -210,8 +210,8 @@ function createThreadTools(callId: string | null | undefined): ToolSet {
         const one = await pick(thread);
         if (typeof one === "string") return one;
         if (!answer.trim()) return "Say what the answer is.";
-        const { findThreadView } = await import("@/features/bot/thread.query");
-        const questions = (await findThreadView(one.id))?.room.questions ?? [];
+        const { findThreadRoom } = await import("@/features/bot/thread.query");
+        const questions = (await findThreadRoom(one.id))?.questions ?? [];
         const asked = questions.find(
           (question) => question.bot.toLowerCase() === bot.trim().toLowerCase(),
         );
@@ -233,7 +233,7 @@ function createThreadTools(callId: string | null | undefined): ToolSet {
       description: threadStatusSpec.description,
       inputSchema: threadStatusSpec.parameters,
       execute: async ({ thread }) => {
-        const { listThreadOverview, findThreadView } = await import(
+        const { listThreadOverview, findThreadRoom } = await import(
           "@/features/bot/thread.query"
         );
         // The clock, because the one in the instructions is from when the call
@@ -246,7 +246,7 @@ function createThreadTools(callId: string | null | undefined): ToolSet {
         if (!all) {
           const one = await pick(thread);
           if (typeof one === "string") return one;
-          const room = (await findThreadView(one.id))?.room;
+          const room = await findThreadRoom(one.id);
           return {
             ...now,
             label: one.label,

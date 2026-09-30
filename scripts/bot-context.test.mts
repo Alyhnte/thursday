@@ -317,20 +317,38 @@ test("thread overview keeps old open work and the inbox retains unread endings",
         })
         .where(eq(threadTable.id, thread.id));
     }
+    // Each says a line, so every one of them has a transcript to carry or leave out
+    for (const id of ids)
+      await upsertMessage(id, (await lastSeq(id)) + 1, {
+        bot: "Alpha",
+        parent: null,
+        role: "assistant",
+        content: "Looking into it.",
+      });
     const overview = await listThreadOverview();
     assert.equal(overview.length, 10);
     assert.deepEqual(
       overview.map((thread) => thread.id),
       [ids[1], ids[0], ...ids.slice(6).reverse()],
     );
+    // Only what is running carries its transcript: nothing reads the others' here
+    assert.deepEqual(
+      overview.map((thread) => thread.lines.length > 0),
+      overview.map((thread) => thread.id === ids[0]),
+    );
     const tools = await loadTools({ target: "thursday" });
     const result = (await tools[T.thread_status].execute!(
       { thread: "all" },
       { toolCallId: "overview", messages: [], context: {} },
-    )) as { threads: { id: string; status: string }[] };
+    )) as { threads: { id: string; status: string; now?: string }[] };
     assert.deepEqual(
       result.threads.map((thread) => thread.id),
       overview.map((thread) => thread.id),
+    );
+    // What the running one is doing is still said, from its own lines
+    assert.deepEqual(
+      result.threads.map((thread) => "now" in thread),
+      overview.map((thread) => thread.id === ids[0]),
     );
     const inbox = await listInboxThreads();
     assert.equal(inbox.length, 14);
