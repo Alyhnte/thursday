@@ -3,7 +3,7 @@
 <a href="https://youtu.be/7XmsAtwQGjo">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/cgoinglove/thursday/main/docs/images/hero-dark.png">
-    <img src="https://raw.githubusercontent.com/cgoinglove/thursday/main/docs/images/hero-light.png" alt="Thursday — an open-source voice assistant on GPT-Live 1, with a team of AI bots: one has finished a page, another is searching the web" width="880">
+    <img src="https://raw.githubusercontent.com/cgoinglove/thursday/main/docs/images/hero-light.png" alt="Thursday — you talk, a whole team does the work: a job drawn as an office, done, its bots leaping with their papers in the air" width="880">
   </picture>
 </a>
 
@@ -51,6 +51,15 @@ The bot you hand a job to brings in the others, can hold a part until the result
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/cgoinglove/thursday/main/docs/images/film-team-dark.png">
   <img src="https://raw.githubusercontent.com/cgoinglove/thursday/main/docs/images/film-team-light.png" alt="A thread between two bots: one hands the job over, the other reports six coats compared, and a question waits on you" width="880">
+</picture>
+
+### Watch it as an office
+
+Open a job and it is drawn as an office: each bot at its desk, the work walked from desk to desk, a hand-off that waits for another bot's answer held in its tray with a dashed line to the bot it waits on, and the report brought to your counter. When the report lands, every bot leaps and throws its papers in the air.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/cgoinglove/thursday/main/docs/images/office-dark.png">
+  <img src="https://raw.githubusercontent.com/cgoinglove/thursday/main/docs/images/office-light.png" alt="A job drawn as an office: a bot at work at its desk, and a dashed line on the floor to a hand-off waiting on its answer" width="880">
 </picture>
 
 ### Errands, in a real browser

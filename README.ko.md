@@ -3,7 +3,7 @@
 <a href="https://youtu.be/7XmsAtwQGjo">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/cgoinglove/thursday/main/docs/images/hero-dark.png">
-    <img src="https://raw.githubusercontent.com/cgoinglove/thursday/main/docs/images/hero-light.png" alt="Thursday — GPT-Live 1 위에서 도는 오픈소스 음성 비서와 AI 봇 팀. 하나는 페이지를 끝냈고, 하나는 웹을 뒤지는 중이다" width="880">
+    <img src="https://raw.githubusercontent.com/cgoinglove/thursday/main/docs/images/hero-light.png" alt="Thursday — 나는 말하고, 팀 하나가 일한다. 사무실로 그려진 일이 끝나고, 봇들이 서류를 던지며 뛰어오른다" width="880">
   </picture>
 </a>
 
@@ -51,6 +51,15 @@ Node.js 22.18 이상과 유료 ChatGPT 요금제 로그인이나 OpenAI API 키 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/cgoinglove/thursday/main/docs/images/film-team-dark.png">
   <img src="https://raw.githubusercontent.com/cgoinglove/thursday/main/docs/images/film-team-light.png" alt="봇 둘의 스레드 — 하나가 일을 넘기고, 다른 하나가 코트 여섯 벌을 비교했다고 보고하고, 질문 하나가 나를 기다린다" width="880">
+</picture>
+
+### 일하는 모습을 사무실로
+
+일을 열면 사무실로 그려집니다. 봇마다 자기 책상에 앉아 있고, 일은 책상에서 책상으로 건너가며, 다른 봇의 답을 기다리는 일은 서류함에 놓인 채 기다리는 봇까지 바닥에 점선이 이어지고, 보고서는 내 카운터로 옵니다. 보고서가 도착하면 봇들이 모두 뛰어오르며 서류를 공중에 던집니다.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/cgoinglove/thursday/main/docs/images/office-dark.png">
+  <img src="https://raw.githubusercontent.com/cgoinglove/thursday/main/docs/images/office-light.png" alt="사무실로 그려진 일 — 한 봇이 책상에서 일하고, 답을 기다리는 일까지 바닥에 점선이 이어진다" width="880">
 </picture>
 
 ### 심부름은 진짜 브라우저로
