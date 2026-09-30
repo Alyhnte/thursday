@@ -4211,6 +4211,51 @@ test("every ready-made bot fits the form it is edited in", async () => {
   }
 });
 
+test("a command's output is folded as it arrives: the two ends come back, all of it is in a file, and none of it is held whole", async () => {
+  const { createSandBox } = await import("../lib/sandbox.ts");
+  const { readFile: read, stat } = await import("node:fs/promises");
+  const spill = { dir: "spill", max: 8000, head: 5500, tail: 1500 };
+  const shell = createSandBox({ workingDirectory: home, spill });
+  const where = (text: string) =>
+    /is at (spill\/[^ ]+\.txt)\./.exec(text)?.[1] ?? "";
+  const named = (text: string) => text.replace(/spill\/[^ ]+\.txt/, "FILE");
+
+  // What fits comes back whole, up to the last character that fits
+  const fits = await shell.exec(`head -c ${spill.max} /dev/zero | tr '\\0' a`);
+  assert.equal(fits.stdout, "a".repeat(spill.max));
+
+  // Past that it reads exactly as a text folded whole does (`fold`), in both streams
+  const lines = Array.from({ length: 900 }, (_, at) => `line ${at} of it`);
+  await shell.writeFile("long.txt", `${lines.join("\n")}\n`);
+  const whole = await read(join(home, "long.txt"), "utf8");
+  const out = await shell.exec("cat long.txt; cat long.txt >&2");
+  assert.equal(named(out.stdout), named(await shell.fold(whole, "stdout")));
+  assert.equal(named(out.stderr), named(await shell.fold(whole, "stderr")));
+  assert.equal(await read(join(home, where(out.stdout)), "utf8"), whole);
+
+  // 40 MB in one command: what comes back is the two ends, and the file has every byte
+  const big = await shell.exec("head -c 40000000 /dev/zero | tr '\\0' a");
+  assert.equal(big.exitCode, 0);
+  assert.ok(big.stdout.length < spill.max + 400, `${big.stdout.length} chars`);
+  assert.equal((await stat(join(home, where(big.stdout)))).size, 40_000_000);
+
+  // A character cut in two by the pipe is still one character
+  const wide = await shell.exec(
+    "for i in $(seq 1 40); do head -c 3000 /dev/zero | tr '\\0' a; printf '\\xed\\x95\\x9c'; done",
+  );
+  assert.ok(!wide.stdout.includes("\uFFFD"));
+  assert.ok(
+    !(await read(join(home, where(wide.stdout)), "utf8")).includes("\uFFFD"),
+  );
+
+  // What the app says of a stopped command still follows what the command wrote
+  const stopped = await shell.exec("echo started; sleep 30", {
+    timeoutMs: 200,
+  });
+  assert.equal(stopped.stdout, "started\n");
+  assert.match(stopped.stderr, /Timed out after 200ms/);
+});
+
 test("a bot's shell has the user's environment, not what the app set to run itself", async () => {
   const { createSandBox } = await import("../lib/sandbox.ts");
   const set = {

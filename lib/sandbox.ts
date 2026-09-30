@@ -1,7 +1,8 @@
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { createWriteStream, existsSync, type WriteStream } from "node:fs";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve as pathResolve, relative, sep } from "node:path";
+import type { Readable } from "node:stream";
 import { EXEC_KILL_GRACE_MS, EXEC_TIMEOUT_MS } from "@/config";
 
 /**
@@ -100,7 +101,7 @@ export async function* walkFiles(dir: string): AsyncGenerator<string> {
  * Thursday's PORT beside it. What the bot is meant to have is laid over again
  * (`jobShellEnv`, `botShellEnv`).
  */
-const APP_OWN =
+export const APP_OWN =
   /^(PORT|HOSTNAME|NODE_ENV|INIT_CWD|NEXT_MANUAL_SIG_HANDLE)$|^_*NEXT_|^TURBOPACK|^npm_|^THURSDAY_/i;
 
 /**
@@ -195,10 +196,8 @@ export const createSandBox = ({
           // signalling only the shell leaves it running
           detached: true,
         });
-        let stdout = "",
-          stderr = "";
-        child.stdout?.on("data", (d) => (stdout += d));
-        child.stderr?.on("data", (d) => (stderr += d));
+        const stdout = collect(child.stdout, "stdout", cwd, spill);
+        const stderr = collect(child.stderr, "stderr", cwd, spill);
 
         const group = (name: NodeJS.Signals) => {
           try {
@@ -214,7 +213,7 @@ export const createSandBox = ({
         let killing: ReturnType<typeof setTimeout> | undefined;
         let letGo: ReturnType<typeof setTimeout> | undefined;
 
-        const done = async (result: ExecResult) => {
+        const done = async (result: { exitCode: number }) => {
           if (settled) return;
           settled = true;
           clearTimeout(timer);
@@ -222,27 +221,27 @@ export const createSandBox = ({
           clearTimeout(letGo);
           signal?.removeEventListener("abort", onAbort);
           resolve({
-            ...result,
-            stdout: await foldLong(result.stdout, "stdout", cwd, spill),
-            stderr: await foldLong(result.stderr, "stderr", cwd, spill),
+            exitCode: result.exitCode,
+            stdout: await stdout.text(),
+            stderr: await stderr.text(),
           });
         };
 
         const stop = (why: string) => {
           if (killing || settled) return;
-          stderr += `\n[${why}]`;
+          stderr.add(`\n[${why}]`);
           group("SIGTERM");
           // A command that ignores SIGTERM would hold its step, and everything
           // waiting on the job, for good (config EXEC_KILL_GRACE_MS)
           killing = setTimeout(() => {
-            stderr += "\n[Killed: it did not exit on SIGTERM]";
+            stderr.add("\n[Killed: it did not exit on SIGTERM]");
             group("SIGKILL");
             // Output held open by a process that left the group never closes;
             // what arrived by now is the result
             letGo = setTimeout(() => {
               child.stdout?.destroy();
               child.stderr?.destroy();
-              void done({ stdout, stderr, exitCode: -1 });
+              void done({ exitCode: -1 });
             }, 1_000);
           }, EXEC_KILL_GRACE_MS);
         };
@@ -256,16 +255,119 @@ export const createSandBox = ({
         if (signal?.aborted) onAbort();
         else signal?.addEventListener("abort", onAbort, { once: true });
 
-        child.on("close", (code) =>
-          done({ stdout, stderr, exitCode: code ?? -1 }),
-        );
-        child.on("error", (error) =>
-          done({ stdout, stderr: stderr + String(error), exitCode: -1 }),
-        );
+        child.on("close", (code) => done({ exitCode: code ?? -1 }));
+        child.on("error", (error) => {
+          stderr.add(String(error));
+          void done({ exitCode: -1 });
+        });
       });
     },
   };
 };
+
+const spillFile = (name: string, workspace: string, policy: SpillPolicy) =>
+  join(
+    workspace,
+    policy.dir,
+    `${new Date().toISOString().replace(/[:.]/g, "-")}-${name.replace(/[^a-zA-Z0-9_-]+/g, "_")}.txt`,
+  );
+
+const folded = (
+  name: string,
+  policy: SpillPolicy,
+  at: { head: string; tail: string; lines: number; where: string },
+) =>
+  `${at.head.trimEnd()}\n\n[${name} cut at ${policy.max.toLocaleString("en")} chars — the whole thing (${at.lines} lines) is at ${at.where}. Read the part you need with \`sed -n\`.]\n\n${at.tail.trimStart()}`;
+
+/**
+ * A command's output as it arrives, folded the way `foldLong` folds a text: whole while it
+ * fits in `policy.max`, and past that a head, a tail and a file holding all of it. Folded
+ * as it comes rather than once the command has exited: held whole until then, one command
+ * that prints without end (`base64` of a film, a log, a recursive grep) grows one string
+ * until the process runs out of memory, which takes every job and call with it.
+ */
+function collect(
+  source: Readable | null,
+  name: string,
+  workspace: string,
+  policy: SpillPolicy,
+) {
+  /** All of it while it fits; its first `head` characters once it does not. */
+  let kept = "";
+  let tail = "";
+  let newlines = 0;
+  let file: WriteStream | null = null;
+  let path = "";
+  let failed = false;
+  /** The file opened, and everything handed to it so far written. */
+  let written: Promise<void> = Promise.resolve();
+
+  const write = (text: string) => {
+    if (failed || !file) return;
+    // A disk slower than the command would have the text wait in memory instead
+    if (!file.write(text) && source) {
+      source.pause();
+      file.once("drain", () => source.resume());
+    }
+  };
+  const add = (chunk: string) => {
+    if (!chunk) return;
+    if (path) {
+      newlines += chunk.match(/\n/g)?.length ?? 0;
+      tail = (tail + chunk).slice(-policy.tail);
+      written = written.then(() => write(chunk));
+      return;
+    }
+    if (kept.length + chunk.length <= policy.max) {
+      kept += chunk;
+      return;
+    }
+    // Past what fits: all of it goes to the file, and only the two ends stay here
+    path = spillFile(name, workspace, policy);
+    const to = path;
+    const so = kept + chunk;
+    kept = so.slice(0, policy.head);
+    tail = so.slice(-policy.tail);
+    newlines = so.match(/\n/g)?.length ?? 0;
+    written = mkdir(join(workspace, policy.dir), { recursive: true }).then(
+      () => {
+        file = createWriteStream(to);
+        file.on("error", () => {
+          // The text is still cut; a source paused for this file is let go on
+          failed = true;
+          source?.resume();
+        });
+        write(so);
+      },
+      () => {
+        failed = true;
+      },
+    );
+  };
+
+  source?.setEncoding("utf8");
+  source?.on("data", add);
+
+  return {
+    /** Words of the app's own, after whatever the command wrote. */
+    add,
+    async text(): Promise<string> {
+      if (!path) return kept;
+      await written;
+      const out = file as WriteStream | null;
+      if (out && !failed)
+        await new Promise<void>((resolve) => out.end(() => resolve()));
+      return folded(name, policy, {
+        head: kept,
+        tail,
+        lines: newlines + 1,
+        where: failed
+          ? "(could not be written to a file)"
+          : relative(workspace, path) || path,
+      });
+    },
+  };
+}
 
 /** Head, a line saying where the rest went, tail. The model reads the file with `sed -n`. */
 async function foldLong(
@@ -276,14 +378,10 @@ async function foldLong(
 ): Promise<string> {
   if (text.length <= policy.max) return text;
 
-  const dir = join(workspace, policy.dir);
-  const file = join(
-    dir,
-    `${new Date().toISOString().replace(/[:.]/g, "-")}-${name.replace(/[^a-zA-Z0-9_-]+/g, "_")}.txt`,
-  );
+  const file = spillFile(name, workspace, policy);
   let where = file;
   try {
-    await mkdir(dir, { recursive: true });
+    await mkdir(join(workspace, policy.dir), { recursive: true });
     await writeFile(file, text);
     where = relative(workspace, file) || file;
   } catch {
@@ -291,6 +389,10 @@ async function foldLong(
     where = "(could not be written to a file)";
   }
 
-  const lines = (text.match(/\n/g)?.length ?? 0) + 1;
-  return `${text.slice(0, policy.head).trimEnd()}\n\n[${name} cut at ${policy.max.toLocaleString("en")} chars — the whole thing (${lines} lines) is at ${where}. Read the part you need with \`sed -n\`.]\n\n${text.slice(-policy.tail).trimStart()}`;
+  return folded(name, policy, {
+    head: text.slice(0, policy.head),
+    tail: text.slice(-policy.tail),
+    lines: (text.match(/\n/g)?.length ?? 0) + 1,
+    where,
+  });
 }
