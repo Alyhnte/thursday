@@ -62,7 +62,7 @@ import { useObjectState } from "@/hooks/use-object-state";
 import { schemaToType } from "@/lib/json-schema";
 import { useServerAction } from "@/lib/protocol/use-server-action";
 import { revalidate, useServerRoute } from "@/lib/protocol/use-server-route";
-import { cn } from "@/lib/utils";
+import { cn, errorToString } from "@/lib/utils";
 
 /** Connected servers as rows, then the presets as a grid you can scan. */
 export function McpSetting() {
@@ -123,9 +123,11 @@ function McpServerDialog({
 }) {
   const [toolFilter, setToolFilter] = useState("");
   // Tools come with the detail read, not the list
-  const { data: server, isLoading } = useServerRoute<MCPServer>(
-    queryKey.mcpServer(name),
-  );
+  const {
+    data: server,
+    isLoading,
+    error,
+  } = useServerRoute<MCPServer>(queryKey.mcpServer(name));
   const [reconnect, reconnecting] = useServerAction(refreshServerAction, {
     ...CONNECT_OPTIONS,
     onOk: (summary) => {
@@ -153,7 +155,28 @@ function McpServerDialog({
   };
 
   if (isLoading) return <SettingSkeleton rows={4} />;
-  if (!server) return null;
+  // Its read failed: said here, with the one thing that still works on a server by name
+  if (!server)
+    return (
+      <SettingDialogContent
+        title={name}
+        footer={
+          <Button
+            variant="ghost"
+            loading={removing}
+            onClick={confirmRemove}
+            className="mr-auto text-destructive hover:text-destructive"
+          >
+            <Trash2 />
+            Delete
+          </Button>
+        }
+      >
+        <p className="rounded-lg bg-destructive/10 px-3 py-2 font-mono text-xs text-destructive">
+          {error ? errorToString(error) : "This server could not be read."}
+        </p>
+      </SettingDialogContent>
+    );
 
   const count = server.tools.length;
   const needle = toolFilter.trim().toLowerCase();
