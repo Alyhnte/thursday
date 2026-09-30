@@ -2214,27 +2214,35 @@ test("the page looks up where they are ahead of a call, and a call reads what is
   assert.equal(asked, 1);
   assert.equal(urls.length, 2);
 
-  // Run out: the call placed then goes without rather than wait, and the next has it
+  // Run out: the call placed then does not wait. It is told the place, which is still where
+  // they are for all the page knows, and not weather that old; the lookup is the next one's
   context.mock.timers.tick(HERE.keptMs);
-  weather = () => new Response("down", { status: 503 });
-  assert.equal(whereNow(), null);
-  assert.equal(asked, 2);
-  await lookAhead();
-  assert.equal(asked, 2);
-  assert.deepEqual(whereNow(), {
+  const stale = {
     where: { place: "Lisbon, Portugal", weather: null },
     position,
     country: "PT",
-  });
+  };
+  assert.deepEqual(whereNow(), stale);
+  assert.equal(asked, 2);
+  await lookAhead();
+  assert.equal(asked, 2);
+  assert.equal(whereNow()?.where.weather?.code, 3);
 
-  // Nothing found at all is nothing, not an empty line, and is not kept
+  // Looked up again with the forecast down: the place it found, and no weather
+  context.mock.timers.tick(HERE.keptMs);
+  weather = () => new Response("down", { status: 503 });
+  await lookAhead();
+  assert.deepEqual(whereNow(), stale);
+
+  // Nothing found at all replaces nothing: the place found before is still read
   context.mock.timers.tick(HERE.keptMs);
   place = () => new Response("down", { status: 503 });
   await lookAhead();
-  assert.equal(whereNow(), null);
+  assert.deepEqual(whereNow(), stale);
   await lookAhead();
 
-  // Refused: nothing, and nothing asked of the services
+  // Refused: nothing, and nothing asked of the services. What was found while it was
+  // allowed goes with the refusal
   const before = urls.length;
   answer.position = (_ok, no) =>
     no({ code: DENIED, message: "User denied Geolocation" });
@@ -2267,18 +2275,26 @@ test("the page looks up where they are ahead of a call, and a call reads what is
   answer.position = () => {};
   const unasked = urls.length;
   const devices = asked;
-  assert.equal(whereNow(), null);
-  assert.equal(whereNow(), null);
+  assert.equal(whereNow()?.where.weather, null);
+  assert.equal(whereNow()?.where.place, "Lisbon, Portugal");
   assert.equal(asked, devices + 1);
   assert.equal(urls.length, unasked);
   // Left unanswered for as long as a lookup is kept, it is given up on and asked again
   context.mock.timers.tick(HERE.keptMs);
   answer.position = (ok) =>
     ok({ coords: { latitude: 38.7223, longitude: -9.1393 } });
-  assert.equal(whereNow(), null);
+  assert.equal(whereNow()?.where.weather, null);
   assert.equal(asked, devices + 2);
   await lookAhead();
   assert.equal(whereNow()?.where.weather?.code, 3);
+
+  // Refused after it was found: the place goes too, however long ago it was read
+  answer.position = (_ok, no) =>
+    no({ code: DENIED, message: "User denied Geolocation" });
+  context.mock.timers.tick(HERE.keptMs);
+  await lookAhead();
+  assert.equal(whereNow(), null);
+  await lookAhead();
 });
 
 test("where the browser would prompt nothing is asked before a press, and the call that press starts does not wait on the answer", async (context) => {
@@ -2344,18 +2360,27 @@ test("the page keeps where they are looked up while it is in front, and asks not
   context.after(() => {
     if (device) Object.defineProperty(globalThis, "navigator", device);
     Reflect.deleteProperty(globalThis, "document");
+    Reflect.deleteProperty(globalThis, "window");
   });
   Object.defineProperty(globalThis, "document", {
     configurable: true,
     value: page,
   });
+  // The network coming back is heard on the window, by the same listener
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: page,
+  });
+  /** The device answers, or is left holding the question. */
+  let answers = true;
   Object.defineProperty(globalThis, "navigator", {
     configurable: true,
     value: {
       geolocation: {
         getCurrentPosition: (ok: (at: unknown) => void) => {
           asked += 1;
-          ok({ coords: { latitude: 38.7223, longitude: -9.1393 } });
+          if (answers)
+            ok({ coords: { latitude: 38.7223, longitude: -9.1393 } });
         },
       },
       permissions: { query: async () => ({ state: "granted" }) },
@@ -2388,8 +2413,9 @@ test("the page keeps where they are looked up while it is in front, and asks not
   assert.equal(asked, 1);
   assert.equal(whereNow()?.where.place, "Lisbon, Portugal");
 
-  // As what is kept runs out it is looked up again, so a press at any time finds it
-  context.mock.timers.tick(HERE.keptMs - 1);
+  // A lookup's time before what is kept runs out it is looked up again, so a press at any
+  // time finds it, the moment it would have run out included
+  context.mock.timers.tick(HERE.keptMs - HERE.lookMs - 1);
   await settle();
   assert.equal(asked, 1);
   context.mock.timers.tick(1);
@@ -2407,11 +2433,25 @@ test("the page keeps where they are looked up while it is in front, and asks not
   await show("visible");
   assert.equal(asked, 3);
 
+  // The network coming back, or the page shown again, with it just looked up: nothing asked
+  await show("visible");
+  assert.equal(asked, 3);
+
+  // A device that never answers does not stop the looking: it is asked again once that
+  // lookup is given up on
+  answers = false;
+  context.mock.timers.tick(HERE.keptMs - HERE.lookMs);
+  await settle();
+  assert.equal(asked, 4);
+  context.mock.timers.tick(HERE.keptMs);
+  await settle();
+  assert.equal(asked, 5);
+
   stop();
   assert.equal(listeners.size, 0);
   context.mock.timers.tick(HERE.keptMs * 2);
   await settle();
-  assert.equal(asked, 3);
+  assert.equal(asked, 5);
 });
 
 test("a microphone the browser did not hand over is read off the name it refused with, and nothing else is guessed at", async () => {

@@ -20,8 +20,18 @@ export type Found = {
   country: string | null;
 };
 
-/** What was found last, and when: a call reads it for `HERE.keptMs`. */
+/**
+ * What was found last, and when. A call reads it whole for `HERE.keptMs`; past that its
+ * place is still read and its weather no longer is (`whereNow`).
+ */
 let kept: { found: Found; at: number } | null = null;
+
+/**
+ * Whether it is time to look again: nothing kept, or what is kept within one lookup's time
+ * (`HERE.lookMs`) of running out. Looked up that much ahead, a page in front never has it
+ * run out while the lookup that replaces it is still on its way.
+ */
+const due = () => !kept || Date.now() - kept.at >= HERE.keptMs - HERE.lookMs;
 
 /**
  * The lookup on its way, so a second never starts beside it. One the device has left
@@ -170,8 +180,9 @@ function look(): Promise<void> {
         // GeolocationPositionError global would throw here. A refusal is theirs to make
         // and is not logged
         const refused = (cause as { code?: unknown } | null)?.code === 1;
-        if (!refused)
-          console.warn(`No position for the call: ${errorToString(cause)}`);
+        // Refused now, what was found while it was allowed is no longer theirs to have read
+        if (refused) kept = null;
+        else console.warn(`No position for the call: ${errorToString(cause)}`);
       },
     )
     .then(() => {
@@ -187,11 +198,21 @@ function look(): Promise<void> {
  * HERE): with nothing kept it goes without, and the lookup this starts is for the next one.
  * Called from the press that starts a call, so the browser's permission prompt comes with
  * something the user did; the browser remembers the answer.
+ *
+ * What was found longer ago than `HERE.keptMs` is still where they are, for all the page
+ * knows, and no longer the weather: the place is read and the weather left out, rather than
+ * the call going without both. That is every call placed more than `keptMs` after the last
+ * lookup on a page that could not look ahead — hidden, or in a browser that only says it
+ * allows the position at a press.
  */
 export function whereNow(): Found | null {
   if (kept && Date.now() - kept.at < HERE.keptMs) return kept.found;
   if (navigator.geolocation) void look();
-  return null;
+  if (!kept?.found.where.place) return null;
+  return {
+    ...kept.found,
+    where: { place: kept.found.where.place, weather: null },
+  };
 }
 
 /**
@@ -199,7 +220,7 @@ export function whereNow(): Found | null {
  * Never asks where it would prompt: the prompt comes with a press (`whereNow`).
  */
 export async function lookAhead(): Promise<void> {
-  if (kept && Date.now() - kept.at < HERE.keptMs) return;
+  if (!due()) return;
   if (!navigator.geolocation || !navigator.permissions) return;
   let allowed: boolean;
   try {
@@ -215,8 +236,8 @@ export async function lookAhead(): Promise<void> {
 
 /**
  * Keeps it looked up while the page is in front: as the page opens, as it comes back into
- * view, and again as what is kept runs out, so a press finds it there. A hidden page asks
- * nothing. Returns what stops it.
+ * view, as the network comes back, and again a lookup's time before what is kept runs out
+ * (`due`), so a press finds it there. A hidden page asks nothing. Returns what stops it.
  */
 export function keepWhere(): () => void {
   let again: ReturnType<typeof setTimeout> | undefined;
@@ -224,18 +245,25 @@ export function keepWhere(): () => void {
   const keep = async () => {
     clearTimeout(again);
     if (document.visibilityState !== "visible") return;
+    // Armed before the lookup is waited on: a device that never answers would otherwise
+    // leave this waiting for good, and nothing would look again while the page stayed up
+    again = setTimeout(keep, HERE.keptMs);
     await lookAhead();
     if (stopped || document.visibilityState !== "visible") return;
-    const left = kept ? kept.at + HERE.keptMs - Date.now() : 0;
+    const left = kept ? kept.at + HERE.keptMs - HERE.lookMs - Date.now() : 0;
     clearTimeout(again);
     // With nothing fresh kept — not allowed yet, or not found — it is tried after as long
     again = setTimeout(keep, left > 0 ? left : HERE.keptMs);
   };
   void keep();
   document.addEventListener("visibilitychange", keep);
+  // A lookup made with no network found nothing (a laptop just woken): asked again as it
+  // comes back, not a whole `keptMs` later
+  window.addEventListener("online", keep);
   return () => {
     stopped = true;
     clearTimeout(again);
     document.removeEventListener("visibilitychange", keep);
+    window.removeEventListener("online", keep);
   };
 }

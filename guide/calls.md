@@ -26,7 +26,8 @@ BigDataCloud for the town's name and Open-Meteo for the weather, and only those 
 Once it is allowed, the page looks them up while it is in front — as it opens, as it comes back
 into view, and every half hour after — whether or not a call follows, so the position goes to
 those two services then. A call never waits on it: one placed before it is found, the call
-that first asked included, goes on without it, and the next has it. Refused, nothing is sent.
+that first asked included, goes on without it, and the next has it. What was found more than
+half an hour ago still gives her the town, and not the weather. Refused, nothing is sent.
 The browser keeps the answer; it is changed in the browser's site settings for this app (the
 icon left of the address). A phone chat has no browser, so she does not know it there.
 
