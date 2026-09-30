@@ -3,6 +3,7 @@ import {
   type BotDict,
   en,
   type FilesDict,
+  type McpDict,
   type MemoryDict,
   type RoutineDict,
   type SettingsDict,
@@ -22,6 +23,7 @@ export function settingsDictOf(locale: Locale): SettingsDict {
 export type {
   BotDict,
   FilesDict,
+  McpDict,
   MemoryDict,
   RoutineDict,
   SettingsDict,

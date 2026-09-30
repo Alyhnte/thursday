@@ -504,6 +504,56 @@ export type SkillsDict = {
   reqMax: (mb: number) => string;
 };
 
+export type McpDict = {
+  railNone: string;
+  railLine: (connected: number, tools: number) => string;
+  railFailed: (failed: number) => string;
+  connectedGroup: string;
+  addServer: string;
+  deletedOk: string;
+  deleteTitle: (name: string) => string;
+  deleteBody: string;
+  deleteOk: string;
+  unreadable: string;
+  deleteBtn: string;
+  reconnectBtn: string;
+  filterTools: string;
+  toolOne: string;
+  toolMany: string;
+  noToolsYet: string;
+  noToolMatch: string;
+  schemaBtn: string;
+  testBtn: string;
+  runBtn: string;
+  badJson: string;
+  addTitle: string;
+  addDesc: string;
+  cancelBtn: string;
+  connectBtn: string;
+  nameField: string;
+  jsonField: string;
+  transportField: string;
+  urlField: string;
+  headersField: string;
+  commandField: string;
+  argsField: string;
+  envField: string;
+  removeRow: string;
+  addRowBtn: string;
+  needUrl: string;
+  needCommand: string;
+  needUrlOrCommand: string;
+  noServerIn: string;
+  authTitle: (name: string) => string;
+  authDesc: string;
+  connectFail: (name: string) => string;
+  connectedOk: (name: string) => string;
+  toolsAvailable: (count: number) => string;
+  presetsGroup: string;
+  filterPresets: string;
+  resultCount: (shown: number, total: number) => string;
+};
+
 export type SettingsDict = {
   dialogTitle: string;
   navLabel: string;
@@ -537,6 +587,7 @@ export type SettingsDict = {
   files: FilesDict;
   workspace: WorkspaceDict;
   skills: SkillsDict;
+  mcp: McpDict;
 };
 
 export const en: SettingsDict = {
@@ -1087,6 +1138,56 @@ export const en: SettingsDict = {
     reqZipLine:
       "A .zip or .skill archive needs a SKILL.md inside — the rest of its folder comes along.",
     reqMax: (mb) => `Up to ${mb} MB.`,
+  },
+  mcp: {
+    railNone: "Nothing connected yet — a preset is the shortest way in",
+    railLine: (connected, tools) => `${connected} connected · ${tools} tools`,
+    railFailed: (failed) => ` · ${failed} failed`,
+    connectedGroup: "Connected",
+    addServer: "Add server",
+    deletedOk: "Server deleted",
+    deleteTitle: (name) => `Delete ${name}?`,
+    deleteBody: "Its connection and saved authorization go with it.",
+    deleteOk: "Delete",
+    unreadable: "This server could not be read.",
+    deleteBtn: "Delete",
+    reconnectBtn: "Reconnect",
+    filterTools: "Filter tools",
+    toolOne: "tool",
+    toolMany: "tools",
+    noToolsYet: "No tools yet",
+    noToolMatch: "No tool here goes by that.",
+    schemaBtn: "Schema",
+    testBtn: "Test",
+    runBtn: "Run",
+    badJson: "Not valid JSON",
+    addTitle: "Add MCP server",
+    addDesc: "Its tools become available to every bot.",
+    cancelBtn: "Cancel",
+    connectBtn: "Connect",
+    nameField: "Name",
+    jsonField: "JSON",
+    transportField: "Transport",
+    urlField: "URL",
+    headersField: "Headers",
+    commandField: "Command",
+    argsField: "Args",
+    envField: "Env",
+    removeRow: "Remove this row",
+    addRowBtn: "Add",
+    needUrl: "Needs a valid url",
+    needCommand: "Needs a command",
+    needUrlOrCommand: "Needs a url or a command",
+    noServerIn: "No server in there",
+    authTitle: (name) => `${name} needs authorization`,
+    authDesc: "Approve access in the window that just opened",
+    connectFail: (name) => `${name} could not connect`,
+    connectedOk: (name) => `${name} connected`,
+    toolsAvailable: (count) =>
+      `${count} ${count === 1 ? "tool" : "tools"} available`,
+    presetsGroup: "Presets",
+    filterPresets: "Filter presets",
+    resultCount: (shown, total) => `${shown} of ${total}`,
   },
   bot: {
     botsMost: (count, max) => `${count} bots · ${max} is the most`,
