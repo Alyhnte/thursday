@@ -554,6 +554,8 @@ function ThreadSheet({
                     status={thread.status}
                     faces={view.roster}
                     to={side ?? thread.bot}
+                    // The room's open thread keeps what is dropped on the room
+                    claimsDrops={false}
                   />
                 </div>
               </>

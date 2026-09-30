@@ -13,6 +13,10 @@ import {
   type ThreadSpeaker,
   type TokenUsage,
 } from "@/features/bot/bot.schema";
+import type {
+  FilesHeld,
+  GivenFile,
+} from "@/features/workspace/components/given-files";
 import { type DateLike, toDate } from "@/lib/date-like";
 import { unwrapResult } from "@/lib/protocol/result";
 import { revalidate } from "@/lib/protocol/use-server-route";
@@ -386,6 +390,10 @@ export type ScreenAct =
 
 /** Drafts and selected recipients survive switching threads, independently for each participant. */
 const drafts = new Map<string, Map<string, string>>();
+/** The files waiting beside a draft, under the same key as its words. */
+const draftFiles = new Map<string, GivenFile[]>();
+const draftFileListeners = new Set<() => void>();
+const NO_DRAFT_FILES: GivenFile[] = [];
 const recipients = new Map<string, string>();
 /** The tab a thread's box last followed, so a bot picked on it since outlives the box. */
 const tabs = new Map<string, string>();
@@ -410,6 +418,26 @@ export const threadDrafts = {
     else own.delete(key);
     if (own.size) drafts.set(id, own);
     else drafts.delete(id);
+  },
+  /**
+   * The files put down beside that draft (given-files `held`). The box that holds a draft is
+   * drawn again as the recipient, the question or a pause changes, and files kept in the box
+   * went with it while the words stayed.
+   */
+  files(id: string, bot: string, question?: string): FilesHeld {
+    const key = JSON.stringify([id, bot, question ?? null]);
+    return {
+      read: () => draftFiles.get(key) ?? NO_DRAFT_FILES,
+      write(files) {
+        if (files.length) draftFiles.set(key, files);
+        else draftFiles.delete(key);
+        for (const listener of draftFileListeners) listener();
+      },
+      subscribe(listener) {
+        draftFileListeners.add(listener);
+        return () => draftFileListeners.delete(listener);
+      },
+    };
   },
 };
 

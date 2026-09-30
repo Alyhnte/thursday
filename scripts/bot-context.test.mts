@@ -3881,6 +3881,41 @@ test("answer drafts remain separate for two questions from the same bot", async 
   assert.equal(threadDrafts.get("draft-room", "Alpha"), "A general message");
 });
 
+test("the files beside a draft wait under its key, reach a box drawn again, and one that lands late still arrives", async () => {
+  const { threadDrafts } = await import("../features/bot/thread.store.ts");
+  const file = (path: string | null) => ({
+    key: "one",
+    name: "notes.txt",
+    bytes: 12,
+    path,
+  });
+  // The box that took the file, and the one drawn in its place once it was re-keyed
+  const first = threadDrafts.files("draft-room", "Alpha");
+  const again = threadDrafts.files("draft-room", "Alpha");
+  let heard = 0;
+  const stop = again.subscribe(() => heard++);
+  first.write([file(null)]);
+  assert.deepEqual(again.read(), [file(null)]);
+  // Kept in the workspace after the first box is gone: the second is told
+  first.write(first.read().map((one) => ({ ...one, path: "inbox/notes.txt" })));
+  assert.equal(heard, 2);
+  assert.equal(again.read()[0].path, "inbox/notes.txt");
+  // Another recipient's draft, and a question's own, have none of it
+  assert.deepEqual(threadDrafts.files("draft-room", "Beta").read(), []);
+  assert.deepEqual(threadDrafts.files("draft-room", "Alpha", "q").read(), []);
+  // An unchanged list is the same list: a read that made a new one each time would
+  // have the screen draw without end (useSyncExternalStore)
+  assert.equal(again.read(), again.read());
+  assert.equal(
+    threadDrafts.files("draft-room", "Beta").read(),
+    threadDrafts.files("draft-room", "Beta").read(),
+  );
+  stop();
+  again.write([]);
+  assert.deepEqual(first.read(), []);
+  assert.equal(heard, 2);
+});
+
 test("a question's line names the room question it opened, the same words asked twice apart", async () => {
   plans.set("Alpha", [
     () => ask("Thursday", "Continue?"),

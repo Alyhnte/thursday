@@ -13,7 +13,7 @@ import {
   Square,
   X,
 } from "lucide-react";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { queryKey } from "@/app/api/query-key";
 import { Button } from "@/components/ui/button";
 import {
@@ -80,6 +80,7 @@ export function ThreadReply({
   faces = [],
   to = null,
   className,
+  claimsDrops = true,
 }: {
   thread: ReplyThread;
   status: ThreadStatus;
@@ -88,6 +89,8 @@ export function ThreadReply({
   /** The bot whose tab the thread is on: the composer's words go to it. */
   to?: string | null;
   className?: string;
+  /** Whether files dropped on the room come to this reply (DraftComposer): the room's own does. */
+  claimsDrops?: boolean;
 }) {
   const [selected, setSelected] = useState<string>();
   const [recipient, setRecipient] = useState(
@@ -266,6 +269,7 @@ export function ThreadReply({
         <SignInAsk bot={recipientName} onAllowed={send} />
         <DraftComposer
           key={JSON.stringify([thread.id, recipientName, question.id])}
+          claimsDrops={claimsDrops}
           threadId={thread.id}
           recipient={recipientName}
           draftKey={question.id}
@@ -330,6 +334,7 @@ export function ThreadReply({
         </div>
         <DraftComposer
           key={JSON.stringify([thread.id, recipientName, "paused"])}
+          claimsDrops={claimsDrops}
           threadId={thread.id}
           recipient={recipientName}
           send={send}
@@ -438,6 +443,7 @@ export function ThreadReply({
       )}
       <DraftComposer
         key={JSON.stringify([thread.id, recipientName])}
+        claimsDrops={claimsDrops}
         threadId={thread.id}
         recipient={recipientName}
         send={send}
@@ -630,8 +636,13 @@ export function DraftComposer({
     setDraft(text);
     threadDrafts.set(threadId, recipient, text, draftKey);
   };
-  // Files go with the words as paths (given-files); what is dropped on the room is this thread's
-  const given = useGivenFiles();
+  // Files go with the words as paths (given-files); what is dropped on the room is this thread's.
+  // They wait where the words do, so a box drawn again under another key still has them
+  const held = useMemo(
+    () => threadDrafts.files(threadId, recipient, draftKey),
+    [threadId, recipient, draftKey],
+  );
+  const given = useGivenFiles({ held });
   const picker = useRef<HTMLInputElement>(null);
   const { take } = given;
   useEffect(

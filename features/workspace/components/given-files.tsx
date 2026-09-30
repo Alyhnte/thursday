@@ -1,7 +1,7 @@
 "use client";
 
 import { Loader2, X } from "lucide-react";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useRef, useState, useSyncExternalStore } from "react";
 import { toast } from "@/components/ui/toast";
 import { GIVEN_FILES } from "@/config";
 import { FileThumb } from "@/features/workspace/components/file-thumb";
@@ -26,13 +26,45 @@ export type GivenFile = {
   note?: string;
 };
 
+/**
+ * Where the files wait when that is not the box itself: a thread's reply is drawn again
+ * under another key as its recipient, question or pause changes, and what waits beside its
+ * words is kept with them (thread.store `threadDrafts.files`).
+ */
+export type FilesHeld = {
+  read(): GivenFile[];
+  write(files: GivenFile[]): void;
+  subscribe(listener: () => void): () => void;
+};
+
+const NO_FILES: GivenFile[] = [];
+const noFiles = () => NO_FILES;
+const never = () => () => {};
+
 export function useGivenFiles(options?: {
   /** The files just kept, by path. What it answers is drawn beside each one's size. */
   onKept?: (paths: string[]) => string | undefined;
+  /** Holds the files in place of this box, so they outlive it. */
+  held?: FilesHeld;
 }) {
   const onKept = useRef(options?.onKept);
   onKept.current = options?.onKept;
-  const [files, setFiles] = useState<GivenFile[]>([]);
+  const held = options?.held;
+  const [own, setOwn] = useState<GivenFile[]>([]);
+  const kept = useSyncExternalStore(
+    held?.subscribe ?? never,
+    held?.read ?? noFiles,
+    noFiles,
+  );
+  const files = held ? kept : own;
+  /** One that arrives after its box is gone still lands where the files are held. */
+  const setFiles = useCallback(
+    (change: (all: GivenFile[]) => GivenFile[]) => {
+      if (held) held.write(change(held.read()));
+      else setOwn(change);
+    },
+    [held],
+  );
   const [give] = useServerAction(giveFilesAction);
 
   /** Keeps what fits beside the files already here; resolves to the paths it kept. */
@@ -73,7 +105,7 @@ export function useGivenFiles(options?: {
         return [];
       }
     },
-    [files.length, give],
+    [files.length, give, setFiles],
   );
 
   /**
@@ -100,7 +132,7 @@ export function useGivenFiles(options?: {
     keepApart,
     remove: (key: string) =>
       setFiles((all) => all.filter((one) => one.key !== key)),
-    clear: () => setFiles([]),
+    clear: () => setFiles(() => []),
     /** Some file is still on its way: a message sent now would leave it behind. */
     arriving: files.some((file) => file.path === null),
     /** The workspace paths of the files kept, in the order they were put down. */
