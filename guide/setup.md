@@ -181,9 +181,9 @@ in the background, closing the terminal changes nothing.
 ## Updating
 
 Thursday does not update by itself. When the app is opened in a browser it asks npm, at most once
-a day, whether a newer version is out. When one is, a notice at the top says so: **Update** moves
-to it, and closing the notice hides it for a day. **Settings › Thursday › Running** shows the
-version that runs, and keeps saying a newer one is out after the notice is closed.
+a day, whether a newer version is out. When one is, a dark card under the Settings buttons says
+so: **Update** moves to it, and **Not today** hides the card for a day. **Settings › Thursday ›
+Running** shows the version that runs, and keeps saying a newer one is out after that.
 
 - Running in the background, started through `npx`: **Update** installs the new version, starts
   Thursday again on the same address and loads the page again on it, in a minute or so. A call

@@ -23,4 +23,4 @@ twentieth line drops the line picked longest ago. A look changes only when the m
 - **Opening**: the app opens plainly — her face alone, no boot curtain. (09-19)
 - **Words**: what a first-time user reads or hears is plain everyday English with no jargon. (09-19)
 - **Providers**: the ChatGPT sign-in is "GPT Subscription"; model setup leads with the Vercel AI Gateway, the others behind More. (09-18)
-- **Updates**: a newer version is said as the app opens, in a small notice with the button; closed, it stays away for a day, and Settings › Thursday keeps the button. (09-30)
+- **Updates**: a newer version is said as the app opens, on a square card under the settings corner, on the other theme's surface, with her mark and the button; Not today keeps it away for a day, and Settings › Thursday keeps the button. (09-30)

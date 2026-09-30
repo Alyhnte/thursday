@@ -1,22 +1,26 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { queryKey } from "@/app/api/query-key";
-import { toast } from "@/components/ui/toast";
-import { useServerRoute } from "@/lib/protocol/use-server-route";
+import { Button } from "@/components/ui/button";
+import { ShinyText } from "@/components/ui/shiny-text";
+import { ThursdayMark } from "@/features/thursday/components/thursday-mark";
+import { revalidate, useServerRoute } from "@/lib/protocol/use-server-route";
 import { openSettings } from "../settings.store";
 import type { Update } from "../update";
 import { closeUpdateNoticeAction } from "../update.action";
 import { followUpdate, moveTo, useUpdateStore } from "../update.store";
 
 /**
- * Says a newer version as the app opens: a notice at the top with the button, which stays
- * until it is pressed or closed, and closed stays away for a day (config UPDATE.quietMs) in
- * every tab. Reading it is also what asks npm, at most once a day, so nothing is asked while
- * no browser is open. Loaded with the app and draws nothing of its own; `quiet` holds it back
- * over the intro.
+ * Says a newer version on the call screen, under the settings corner: a square card on the
+ * other theme's surface, so it stands off the page, with her mark, the two versions and the
+ * button. It stays until Update or Not today is pressed, and Not today keeps it away for a day
+ * (config UPDATE.quietMs) in every tab. While a move is under way the same card says so, and
+ * one that stopped says that. Reading it is also what asks npm, at most once a day, so nothing
+ * is asked while no browser is open. `hidden` keeps it out of the way of a call, a ring, a call
+ * in writing and whatever covers the screen; it goes on following a move meanwhile.
  */
-export function UpdateNotice({ quiet }: { quiet: boolean }) {
+export function UpdateNotice({ hidden }: { hidden: boolean }) {
   // The server is down for a moment during a move: a read that fails then is not news
   const { data } = useServerRoute<Update>(queryKey.update, {
     onError: () => {},
@@ -29,61 +33,104 @@ export function UpdateNotice({ quiet }: { quiet: boolean }) {
     if (going) void followUpdate(going);
   }, [going]);
 
-  const said = useRef<string | null>(null);
-  const notice = useRef<string | null>(null);
+  // Put away on this page at once; the server keeps the notice away for the day
+  const [closed, setClosed] = useState<string | null>(null);
+  const [dismissed, setDismissed] = useState<string | null>(null);
+
+  if (hidden) return null;
+
+  if (to)
+    return (
+      <Card>
+        <p className="mt-3 text-[15px] leading-tight font-medium">
+          <ShinyText text={`Updating to ${to}…`} />
+        </p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Thursday restarts in a moment.
+        </p>
+      </Card>
+    );
+
+  if (failed && dismissed !== failed.to)
+    return (
+      <Card>
+        <p className="mt-3 text-[15px] leading-tight font-medium">
+          Could not update to {failed.to}
+        </p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          The one before runs on.
+        </p>
+        <Actions
+          primary="See why"
+          onPrimary={() => openSettings("thursday")}
+          secondary="Close"
+          onSecondary={() => setDismissed(failed.to)}
+        />
+      </Card>
+    );
+
   const newer = data?.notice ? data.newer : null;
-  const current = data?.current ?? null;
-  const byButton = data?.byButton ?? false;
-  useEffect(() => {
-    if (quiet || !newer || going || said.current === newer) return;
-    said.current = newer;
-    notice.current = toast.add({
-      title: `Thursday ${newer} is out`,
-      description: `You run ${current}. Closing this hides it for a day.`,
-      timeout: 0,
-      actionProps: byButton
-        ? { children: "Update", onClick: () => void moveTo(newer) }
-        : {
-            children: "How to update",
-            onClick: () => openSettings("thursday"),
-          },
-      onClose: () => void closeUpdateNoticeAction(),
-    });
-  }, [quiet, newer, current, byButton, going]);
+  if (!newer || closed === newer) return null;
+  return (
+    <Card>
+      <p className="mt-3 text-[15px] leading-tight font-medium">
+        Thursday {newer} is out
+      </p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        You run {data?.current}
+      </p>
+      <Actions
+        primary={data?.byButton ? "Update" : "How to update"}
+        onPrimary={() =>
+          data?.byButton ? void moveTo(newer) : openSettings("thursday")
+        }
+        secondary="Not today"
+        onSecondary={() => {
+          setClosed(newer);
+          void closeUpdateNoticeAction().then(() =>
+            revalidate(queryKey.update),
+          );
+        }}
+      />
+    </Card>
+  );
+}
 
-  const moving = useRef<string | null>(null);
-  useEffect(() => {
-    // Pressed in Settings with the notice still up: its button would ask for the same move
-    if (to && notice.current) {
-      toast.close(notice.current);
-      notice.current = null;
-    }
-    if (to && !moving.current)
-      moving.current = toast.add({
-        type: "loading",
-        title: `Updating to ${to}…`,
-        description: "Thursday restarts in a moment.",
-        timeout: 0,
-      });
-    if (!to && moving.current) {
-      toast.close(moving.current);
-      moving.current = null;
-    }
-  }, [to]);
+/** The card: her mark over what it says, on the other theme's surface. */
+function Card({ children }: { children: ReactNode }) {
+  return (
+    <div className="inverse">
+      <div className="flex size-60 animate-in flex-col items-center rounded-[28px] bg-background p-5 text-center text-foreground shadow-[0_22px_44px_-20px_rgb(0_0_0/0.22)] duration-300 fade-in slide-in-from-top-1">
+        <ThursdayMark size={72} className="mt-1" />
+        {children}
+      </div>
+    </div>
+  );
+}
 
-  useEffect(() => {
-    if (!failed) return;
-    toast.add({
-      type: "error",
-      title: `Could not update to ${failed.to}`,
-      description: failed.why.split("\n").at(-1),
-      timeout: 0,
-      actionProps: {
-        children: "How to update",
-        onClick: () => openSettings("thursday"),
-      },
-    });
-  }, [failed]);
-
-  return null;
+function Actions({
+  primary,
+  onPrimary,
+  secondary,
+  onSecondary,
+}: {
+  primary: string;
+  onPrimary: () => void;
+  secondary: string;
+  onSecondary: () => void;
+}) {
+  return (
+    <div className="mt-auto flex w-full gap-1.5">
+      <Button className="flex-1 rounded-full" onClick={onPrimary}>
+        {primary}
+      </Button>
+      <Button
+        variant="ghost"
+        className="rounded-full px-3 text-muted-foreground"
+        onClick={onSecondary}
+      >
+        {secondary}
+      </Button>
+    </div>
+  );
 }

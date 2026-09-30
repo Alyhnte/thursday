@@ -62,6 +62,7 @@ import {
 } from "@/features/config/config.const";
 import { InstallNudge } from "@/features/settings/components/install-app";
 import { SECTIONS, Settings } from "@/features/settings/components/settings";
+import { UpdateNotice } from "@/features/settings/components/update-notice";
 import {
   type SectionAlert,
   useSectionAlerts,
@@ -244,6 +245,9 @@ function CallScreen({
     <div className="relative flex h-full flex-col" inert={covered}>
       <div className="absolute top-5 right-5 z-10 flex flex-col items-end gap-3">
         <SettingsCorner />
+        <UpdateNotice
+          hidden={covered || status !== "idle" || ringing !== null || writing}
+        />
         <InstallNudge
           hidden={status !== "idle" || ringing !== null || writing}
         />

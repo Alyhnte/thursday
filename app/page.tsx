@@ -3,7 +3,6 @@ import { isCallable } from "@/features/config/config.query";
 import { Intro } from "@/features/intro/components/intro";
 import { hasPassedIntro } from "@/features/intro/intro.query";
 import { ReachAsk } from "@/features/reach/components/reach-ask";
-import { UpdateNotice } from "@/features/settings/components/update-notice";
 import { Boot } from "@/features/thursday/components/boot";
 import { Thursday } from "@/features/thursday/components/thursday";
 import { hasAnyCall } from "@/features/thursday/thursday.query";
@@ -35,8 +34,6 @@ export default async function Home({ searchParams }: PageProps<"/">) {
         forced={intro !== undefined}
       />
       <ReachAsk />
-      {/* Not over the intro, which is the whole screen until it is left */}
-      <UpdateNotice quiet={(!called && !passed) || intro !== undefined} />
       <Boot />
       <AppEventSource />
     </div>
