@@ -160,7 +160,10 @@ export const threadTable = sqliteTable(
     id: text("id").primaryKey(),
     /** Bot name, deliberately not a foreign key: the default bot has no row, and a deleted bot's jobs stay. */
     bot: text("bot").notNull(),
-    /** Two or three words, for the screen and for speech. */
+    /**
+     * Its name, for the screen and for speech: the few words `delegate` or a routine gives it, or
+     * the user's own words when handed over from the screen (bot.schema labelOfWords).
+     */
     label: text("label").notNull(),
     /** The full briefing; first user message of the thread, reused on resume. */
     request: text("request").notNull(),
