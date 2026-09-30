@@ -345,6 +345,7 @@ async function listen(live: Live) {
             void take(live, incoming).catch((cause) =>
               logger.error(`reach ${live.name}: what arrived`, cause),
             ),
+          trouble,
           // A channel that names who may write hears no one else (take): it need not read them
           wanted: async (chat) =>
             !live.channel.named || (await readPerson(live.name))?.chat === chat,

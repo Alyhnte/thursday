@@ -200,6 +200,9 @@ back.
   a new app password pasted there starts it again.
 - **A mail you sent that she did not answer**: she writes back saying why (see Who is let in). No
   answer at all means it did not reach her mailbox, or it was not from the named address.
+- **Your mail's sender cannot be checked yet** (the computer's network has no DNS — just after a VPN
+  or Wi-Fi change, or offline): Email's line says *Could not check who sent a mail…*. The mail is
+  not lost: it is checked again every half minute and answered once the check goes through.
 - **The GPT Subscription's limit**: with an OpenAI key set, she answers on the key, and the chat is
   told so once a conversation, with when the plan resets. With no key, the chat says the limit and
   that an OpenAI key in **Settings › API keys** would let her answer.

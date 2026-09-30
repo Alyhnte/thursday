@@ -96,6 +96,12 @@ export type Channel = {
       ready(bot: string, link: string | null, id: string): void;
       incoming(incoming: Incoming): void;
       wanted?(chat: string): Promise<boolean>;
+      /**
+       * Something keeps what arrived from being read while the connection stands (a mail
+       * whose sender cannot be checked yet): said on the screen as trouble being tried
+       * again, and taken back with null once it is read.
+       */
+      trouble?(why: string | null): void;
     },
     signal: AbortSignal,
   ): Promise<void>;

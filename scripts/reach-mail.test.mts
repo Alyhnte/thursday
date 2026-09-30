@@ -15,6 +15,8 @@ process.env.THURSDAY_HOME = home;
 type Srv = { name: string; port: number; priority: number; weight: number };
 /** SRV records by name, or the error code DNS answers with. */
 const srv = new Map<string, Srv[] | string>();
+/** How many DNS resolvers email.ts has made: one holds the servers of the network it was made on. */
+let resolvers = 0;
 const dnsError = (name: string, code: string) =>
   Object.assign(new Error(`${code} ${name}`), { code });
 mock.module("node:dns/promises", {
@@ -27,6 +29,9 @@ mock.module("node:dns/promises", {
     },
     // What email.ts looks senders up with when no resolver is given; every test gives one
     Resolver: class {
+      constructor() {
+        resolvers++;
+      }
       resolveTxt = async (name: string) => {
         throw dnsError(name, "ENOTFOUND");
       };
@@ -271,6 +276,18 @@ test("a sender nobody wants is passed over before anything is looked up", async 
     lookups,
     0,
     "a stranger's mail costs no DNS, and its broken DNS stalls nothing",
+  );
+});
+
+test("the system's DNS is asked afresh for each mail, not as it was when the server started", async () => {
+  const before = resolvers;
+  // No resolver given: email.ts looks the sender up itself
+  await readMail(await mail({}, false), { mailbox, arrived: now });
+  await readMail(await mail({}, false), { mailbox, arrived: now });
+  assert.equal(
+    resolvers - before,
+    2,
+    "a resolver kept from boot keeps asking a VPN's or an old Wi-Fi's servers",
   );
 });
 

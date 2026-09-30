@@ -71,11 +71,18 @@ export type Resolve = (
   type: string,
 ) => Promise<string[][] | string[]>;
 
-const dns = new Resolver({ timeout: REACH.mailDnsMs, tries: 1 });
-const lookUp: Resolve = (domain, type) =>
-  type === "TXT"
-    ? dns.resolveTxt(domain)
-    : (dns.resolve(domain, type) as Promise<string[]>);
+/**
+ * DNS as the system has it now. A resolver keeps the servers it was made with, and a laptop
+ * changes networks under a server that stays up — a VPN on or off, another Wi-Fi — so one is
+ * made for each mail checked, never kept.
+ */
+function systemDns(): Resolve {
+  const dns = new Resolver({ timeout: REACH.mailDnsMs, tries: 1 });
+  return (domain, type) =>
+    type === "TXT"
+      ? dns.resolveTxt(domain)
+      : (dns.resolve(domain, type) as Promise<string[]>);
+}
 
 /** The sender's records could not be looked up: the mail waits and is checked again. */
 export class CheckLater extends Error {}
@@ -206,7 +213,7 @@ async function unproven(
     };
 
   const checked = await authenticate(source, {
-    resolver: at.resolve ?? lookUp,
+    resolver: at.resolve ?? systemDns(),
     disableArc: true,
     disableBimi: true,
   }).catch((cause: unknown) => {
@@ -281,21 +288,19 @@ const bareSubject = (subject: string) =>
 type Thread = { subject: string; last: string | null; refs: string[] };
 
 /**
- * `resolve` is how senders' records are looked up: DNS, unless a test stands in for the
- * domains its mail is signed by.
+ * `resolve` is how senders' records are looked up: the system's DNS (systemDns) when left
+ * out, or a test standing in for the domains its mail is signed by.
  */
 export function createEmail(
   address: string,
   password: string,
   imapServer: string,
   smtpServer: string,
-  resolve: Resolve = lookUp,
+  resolve?: Resolve,
 ): Channel {
   const mailbox = address.trim().toLowerCase();
   /** The mail each conversation is in, so an answer is threaded under what was written. */
   const threads = new Map<string, Thread>();
-  /** How often a mail's sender could not be checked (CheckLater), by UID. Kept across connections. */
-  const checks = new Map<number, number>();
 
   /** A server as it was saved, or the step that holds it refused (REACH_KEYS order). */
   const server = (value: string, key: number, what: string): MailServer => {
@@ -435,15 +440,26 @@ export function createEmail(
         });
         while (!signal.aborted) {
           rung = false;
-          seen = await look(
+          const looked = await look(
             client,
             seen,
             on.incoming,
             // A channel that is not told who is wanted reads everyone's, and reach sorts them
             on.wanted ?? (() => true),
           );
-          if (!rung && !signal.aborted)
-            await ring(client, imap.host, REACH.mailLookMs, signal);
+          seen = looked.seen;
+          // Their mail waits where it is, and what came after it behind it: said, and
+          // checked again, on the connection that stands
+          on.trouble?.(looked.later);
+          const again = looked.later !== null;
+          if ((again || !rung) && !signal.aborted)
+            await ring(
+              client,
+              imap.host,
+              again ? REACH.mailCheckAgainMs : REACH.mailLookMs,
+              signal,
+              again,
+            );
         }
       } finally {
         signal.removeEventListener("abort", shut);
@@ -470,14 +486,15 @@ export function createEmail(
 
   /**
    * Hands over what arrived past `seen`, oldest first, and keeps how far it got after each
-   * one, so a mail is neither answered twice nor skipped across a restart.
+   * one, so a mail is neither answered twice nor skipped across a restart. It stops at a mail
+   * whose sender cannot be checked yet (`later` says why): the next look starts there.
    */
   async function look(
     client: ImapFlow,
     seen: Seen,
     incoming: (incoming: Incoming) => void,
     wanted: Wanted,
-  ): Promise<Seen> {
+  ): Promise<{ seen: Seen; later: string | null }> {
     // Listed first: the connection runs one command at a time, and a fetch holds it
     const arrived = (
       await client.fetchAll(
@@ -491,13 +508,19 @@ export function createEmail(
       .sort((a, b) => a.uid - b.uid);
     let now = seen;
     for (const one of arrived) {
-      const mail = await take(
-        client,
-        one.uid,
-        one.size ?? 0,
-        one.internalDate,
-        wanted,
-      );
+      let mail: Mail | null;
+      try {
+        mail = await take(
+          client,
+          one.uid,
+          one.size ?? 0,
+          one.internalDate,
+          wanted,
+        );
+      } catch (cause) {
+        if (!(cause instanceof CheckLater)) throw cause;
+        return { seen: now, later: cause.message };
+      }
       const repeat = Boolean(mail?.id && now.ids.includes(mail.id));
       now = {
         ...now,
@@ -535,7 +558,7 @@ export function createEmail(
         unproven: mail.unproven,
       });
     }
-    return now;
+    return { seen: now, later: null };
   }
 
   /**
@@ -583,25 +606,15 @@ export function createEmail(
       { uid: true },
     );
     if (!whole || !whole.source) return null;
-    try {
-      const mail = await readMail(whole.source, {
-        mailbox,
-        arrived,
-        resolve,
-        wanted,
-      });
-      checks.delete(uid);
-      return mail?.auto ? null : mail;
-    } catch (cause) {
-      if (!(cause instanceof CheckLater)) throw cause;
-      const tries = (checks.get(uid) ?? 0) + 1;
-      checks.set(uid, tries);
-      // Waits, and holds up what came after it, until it is checked or given up on
-      if (tries < REACH.mailChecks) throw cause;
-      checks.delete(uid);
-      logger.warn(`reach email: passed over mail ${uid}: ${cause.message}`);
-      return null;
-    }
+    // A sender who cannot be checked yet throws CheckLater: only mail from the one who may
+    // write gets this far, so it waits to be checked again rather than being passed over
+    const mail = await readMail(whole.source, {
+      mailbox,
+      arrived,
+      resolve,
+      wanted,
+    });
+    return mail?.auto ? null : mail;
   }
 }
 
@@ -694,7 +707,7 @@ export async function checkMail(
   times: { backMs: number; waitMs: number; onlyNew?: boolean },
   passOver: string[] = [],
   signal?: AbortSignal,
-  resolve: Resolve = lookUp,
+  resolve?: Resolve,
 ): Promise<Checked> {
   const sender = senderOf(from);
   if (!sender)
@@ -853,6 +866,8 @@ function ring(
   host: string,
   ms: number,
   signal?: AbortSignal,
+  /** Wait the whole time out: mail arriving changes nothing about what is being waited for. */
+  whole = false,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const off = () => {
@@ -872,7 +887,7 @@ function ring(
       else reject(new Error(`${host} closed the connection`));
     }
     const timer = setTimeout(arrived, ms);
-    client.on("exists", arrived);
+    if (!whole) client.on("exists", arrived);
     client.once("close", gone);
     signal?.addEventListener("abort", arrived, { once: true });
     if (!client.usable) gone();
