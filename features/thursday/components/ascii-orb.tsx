@@ -83,6 +83,12 @@ type AsciiOrbProps = {
    * that looks at you, and a wash goes through her a moment later. Read once, as she mounts.
    */
   waking?: boolean;
+  /**
+   * Something covers her whole while she stays as she is (Settings): her frames are let go,
+   * and she goes on from where she stood once it lifts. Drawing under it cost what drawing
+   * her in the open does, for a face nobody could see.
+   */
+  held?: boolean;
 };
 
 /**
@@ -768,6 +774,7 @@ export function AsciiOrb({
   getSpectrum,
   word = null,
   waking = false,
+  held = false,
 }: AsciiOrbProps) {
   const hostRef = useRef<HTMLCanvasElement>(null);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
@@ -852,6 +859,9 @@ export function AsciiOrb({
   const gridRef = useRef<Grid | null>(null);
   /** Whether she came in waking; the loop reads it once, as she mounts */
   const wakingRef = useRef(waking);
+  /** Read by the loop each frame: a prop, so holding her neither rebuilds nor restarts anything */
+  const heldRef = useRef(held);
+  heldRef.current = held;
 
   // grid is rebuilt only when the size changes
   useEffect(() => {
@@ -1046,8 +1056,12 @@ export function AsciiOrb({
 
     let drawnAt = Number.NEGATIVE_INFINITY;
     const draw = (nowMs: number) => {
-      // a frame that comes before her next one is due is let go (config ASCII_FACE `fps`)
-      if (nowMs - drawnAt < 1000 / ASCII_FACE.fps - CAP_SLACK_MS) {
+      // a frame that comes before her next one is due is let go (config ASCII_FACE `fps`),
+      // and every frame while she is held: the clamp on `dt` below takes up the gap after
+      if (
+        heldRef.current ||
+        nowMs - drawnAt < 1000 / ASCII_FACE.fps - CAP_SLACK_MS
+      ) {
         raf = requestAnimationFrame(draw);
         return;
       }

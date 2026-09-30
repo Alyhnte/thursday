@@ -67,7 +67,10 @@ import {
   useSectionAlerts,
   worstAlert,
 } from "@/features/settings/settings.alert";
-import { openSettings } from "@/features/settings/settings.store";
+import {
+  openSettings,
+  useSettingsStore,
+} from "@/features/settings/settings.store";
 import { useCallHeld } from "@/features/thursday/call-signal";
 import { faceMoment, useFaceMoment } from "@/features/thursday/face-moment";
 import { silentVoice } from "@/features/thursday/silent-voice";
@@ -226,6 +229,7 @@ function CallScreen({
   const ringWord = useRingWord(calling);
   // the first-run intro lies over the call screen and draws a face of its own
   const covered = useCallHeld();
+  const settingsOpen = useSettingsStore((state) => state.open);
   // A thread open in the room is drawn as its office where her face stands (bot-room): her face
   // gives way to it in a fade rather than a cut, and a call on says so in her words at the top
   const office = useRoomOffice();
@@ -317,6 +321,8 @@ function CallScreen({
                 getSpectrum={getSpectrum}
                 // once it covers her she is not drawn under it
                 covered={covered || moment?.phase === "world" || away}
+                // Settings covers her whole and leaves her as she is: she waits under it
+                held={settingsOpen}
                 className="-m-(--face-bleed) w-[calc(100%+2*var(--face-bleed))] max-w-none"
               />
             </span>

@@ -28,6 +28,8 @@ type FaceProps = {
   getSpectrum?: () => ArrayLike<number>;
   /** She comes in waking (ascii-orb `waking`): the first run's opening brings her in this way. */
   waking?: boolean;
+  /** Covered whole while she stays as she is (ascii-orb `held`): she stops drawing, and goes on after. */
+  held?: boolean;
   className?: string;
 };
 
@@ -52,6 +54,7 @@ function OrbFace({
   size,
   getSpectrum,
   waking,
+  held,
   className,
 }: FaceProps) {
   const dark = useIsDark();
@@ -63,6 +66,7 @@ function OrbFace({
       color={dark ? ORB_INK.dark : ORB_INK.light}
       getSpectrum={getSpectrum}
       waking={waking}
+      held={held}
       className={className}
     />
   );
