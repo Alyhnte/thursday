@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { closeSync, openSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { DATA_DIR, UPDATE } from "@/config";
 import { listRunningThreadIds } from "@/features/bot/thread.query";
@@ -250,7 +251,10 @@ export async function startUpdate(
         ...(port ? ["--port", port] : []),
         "--no-open",
       ],
-      { detached: true, stdio: ["ignore", log, log], env },
+      // Started from the home folder, as a person typing it would be. This server runs inside
+      // its own copy (server.js chdirs there), which is itself a package of this name and is
+      // the folder `start` removes once the new version is up (bin/background.mjs pruneCopies)
+      { cwd: homedir(), detached: true, stdio: ["ignore", log, log], env },
     );
     child.on("error", (cause: NodeJS.ErrnoException) => {
       moving.failed =

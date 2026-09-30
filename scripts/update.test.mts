@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, afterEach, test } from "node:test";
 
@@ -206,7 +206,7 @@ async function standInNpx(exit: number) {
   const out = join(bin, "ran.txt");
   await writeFile(
     join(bin, "npx"),
-    `#!/bin/sh\n{ printf '%s\\n' "$@"; echo "COMMAND=$THURSDAY_COMMAND"; echo "NODE_ENV=$NODE_ENV"; echo "PORT=$PORT"; echo "HOME_VAR=$THURSDAY_HOME"; } > '${out}'\necho "the stand-in ran"\nexit ${exit}\n`,
+    `#!/bin/sh\n{ printf '%s\\n' "$@"; echo "COMMAND=$THURSDAY_COMMAND"; echo "NODE_ENV=$NODE_ENV"; echo "PORT=$PORT"; echo "CWD=$(pwd)"; echo "HOME_VAR=$THURSDAY_HOME"; } > '${out}'\necho "the stand-in ran"\nexit ${exit}\n`,
   );
   await chmod(join(bin, "npx"), 0o755);
   process.env.PATH = `${bin}:${realPath}`;
@@ -247,6 +247,8 @@ test("Update runs the new version's own start on this folder and port, in the us
       "COMMAND=npx thursday-agent",
       "NODE_ENV=",
       "PORT=",
+      // Not the folder this server runs in, which the new version's start removes
+      `CWD=${homedir()}`,
       "HOME_VAR=",
     ]);
     assert.deepEqual((await readUpdate()).moving, {
