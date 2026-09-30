@@ -1,5 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  readdir,
+  readFile,
+  rename,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { basename, join } from "node:path";
 import * as z from "zod";
 import { appEvents } from "@/app/api/events/app-event.server";
@@ -99,12 +106,24 @@ async function dropOlder(site: string, account: string) {
     await rm(path, { force: true });
 }
 
+/**
+ * Written beside and moved over: writing in place empties the file first, and a write that
+ * then fails — a disk a bot filled, the process stopped mid-write — leaves a file `readKept`
+ * cannot parse, which reads as a sign-in that was never kept. The one name beside is enough,
+ * since every write waits in the vault's lane, and it is no sign-in's name (`siteOfName`).
+ */
 async function write(kept: Kept) {
   await mkdir(VAULT, { recursive: true });
-  // Owner-only: the session signs in as them
-  await writeFile(fileOf(kept.site, kept.account), JSON.stringify(kept), {
-    mode: 0o600,
-  });
+  const file = fileOf(kept.site, kept.account);
+  const beside = `${file}.saving`;
+  try {
+    // Owner-only: the session signs in as them
+    await writeFile(beside, JSON.stringify(kept), { mode: 0o600 });
+    await rename(beside, file);
+  } catch (cause) {
+    await rm(beside, { force: true }).catch(() => {});
+    throw cause;
+  }
   await dropOlder(kept.site, kept.account);
   changed();
 }

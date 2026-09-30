@@ -4746,6 +4746,37 @@ test("a sign-in an older build kept in one file a site is read where it is, move
   }
 });
 
+test("a sign-in whose write fails is still the one kept before", async () => {
+  const { keepSignIn, removeSignIn } = await signIns();
+  const { DATA_DIR, PATHS } = await import("../config.ts");
+  const { readdir } = await import("node:fs/promises");
+  const vault = join(DATA_DIR, PATHS.signIns);
+  const held = { site: "bank.test", account: "a@example.com" };
+  try {
+    await keepSignIn({
+      ...held,
+      bot: "Keeper",
+      state: { cookies: [cookie("bank.test", "signed-in")] },
+    });
+    const [file] = (await readdir(vault)).filter((name) =>
+      name.startsWith("bank.test@"),
+    );
+    // Where the next write lands before it is moved over: a folder there refuses it, as a
+    // full disk would
+    await mkdir(join(vault, `${file}.saving`));
+    // Lending stamps when it was used, which is a write
+    await assert.rejects(keptValue("bank.test", "Keeper"));
+    await rm(join(vault, `${file}.saving`), { recursive: true });
+    assert.equal(await keptValue("bank.test", "Keeper"), "signed-in");
+    assert.deepEqual(
+      (await readdir(vault)).filter((name) => name.endsWith(".saving")),
+      [],
+    );
+  } finally {
+    await removeSignIn(held.site, held.account);
+  }
+});
+
 test("the Skills screen lists each bot's own — its kit and what it found or wrote — and only the latter can be changed", async () => {
   const { findAllSkills, deleteSkill, writeSkillFile } = await import(
     "../features/skills/skills.query.ts"
