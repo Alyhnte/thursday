@@ -1,5 +1,5 @@
 ---
-checked: 2026-09-28
+checked: 2026-09-30
 paths:
   - "bin/**"
   - ".github/**"
@@ -19,6 +19,7 @@ touches anyone's data.
 - `bin/thursday.cjs` — where `npx thursday-agent` and `pnpm start` begin: `node-check.cjs`, in syntax any Node parses, then `thursday.mjs`.
 - `bin/thursday.mjs` — the command: two roots, a port, the built server.
 - `bin/background.mjs` — `start`, `stop`, `status` and the first run's question: the launchd job, and the copy it runs from `~/.thursday/app`.
+- `features/settings/update.ts` — asking npm for the newest version when a browser opens the app, and moving the background copy to it.
 - `scripts/dev.mts` — `pnpm dev`: `next dev` on a free loopback port.
 - `instrumentation-node.ts` — boot: migrate, seal what is still in the clear, sweep the last run, start routines and the phone.
 - `next.config.ts` — standalone output, and the run-time files the trace is told about.

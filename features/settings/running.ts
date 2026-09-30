@@ -5,7 +5,8 @@ import { DATA_DIR } from "@/config";
 /**
  * Where this server runs, as the starter that spawned it said (bin/thursday.mjs): in the
  * background under launchd, in a terminal, from source with `pnpm dev`, or started by something
- * else. The app only says so and names the command; it never moves or stops itself.
+ * else. The app only says so and names the command; it never stops itself, and moves only to a
+ * newer version, in the background, when asked (update.ts).
  */
 export type Running = {
   where: "background" | "terminal" | "source" | "elsewhere";

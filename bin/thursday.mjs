@@ -241,6 +241,9 @@ function start() {
           : "elsewhere",
       THURSDAY_COMMAND: thursdayCommand(),
       THURSDAY_START: commandFor("start", home),
+      // The version that runs, for Settings to say and to compare with npm's newest
+      // (features/settings/update.ts)
+      THURSDAY_VERSION: version,
       PORT: port,
       // This machine only. A voice agent with a shell is not a thing to expose.
       // Never inherited: Docker exports HOSTNAME as the container and some

@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/popover";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Segmented } from "@/components/ui/segmented";
+import { ShinyText } from "@/components/ui/shiny-text";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
@@ -60,6 +61,8 @@ import {
   SettingSkeleton,
 } from "@/features/settings/components/setting-ui";
 import type { Running } from "@/features/settings/running";
+import type { Update } from "@/features/settings/update";
+import { moveTo, useUpdateStore } from "@/features/settings/update.store";
 import type { SkillSummary } from "@/features/skills/skills.schema";
 import { CallHistoryRow } from "@/features/thursday/components/call-log";
 import { ThursdayMark } from "@/features/thursday/components/thursday-mark";
@@ -850,15 +853,24 @@ function ResetHistory() {
 }
 
 /**
- * Where the app runs, and the one command that changes it. The app never moves or stops itself
- * (bin/background.mjs): a server that stopped itself from a click would leave this page with
- * nothing behind it.
+ * Where the app runs, which version, and the one command that changes it. The app never stops
+ * itself (bin/background.mjs): a server that stopped itself from a click would leave this page
+ * with nothing behind it. It does move itself to a newer version, in the background, at a press:
+ * that command brings the new one up, or the one before back (features/settings/update.ts).
+ * Anywhere else the move is a line to copy.
  */
 function RunningRow() {
   const { data } = useServerRoute<Running>(queryKey.running);
+  // The server is down for a moment during a move: a read that fails then is not news
+  const { data: update } = useServerRoute<Update>(queryKey.update, {
+    onError: () => {},
+  });
+  const { to, failed } = useUpdateStore();
   if (!data) return <Skeleton className="h-16 w-full rounded-xl" />;
 
   const { where, mac, command, start, home } = data;
+  const newer = update?.newer ?? null;
+  const move = newer && update?.command ? update.command : null;
   const said = {
     background: {
       title: "In the background",
@@ -902,18 +914,62 @@ function RunningRow() {
         <span className="min-w-0 flex-1 space-y-0.5">
           <span className="block truncate text-sm font-medium">
             {said.title}
+            {update?.current && (
+              <span className="font-normal text-muted-foreground">
+                {" "}
+                · {update.current}
+              </span>
+            )}
           </span>
-          <span className="block text-xs text-muted-foreground">
-            {said.hint}
-            {where === "terminal" && !mac
-              ? " Running in the background is macOS only for now."
-              : ""}
-          </span>
+          {to ? (
+            <span className="block text-xs text-muted-foreground">
+              <ShinyText text={`Updating to ${to}…`} /> Thursday restarts in a
+              moment.
+            </span>
+          ) : newer ? (
+            <span className="block text-xs">{newer} is out.</span>
+          ) : (
+            <span className="block text-xs text-muted-foreground">
+              {said.hint}
+              {where === "terminal" && !mac
+                ? " Running in the background is macOS only for now."
+                : ""}
+              {update?.unreached
+                ? " npm could not be asked for a newer version."
+                : ""}
+            </span>
+          )}
           <span className="block truncate font-mono text-[11px] text-muted-foreground">
             {home}
           </span>
         </span>
+        {newer && update?.byButton && !to && (
+          <Button size="sm" onClick={() => void moveTo(newer)}>
+            Update
+          </Button>
+        )}
       </div>
+      {failed && !to && (
+        <div className="space-y-1 pl-13 text-xs">
+          <p className="text-destructive">Could not update to {failed.to}.</p>
+          <p className="line-clamp-3 font-mono text-[11px] whitespace-pre-wrap text-muted-foreground">
+            {failed.why}
+          </p>
+        </div>
+      )}
+      {move && !to && (failed || !update?.byButton) && (
+        <div className="flex flex-wrap items-center gap-2 pl-13 text-xs text-muted-foreground">
+          <span>
+            {where === "terminal"
+              ? "To move to it, press Ctrl+C there and run"
+              : "To move to it"}
+          </span>
+          <code className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-[11px] text-foreground">
+            {move}
+          </code>
+          <CopyCommand text={move} />
+        </div>
+      )}
       {said.how && (
         <div className="flex flex-wrap items-center gap-2 pl-13 text-xs text-muted-foreground">
           <span>{said.how.label}</span>

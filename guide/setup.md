@@ -178,6 +178,24 @@ older one it prints the commands that update it and start it again.
 Closing the terminal it runs in stops it like Ctrl+C: running jobs pause and wait for **Continue**;
 in the background, closing the terminal changes nothing.
 
+## Updating
+
+Thursday does not update by itself. When the app is opened in a browser it asks npm, at most once
+a day, whether a newer version is out. When one is, a notice at the top says so: **Update** moves
+to it, and closing the notice hides it for a day. **Settings › Thursday › Running** shows the
+version that runs, and keeps saying a newer one is out after the notice is closed.
+
+- Running in the background, started through `npx`: **Update** installs the new version, starts
+  Thursday again on the same address and loads the page again on it, in a minute or so. A call
+  that is open ends with the restart and running jobs pause on **Continue** (a routine's run
+  ends), so it asks first when either is open. If the new version does not come up, the one
+  before runs again, and the row says why with the line to run by hand.
+- Running in a terminal, or installed with `npm install -g`: the row shows the line to run
+  instead of a button.
+- A bare `npx thursday-agent` does not update a copy that is already running: it opens that one.
+- Run from source, it says nothing: a checkout moves with git.
+- When npm cannot be reached, the row says so, and npm is asked again later.
+
 ## Where the files are
 
 Everything is on this computer, in one folder: `.thursday` in their home folder when started with

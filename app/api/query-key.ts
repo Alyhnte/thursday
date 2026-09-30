@@ -215,4 +215,6 @@ export const queryKey = {
   subscriptionUsage: "/api/llm-model/subscription",
   /** Running: where this server runs — the background, a terminal — and the command to change it */
   running: "/api/running",
+  /** Update: the version that runs, npm's newest when it is newer, and how to move there */
+  update: "/api/update",
 } as const;

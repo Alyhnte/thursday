@@ -307,6 +307,34 @@ export const APP_URL =
   process.env.THURSDAY_URL?.trim() ||
   `http://localhost:${process.env.PORT?.trim() || 3000}`;
 
+/**
+ * Moving to a newer version (features/settings/update). npm's registry is asked which version
+ * is `latest` only when a browser opens the app, never on a timer.
+ * - `checkMs`  how long npm's answer is believed before it is asked again. Longer asks npm
+ *   less often and hears of a release that much later.
+ * - `againMs`  how long an ask that got no answer (no network, a VPN's certificate) stands
+ *   before npm is asked again. Shorter hears of a release sooner once the network is back;
+ *   longer asks a registry that cannot be reached less often.
+ * - `timeoutMs`  one ask's wait. The page that opened waits on it, so longer holds the
+ *   notice back on a slow network.
+ * - `quietMs`  how long the notice stays away once it is closed. Shorter says a release
+ *   again sooner to someone who put it off.
+ * - `waitMs`  how long the page waits for the new version to answer once Update is pressed
+ *   before it says the update did not come up: an install from npm, then a first boot that
+ *   may migrate the database (bin/background.mjs gives that boot 90 seconds by itself).
+ *   Shorter calls a slow install a failure; longer leaves "Updating" up over one that died.
+ * - `pollMs`  how often the page asks meanwhile. The server is down for part of it, so this
+ *   is also how soon after it is back the page reloads.
+ */
+export const UPDATE = {
+  checkMs: 24 * 60 * 60_000,
+  againMs: 10 * 60_000,
+  timeoutMs: 5_000,
+  quietMs: 24 * 60 * 60_000,
+  waitMs: 5 * 60_000,
+  pollMs: 2_000,
+};
+
 /** The database file. Absolute because the process may not run inside DATA_DIR. */
 export const DB_PATH = `${DATA_DIR}/local.db`;
 

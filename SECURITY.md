@@ -92,6 +92,13 @@ What the app does to keep that narrow:
   browser and sign-ins as one you watch; what it asks waits for an answer, and
   what it finishes is told by the computer's notification and, with a phone
   connected, there.
+- **It asks npm which version is newest, and installs nothing unasked.** When a
+  browser opens the app, at most once a day, the server asks
+  `registry.npmjs.org` for this package's newest version: the one request it
+  makes that nobody asked for by name, and it carries nothing of yours. A newer
+  version is only said. It is installed when you press **Update** (the copy in
+  the background then runs `npx thursday-agent@<version> start`) or run that
+  line yourself.
 
 What it does not do: sandbox the shell, sign what a bot downloads, or review the
 skills and servers you add. A skill is code you chose to trust, and so is a
