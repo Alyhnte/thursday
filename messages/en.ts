@@ -391,6 +391,71 @@ export type BotDict = {
   seedHints: Record<string, string>;
 };
 
+export type FilesDict = {
+  finishedWord: string;
+  countEmpty: string;
+  resultOne: string;
+  resultMany: string;
+  countResults: (shown: number, total: string) => string;
+  countFiles: (files: string) => string;
+  revealFolder: string;
+  filter: string;
+  everyone: string;
+  unsorted: string;
+  showMore: (more: number, total: string) => string;
+  deletedOk: string;
+  deleteTitle: (name: string) => string;
+  deleteFileBody: string;
+  deleteFolderBody: string;
+  deleteOk: string;
+  shelfWord: string;
+  fileWord: string;
+  filesWord: string;
+  openNewTab: string;
+  revealManager: string;
+  deleteAria: string;
+  setEmpty: string;
+  setRest: (shown: number, total: string) => string;
+  nothingEmpty: string;
+  nothingPick: string;
+};
+
+export type WorkspaceDict = {
+  scratchDone: string;
+  emptyScratchTitle: string;
+  emptyScratchBody: (
+    scratch: string,
+    artifacts: string,
+    projects: string,
+  ) => string;
+  emptyScratchOk: string;
+  revealFolder: string;
+  emptyScratchBtn: string;
+  filter: string;
+  nothingMatches: string;
+  emptyFolder: string;
+  foldersWord: string;
+  filesWord: string;
+  showMore: (more: number, total: string) => string;
+  folderOne: string;
+  folderMany: string;
+  fileOne: string;
+  fileMany: string;
+  countEmpty: string;
+  countOf: (total: string) => string;
+  nothingEmptyHead: string;
+  nothingEmptyTail: string;
+  pickFile: string;
+  nothingListed: string;
+  fileDeletedOk: string;
+  deleteTitle: (name: string) => string;
+  deleteBody: string;
+  deleteOk: string;
+  openNewTab: string;
+  revealManager: string;
+  deleteAria: string;
+};
+
 export type SettingsDict = {
   dialogTitle: string;
   navLabel: string;
@@ -421,6 +486,8 @@ export type SettingsDict = {
   threads: ThreadsDict;
   routine: RoutineDict;
   bot: BotDict;
+  files: FilesDict;
+  workspace: WorkspaceDict;
 };
 
 export const en: SettingsDict = {
@@ -852,6 +919,73 @@ export const en: SettingsDict = {
     scheduleDayTime: (day, time) => `${day} ${time}`,
     nowWord: "now",
     yesterdayWord: "Yesterday",
+  },
+  files: {
+    finishedWord: "finished",
+    countEmpty: "empty",
+    resultOne: "result",
+    resultMany: "results",
+    countResults: (shown, total) => `${shown} of ${total} results`,
+    countFiles: (files) => ` · ${files} files`,
+    revealFolder: "Reveal folder",
+    filter: "Filter files",
+    everyone: "Everyone",
+    unsorted: "Unsorted",
+    showMore: (more, total) => `Show ${more} more of ${total}`,
+    deletedOk: "Deleted",
+    deleteTitle: (name) => `Delete ${name}?`,
+    deleteFileBody: "It is deleted from disk for good.",
+    deleteFolderBody:
+      "The folder and everything in it are deleted from disk for good.",
+    deleteOk: "Delete",
+    shelfWord: "Shelf",
+    fileWord: "file",
+    filesWord: "files",
+    openNewTab: "Open in a new tab",
+    revealManager: "Reveal in the file manager",
+    deleteAria: "Delete",
+    setEmpty: "Nothing in here the app can open.",
+    setRest: (shown, total) =>
+      `${shown} of ${total} — the rest are in the folder`,
+    nothingEmpty:
+      "Nothing finished yet. When a bot ends a job with something to hand over — a page, a report, a set of pictures — it lands here.",
+    nothingPick:
+      "Pick something on the left. Each bot's work is under its face; a folder it filled is one row, and opens as a sheet.",
+  },
+  workspace: {
+    scratchDone: "Scratch emptied",
+    emptyScratchTitle: "Empty scratch?",
+    emptyScratchBody: (scratch, artifacts, projects) =>
+      `Everything under ${scratch}/ is deleted for good. ${artifacts}/ and ${projects}/ are untouched.`,
+    emptyScratchOk: "Empty",
+    revealFolder: "Reveal folder",
+    emptyScratchBtn: "Empty scratch",
+    filter: "Filter this folder",
+    nothingMatches: "Nothing matches",
+    emptyFolder: "Empty folder",
+    foldersWord: "folders",
+    filesWord: "files",
+    showMore: (more, total) => `Show ${more} more of ${total}`,
+    folderOne: "folder",
+    folderMany: "folders",
+    fileOne: "file",
+    fileMany: "files",
+    countEmpty: "empty",
+    countOf: (total) => ` of ${total}`,
+    nothingEmptyHead:
+      "Nothing here yet. What a bot writes during a call lands in",
+    nothingEmptyTail:
+      "— a page, a table, a picture — and shows up here to open.",
+    pickFile: "Pick a file on the left.",
+    nothingListed:
+      "Only what the app can open is listed — a page, a table, a picture, a note. Installed packages and tool leftovers are left out, and no folder is measured, so a folder opens as fast as it lists. Reveal folder, at the foot, opens everything else.",
+    fileDeletedOk: "File deleted",
+    deleteTitle: (name) => `Delete ${name}?`,
+    deleteBody: "It is deleted from disk for good.",
+    deleteOk: "Delete",
+    openNewTab: "Open in a new tab",
+    revealManager: "Reveal in the file manager",
+    deleteAria: "Delete",
   },
   bot: {
     botsMost: (count, max) => `${count} bots · ${max} is the most`,
