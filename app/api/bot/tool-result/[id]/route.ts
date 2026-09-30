@@ -4,7 +4,9 @@ import { publicError } from "@/lib/public-error";
 
 /**
  * Parts of one thread that the list omits. `?call=<toolCallId>` returns the full
- * ResultPart[] of one tool call; the list carries only a few lines of it.
+ * ResultPart[] of one tool call; the list carries only a few lines of it. Outside
+ * `/api/bot/thread`: a result is final once its tool has answered, and under that prefix
+ * an opened one was read again, by a scan of the whole thread, for every row a bot wrote.
  */
 export const GET = serverRoute(
   async (request, { params }: RouteContext<{ id: string }>) => {

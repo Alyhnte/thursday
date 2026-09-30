@@ -103,9 +103,12 @@ export const queryKey = {
     url: "/api/bot/thread/file",
     query: { path, from },
   }),
-  /** ResultPart[]: the full result of one tool call; lists carry only a few lines. */
+  /**
+   * ResultPart[]: the full result of one tool call; lists carry only a few lines. Not under
+   * `threads`: it does not change, so no signal reads it again.
+   */
   toolResult: (threadId: string | null, callId: string | null) => ({
-    url: "/api/bot/thread",
+    url: "/api/bot/tool-result",
     pathVariable: [threadId],
     query: { call: callId },
   }),
