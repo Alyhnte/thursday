@@ -78,7 +78,11 @@ What the app does to keep that narrow:
   it is written to her address and it is under 48 hours old
   (`features/reach/email.ts`); whoever controls that mail account, or that
   domain's signing key, is that person. Her mailbox's app password is kept
-  sealed with your keys.
+  sealed with your keys. A bot can read her mailbox too (`check_mail`,
+  `features/ai/tools/mail.tool.ts`): only mail from the one sender it names,
+  from the last 30 minutes, whose domain vouches for it. What that mail says
+  is read by a bot that has a shell: the tool says it is the sender's words,
+  not the user's, and that is an instruction, not a lock.
 - **Work goes on with nobody watching.** A job keeps running after its tab
   closes, a routine starts at its time with nothing open, and `npx
   thursday-agent start` (macOS) keeps the server running in the background and

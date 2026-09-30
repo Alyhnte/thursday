@@ -23,9 +23,21 @@ let refuseFiles = false;
 /** What the fake mailbox hands reach, once it listens. */
 let hand: ((incoming: unknown) => void) | null = null;
 const MB = 1024 * 1024;
+/** What the next check of her mailbox finds, as checkMail answers. */
+let checked: unknown = { kind: "none", unproven: [] };
+const checks: { from: string; waitMs: number; onlyNew?: boolean }[] = [];
 mock.module("../features/reach/email.ts", {
   namedExports: {
     EMAIL_SEEN_KEY: "REACH_EMAIL_SEEN",
+    checkMail: async (
+      _mailbox: unknown,
+      from: string,
+      times: { waitMs: number; onlyNew?: boolean },
+    ) => {
+      checks.push({ from, waitMs: times.waitMs, onlyNew: times.onlyNew });
+      if (checked instanceof Error) throw checked;
+      return checked;
+    },
     createEmail: (address: string) => ({
       named: true,
       attaches: true,
@@ -343,4 +355,87 @@ test("naming another address lets the first go", async () => {
   hand?.(mail("alex@example.org", "still me?"));
   await quiet();
   assert.equal(letters.length, from, "the first is now a stranger");
+});
+
+test("a bot reads a site's mail at her address, and is told what it is", async () => {
+  const { createMailTools } = await import("../features/ai/tools/mail.tool.ts");
+  const tools = await createMailTools();
+  const check = tools.check_mail;
+  assert.ok(check, "held while she has a mailbox");
+  assert.match(String(check.description), /thursday@example\.com/);
+  const run = (input: Record<string, unknown>) =>
+    check.execute?.(
+      input as never,
+      {
+        toolCallId: "t",
+        messages: [],
+      } as never,
+    ) as Promise<string>;
+
+  checked = {
+    kind: "found",
+    from: "noreply@github.com",
+    subject: "Your code",
+    arrived: new Date(),
+    text: "Your code is 123456.",
+  };
+  const found = await run({ from: "github.com" });
+  assert.match(
+    found,
+    /^From noreply@github\.com, arrived .*: “Your code”\n\nYour code is 123456\./,
+  );
+  assert.match(found, /\[Written by noreply@github\.com, not by the user/);
+  assert.deepEqual(checks.at(-1), {
+    from: "github.com",
+    waitMs: 120_000,
+    onlyNew: false,
+  });
+
+  // A wait past the most a bot may ask is cut to it
+  checked = {
+    kind: "none",
+    unproven: [
+      "“Your code” from noreply@github.com: github.com's mail service does not vouch…",
+    ],
+  };
+  const none = await run({ from: "github.com", waitSeconds: 3_600 });
+  assert.equal(checks.at(-1)?.waitMs, 300_000);
+  assert.match(
+    none,
+    /^No mail from github\.com reached thursday@example\.com in the last 30 minutes, after waiting 300 seconds\./,
+  );
+  assert.match(
+    none,
+    /Came in its name and not read, since what it says could be anyone's: “Your code”/,
+  );
+
+  // After asking the site again: only what comes from now on
+  await run({ from: "github.com", onlyNew: true, waitSeconds: 5 });
+  assert.deepEqual(checks.at(-1), {
+    from: "github.com",
+    waitMs: 5_000,
+    onlyNew: true,
+  });
+  assert.match(
+    await run({ from: "github.com", onlyNew: true, waitSeconds: 5 }),
+    /^No mail from github\.com reached thursday@example\.com since you asked, after waiting 5 seconds\./,
+  );
+
+  checked = new Error("Could not reach imap.example.com:993: ETIMEDOUT");
+  assert.equal(
+    await run({ from: "github.com" }),
+    "Her mailbox could not be read: Could not reach imap.example.com:993: ETIMEDOUT",
+  );
+});
+
+test("a bot holds no mail tool while she has no mailbox", async () => {
+  await writeConfig(schema.EMAIL_PASSWORD_KEY, "");
+  try {
+    const { createMailTools } = await import(
+      "../features/ai/tools/mail.tool.ts"
+    );
+    assert.deepEqual(await createMailTools(), {});
+  } finally {
+    await writeConfig(schema.EMAIL_PASSWORD_KEY, "app-password-1234");
+  }
 });

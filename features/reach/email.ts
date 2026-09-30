@@ -93,6 +93,8 @@ export type Mail = Written & {
   subject: string;
   id: string | null;
   refs: string[];
+  /** Why it is not taken as from `chat`, in words for anyone (`unproven` is the same, for them). */
+  why?: string;
 };
 
 /**
@@ -133,6 +135,7 @@ export async function readMail(
         }),
     };
   });
+  const refused = await unproven(mail, source, address, at);
   return {
     kind: "message",
     chat: address,
@@ -141,30 +144,48 @@ export async function readMail(
     words: body,
     files,
     unreadable: false,
-    unproven: await unproven(mail, source, address, at),
+    ...(refused
+      ? {
+          why: refused.why,
+          unproven: notRead(subject, refused.why, refused.advice),
+        }
+      : {}),
     subject,
     id: mail.messageId ?? null,
     refs: [...referencesOf(mail), ...(mail.messageId ? [mail.messageId] : [])],
   };
 }
 
-/** Why this mail is not taken as theirs, in words for them; undefined when it is. */
+/** What the one who may write is told of a mail of theirs that was not read (reach take). */
+const notRead = (subject: string, why: string, advice = "") =>
+  `Your mail${subject ? ` “${subject}”` : ""} was not read: ${why}.${advice ? ` ${advice}` : ""}`;
+
+/**
+ * Why this mail is not taken as from `address`, and what its sender can do about it;
+ * undefined when it is.
+ */
 async function unproven(
   mail: ParsedMail,
   source: Buffer,
   address: string,
   at: { mailbox: string; arrived: Date; now?: number; resolve?: Resolve },
-): Promise<string | undefined> {
+): Promise<{ why: string; advice?: string } | undefined> {
   const mailbox = at.mailbox.toLowerCase();
   if (!addressesOf(mail.to, mail.cc).includes(mailbox))
-    return `Your mail was not read: it was not written to ${mailbox}. Thursday reads only mail with her address in To or Cc.`;
+    return {
+      why: `it was not written to ${mailbox}`,
+      advice: "Thursday reads only mail with her address in To or Cc.",
+    };
   const now = at.now ?? Date.now();
   const written = Math.min(
     mail.date?.getTime() ?? at.arrived.getTime(),
     at.arrived.getTime(),
   );
   if (now - written > REACH.mailFreshMs)
-    return `Your mail “${mail.subject ?? ""}” was not read: it was written more than ${Math.round(REACH.mailFreshMs / 3_600_000)} hours ago. Write it again if it still stands.`;
+    return {
+      why: `it was written more than ${Math.round(REACH.mailFreshMs / 3_600_000)} hours ago`,
+      advice: "Write it again if it still stands.",
+    };
 
   const checked = await authenticate(source, {
     resolver: at.resolve ?? lookUp,
@@ -181,10 +202,16 @@ async function unproven(
       `Could not check who sent a mail: ${domain}'s records did not answer`,
     );
   if (!dmarc || result !== "pass")
-    return `Your mail was not read: ${domain}'s mail service does not vouch that it came from you, so it could be anyone's. Thursday reads only mail its sender's service signs and stands behind. Gmail, iCloud, Fastmail and most others do; a domain of your own needs DKIM and DMARC set up (its DMARC check said: ${result}).`;
+    return {
+      why: `${domain}'s mail service does not vouch that it came from ${address}, so it could be anyone's (its DMARC check said: ${result})`,
+      advice:
+        "Thursday reads only mail its sender's service signs and stands behind. Gmail, iCloud, Fastmail and most others do; a domain of your own needs DKIM and DMARC set up.",
+    };
   // A signature over only the start of the body (l=) leaves the rest free for anyone to write
   if (dmarc.alignment?.dkim.underSized)
-    return `Your mail was not read: its signature covers only part of it, so the rest could be anyone's.`;
+    return {
+      why: "its signature covers only part of it, so the rest could be anyone's",
+    };
   return undefined;
 }
 
@@ -372,23 +399,7 @@ export function createEmail(
     async listen(on, signal) {
       const imap = server(imapServer, 2, "reading");
       const smtp = server(smtpServer, 3, "sending");
-      const client = new ImapFlow({
-        host: imap.host,
-        port: imap.port,
-        secure: imap.port === IMAP_TLS_PORT,
-        // Never a password over a line that is not encrypted
-        ...(imap.port === IMAP_TLS_PORT ? {} : { doSTARTTLS: true }),
-        auth: { user: address, pass: password },
-        logger: false,
-        maxIdleTime: IDLE_MS,
-        autoIdleDelay: REACH.mailPushAfterMs,
-        maxLiteralSize: MAIL_TAKE,
-        maxResponseSize: MAIL_TAKE + MB,
-      });
-      // A connection that fails says so in `close`; an error event with no listener would end the app
-      client.on("error", (cause: Error) =>
-        logger.warn(`reach email: ${imap.host}: ${cause.message}`),
-      );
+      const client = imapClient(address, password, imap);
       const shut = () => client.close();
       signal.addEventListener("abort", shut, { once: true });
       try {
@@ -407,7 +418,8 @@ export function createEmail(
         while (!signal.aborted) {
           rung = false;
           seen = await look(client, seen, on.incoming);
-          if (!rung && !signal.aborted) await ring(client, imap.host, signal);
+          if (!rung && !signal.aborted)
+            await ring(client, imap.host, REACH.mailLookMs, signal);
         }
       } finally {
         signal.removeEventListener("abort", shut);
@@ -519,7 +531,10 @@ export function createEmail(
         words: "",
         files: [],
         unreadable: false,
-        unproven: `Your mail “${head.envelope?.subject ?? ""}” was not read: it is ${Math.ceil(size / MB)} MB, and the most she reads is ${MAIL_TAKE / MB} MB.`,
+        unproven: notRead(
+          head.envelope?.subject ?? "",
+          `it is ${Math.ceil(size / MB)} MB, and the most she reads is ${MAIL_TAKE / MB} MB`,
+        ),
         subject: head.envelope?.subject ?? "",
         id: null,
         refs: [],
@@ -548,22 +563,211 @@ export function createEmail(
   }
 }
 
+/** Her inbox's connection, over TLS only, told of new mail while it idles. */
+function imapClient(
+  address: string,
+  password: string,
+  imap: MailServer,
+): ImapFlow {
+  const client = new ImapFlow({
+    host: imap.host,
+    port: imap.port,
+    secure: imap.port === IMAP_TLS_PORT,
+    // Never a password over a line that is not encrypted
+    ...(imap.port === IMAP_TLS_PORT ? {} : { doSTARTTLS: true }),
+    auth: { user: address, pass: password },
+    logger: false,
+    maxIdleTime: IDLE_MS,
+    autoIdleDelay: REACH.mailPushAfterMs,
+    maxLiteralSize: MAIL_TAKE,
+    maxResponseSize: MAIL_TAKE + MB,
+  });
+  // A connection that fails says so in `close`; an error event with no listener would end the app
+  client.on("error", (cause: Error) =>
+    logger.warn(`reach email: ${imap.host}: ${cause.message}`),
+  );
+  return client;
+}
+
+/** A mail a bot asked for (checkMail): who sent it, when it arrived, and what it says. */
+export type Checked =
+  | {
+      kind: "found";
+      from: string;
+      subject: string;
+      arrived: Date;
+      text: string;
+    }
+  /** None came in time; `unproven` names each that came from the sender and was not read, and why. */
+  | { kind: "none"; unproven: string[] };
+
 /**
- * Until the server says mail arrived, REACH.mailLookMs passes (its word can be lost with a
- * connection that drops quietly), or listening stops. A connection that closes meanwhile is
+ * Whether `from` — one address, or a domain and its subdomains — sent `address`.
+ * A domain is matched whole, never as the end of another name (evilgithub.com is not github.com).
+ */
+export function sentBy(address: string, from: string): boolean {
+  const wanted = from.trim().toLowerCase().replace(/^@/, "");
+  const sender = address.toLowerCase();
+  if (wanted.includes("@")) return sender === wanted;
+  const domain = sender.slice(sender.lastIndexOf("@") + 1);
+  return domain === wanted || domain.endsWith(`.${wanted}`);
+}
+
+/**
+ * For a bot waiting on a site's mail — a code, a link to confirm an address: the newest mail
+ * from `from` that reached her inbox in the last `backMs` (or, `onlyNew`, from now on), waiting
+ * up to `waitMs` for one when none has. The inbox is only read. A mail is read only when its sender's domain vouches for it
+ * (readMail): a mail in a site's name that is not is named with why, never read, since what it
+ * says could be anyone's. Throws on a sign-in refused or a server out of reach, in words.
+ */
+export async function checkMail(
+  mailbox: { address: string; password: string; imap: string },
+  from: string,
+  times: {
+    backMs: number;
+    waitMs: number;
+    /** Only mail that arrives from now on: one sent again, whatever came before it. */
+    onlyNew?: boolean;
+  },
+  signal?: AbortSignal,
+  resolve: Resolve = lookUp,
+): Promise<Checked> {
+  const imap = parseServer(mailbox.imap);
+  if (!imap)
+    throw new Error(
+      `Her mailbox's reading server “${mailbox.imap}” is not host:port.`,
+    );
+  const address = mailbox.address.toLowerCase();
+  const since = Date.now() - times.backMs;
+  const until = Date.now() + times.waitMs;
+  const client = imapClient(mailbox.address, mailbox.password, imap);
+  const shut = () => client.close();
+  signal?.addEventListener("abort", shut, { once: true });
+  /** Mail from the sender that is not read, and why, by UID: passed over from then on. */
+  const unproven = new Map<number, string>();
+  /** Mail whose sender's records did not answer: looked at again on the next pass. */
+  const unchecked = new Map<number, string>();
+  try {
+    await client
+      .connect()
+      .catch(
+        (cause: {
+          authenticationFailed?: boolean;
+          responseText?: string;
+          message?: string;
+        }) => {
+          throw new Error(
+            cause.authenticationFailed
+              ? `${imap.host} turned her mailbox's sign-in away (${cause.responseText || cause.message}). The user replaces its app password in Settings › Phone › Email.`
+              : `Could not reach ${serverWords(imap)}: ${reasonOf(cause)}`,
+          );
+        },
+      );
+    const box = await client.mailboxOpen("INBOX", { readOnly: true });
+    // Told apart by the server's own numbering, not by a clock: its time and this computer's
+    // may differ by more than a mail takes to arrive
+    const firstNew = times.onlyNew ? box.uidNext : 0;
+    let rung = false;
+    client.on("exists", () => {
+      rung = true;
+    });
+    while (!signal?.aborted) {
+      rung = false;
+      // SINCE is by day (RFC 3501 §6.4.4); the hour is checked below, from when each
+      // arrived. The sender is matched here, on the envelope, not by the server's FROM search:
+      // servers differ on whether that matches part of an address
+      const found = await client.search(
+        { since: new Date(since) },
+        { uid: true },
+      );
+      const arrived = found
+        ? await client.fetchAll(
+            found,
+            { uid: true, internalDate: true, size: true, envelope: true },
+            { uid: true },
+          )
+        : [];
+      const newest = arrived
+        .map((one) => ({ ...one, at: new Date(one.internalDate ?? 0) }))
+        .filter(
+          (one) =>
+            one.uid >= firstNew &&
+            one.at.getTime() >= since &&
+            (one.size ?? 0) <= MAIL_TAKE &&
+            (one.envelope?.from ?? []).some(
+              (sender) => sender.address && sentBy(sender.address, from),
+            ),
+        )
+        .sort((a, b) => b.at.getTime() - a.at.getTime());
+      for (const one of newest) {
+        if (unproven.has(one.uid)) continue;
+        const whole = await client.fetchOne(
+          String(one.uid),
+          { source: true },
+          { uid: true },
+        );
+        if (!whole || !whole.source) continue;
+        let mail: Mail | null;
+        try {
+          mail = await readMail(whole.source, {
+            mailbox: address,
+            arrived: one.at,
+            resolve,
+          });
+          unchecked.delete(one.uid);
+        } catch (cause) {
+          if (!(cause instanceof CheckLater)) throw cause;
+          unchecked.set(one.uid, cause.message);
+          continue;
+        }
+        // The envelope said so; the one From the mail is vouched for decides
+        if (!mail || !sentBy(mail.chat, from)) continue;
+        if (mail.why) {
+          unproven.set(
+            one.uid,
+            `“${mail.subject}” from ${mail.chat}: ${mail.why}`,
+          );
+          continue;
+        }
+        return {
+          kind: "found",
+          from: mail.chat,
+          subject: mail.subject,
+          arrived: one.at,
+          text: mail.words,
+        };
+      }
+      const left = until - Date.now();
+      if (left <= 0) break;
+      if (!rung) await ring(client, imap.host, left, signal);
+    }
+    return {
+      kind: "none",
+      unproven: [...unproven.values(), ...unchecked.values()],
+    };
+  } finally {
+    signal?.removeEventListener("abort", shut);
+    client.close();
+  }
+}
+
+/**
+ * Until the server says mail arrived, `ms` passes (its word can be lost with a connection
+ * that drops quietly), or listening stops. A connection that closes meanwhile is
  * trouble to connect again after.
  */
 function ring(
   client: ImapFlow,
   host: string,
-  signal: AbortSignal,
+  ms: number,
+  signal?: AbortSignal,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const off = () => {
       clearTimeout(timer);
       client.off("exists", arrived);
       client.off("close", gone);
-      signal.removeEventListener("abort", arrived);
+      signal?.removeEventListener("abort", arrived);
     };
     function arrived() {
       off();
@@ -571,12 +775,14 @@ function ring(
     }
     function gone() {
       off();
-      reject(new Error(`${host} closed the connection`));
+      // Closed because the wait was called off: nothing went wrong
+      if (signal?.aborted) resolve();
+      else reject(new Error(`${host} closed the connection`));
     }
-    const timer = setTimeout(arrived, REACH.mailLookMs);
+    const timer = setTimeout(arrived, ms);
     client.on("exists", arrived);
     client.once("close", gone);
-    signal.addEventListener("abort", arrived, { once: true });
+    signal?.addEventListener("abort", arrived, { once: true });
     if (!client.usable) gone();
   });
 }

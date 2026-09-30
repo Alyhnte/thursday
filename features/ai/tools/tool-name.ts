@@ -34,6 +34,8 @@ export const TOOL_NAMES = {
   sign_in_use: "sign_in_use",
   sign_in_keep: "sign_in_keep",
 
+  check_mail: "check_mail",
+
   look_at: "look_at",
 
   make_deck: "make_deck",

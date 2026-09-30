@@ -92,6 +92,16 @@ longer do, so they cannot be her mailbox.
 4. From that address, write anything to hers: **Write to …** opens your mail app, and **Copy her
    address** copies it. She answers in the same thread.
 
+## Bots and her mailbox
+
+Once she has a mailbox, a bot can give her address where a site asks for an email, while doing
+what it was asked, and read the mail that site sends back: a code, or a link to confirm the
+address. It reads only the newest mail from the site it names, from the last 30 minutes (or only
+one that comes after it asks, when it had the site send another), waiting up to two minutes for it
+by default and five at most. A mail in the site's name that its domain does not vouch for is not
+read, the same check as your own mail gets, and nothing in her mailbox is marked or moved. A site
+that stops a bot from signing up (a CAPTCHA, a phone number) stays stopped: the bot says so.
+
 ## Who is let in
 
 One person per chat app. Whoever is let in can talk to her and, through her, start work on the

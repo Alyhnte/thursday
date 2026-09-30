@@ -212,6 +212,25 @@ export const REACH = {
 };
 
 /**
+ * A bot reading her mailbox for a site's mail — a code, a link to confirm the address
+ * (tools/mail.tool, reach/email checkMail).
+ * - `backMs`  how long ago a mail may have arrived and still be the one waited for: a site
+ *   mails as its form is sent, often before the bot asks. Longer finds a slower mail but
+ *   also one from an earlier try; shorter misses one that came while the bot did something
+ *   else first.
+ * - `waitMs`  how long it waits for one when the bot does not say.
+ * - `waitMaxMs`  the most a bot may ask to wait: its job waits the whole time.
+ * - `chars`  how much of the mail the bot reads. A code or a link sits near the top, and a
+ *   footer of links and small print is most of the rest.
+ */
+export const MAIL_CHECK = {
+  backMs: 30 * 60_000,
+  waitMs: 120_000,
+  waitMaxMs: 300_000,
+  chars: 6_000,
+};
+
+/**
  * A call-back rings on the call screen instead of opening the line (use-call-ring).
  * - `ringMs`  how long it rings before it stops by itself. What rang stays in the room's
  *   inbox, and only work that changes after the ring starts rings again.

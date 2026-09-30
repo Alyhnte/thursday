@@ -17,6 +17,7 @@ import {
   ListChecks,
   Loader2,
   type LucideIcon,
+  Mail,
   MessageSquare,
   PhoneOff,
   Presentation,
@@ -121,6 +122,7 @@ const TOOL_ICONS: Partial<Record<string, LucideIcon>> = {
   [TOOL_NAMES.describe_self]: IdCard,
   [TOOL_NAMES.sign_in_use]: KeyRound,
   [TOOL_NAMES.sign_in_keep]: KeyRound,
+  [TOOL_NAMES.check_mail]: Mail,
   [TOOL_NAMES.end_call]: PhoneOff,
   [TOOL_NAMES.routine]: RoutineMark,
 };

@@ -17,6 +17,7 @@ import {
 import { callTools } from "@/features/ai/tools/call.tool";
 import { createDeckTools } from "@/features/ai/tools/deck.tool";
 import { createLookTool } from "@/features/ai/tools/look.tool";
+import { createMailTools } from "@/features/ai/tools/mail.tool";
 import { createMcpTools } from "@/features/ai/tools/mcp.tool";
 import { createMemoryTools } from "@/features/ai/tools/memory.tool";
 import { createRoutineTools } from "@/features/ai/tools/routine.tool";
@@ -497,5 +498,8 @@ async function buildTools(run: ToolRun): Promise<ToolSet> {
     ...createSignInTools(sandbox, run.bot, jobShellEnv(run.session)),
     // Absent unless the list in its prompt cut a line short (tools/bot.tool)
     ...(await createThreadRecallTool(run.bot, run.thread ?? null)),
+    // Absent until the user gives her a mailbox (Settings › Phone › Email): last, so the
+    // set before it stays as it was cached
+    ...(await createMailTools()),
   };
 }

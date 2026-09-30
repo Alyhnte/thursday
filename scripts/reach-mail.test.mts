@@ -37,7 +37,7 @@ mock.module("node:dns/promises", {
   },
 });
 
-const { readMail, withoutQuote, CheckLater } = await import(
+const { readMail, withoutQuote, CheckLater, sentBy } = await import(
   "../features/reach/email.ts"
 );
 const { findMailServers, parseServer } = await import(
@@ -149,7 +149,7 @@ test("a mail changed after it was signed is not taken as theirs, and they are to
   const read1 = await read(changed);
   assert.match(
     read1?.unproven ?? "",
-    /^Your mail was not read: example\.org's mail service does not vouch that it came from you, so it could be anyone's\..*\(its DMARC check said: fail\)\.$/,
+    /^Your mail “Flights to Lisbon” was not read: example\.org's mail service does not vouch that it came from alex@example\.org, so it could be anyone's \(its DMARC check said: fail\)\. Thursday reads only mail its sender's service signs/,
   );
 });
 
@@ -159,13 +159,18 @@ test("a domain that publishes no DMARC is not vouched for, however its mail look
   );
   assert.equal(read1?.chat, "bob@nodmarc.example");
   assert.match(read1?.unproven ?? "", /its DMARC check said: none/);
+  // The same reason, in words for anyone: what a bot reading her mailbox is told
+  assert.equal(
+    read1?.why,
+    "nodmarc.example's mail service does not vouch that it came from bob@nodmarc.example, so it could be anyone's (its DMARC check said: none)",
+  );
 });
 
 test("only mail written to her address, and recent, is read", async () => {
   const elsewhere = await read(await mail({ to: "someone@example.net" }));
   assert.equal(
     elsewhere?.unproven,
-    "Your mail was not read: it was not written to thursday@example.com. Thursday reads only mail with her address in To or Cc.",
+    "Your mail “Flights to Lisbon” was not read: it was not written to thursday@example.com. Thursday reads only mail with her address in To or Cc.",
   );
   const copied = await read(
     await mail({ to: "someone@example.net", cc: mailbox }),
@@ -201,7 +206,7 @@ test("a signature over only the start of a mail leaves the rest anyone's", async
   const read1 = await read(await mail({}, { maxBodyLength: 10 }));
   assert.equal(
     read1?.unproven,
-    "Your mail was not read: its signature covers only part of it, so the rest could be anyone's.",
+    "Your mail “Flights to Lisbon” was not read: its signature covers only part of it, so the rest could be anyone's.",
   );
 });
 
@@ -225,6 +230,16 @@ test("only a quote that ends the mail goes; one answered between its lines stays
   );
   assert.equal(withoutQuote("No quote at all.\n\n"), "No quote at all.");
   assert.equal(withoutQuote("> only a quote"), "");
+});
+
+test("a site's mail is its domain's, or a subdomain's, and never a look-alike's", () => {
+  assert.ok(sentBy("noreply@github.com", "github.com"));
+  assert.ok(sentBy("noreply@mail.github.com", "github.com"));
+  assert.ok(sentBy("NoReply@GitHub.com", "@github.com"));
+  assert.ok(sentBy("noreply@github.com", "noreply@github.com"));
+  assert.ok(!sentBy("noreply@evilgithub.com", "github.com"));
+  assert.ok(!sentBy("noreply@github.com.evil.example", "github.com"));
+  assert.ok(!sentBy("other@github.com", "noreply@github.com"));
 });
 
 test("a server is kept as host and port", () => {

@@ -165,6 +165,10 @@ it when it is in.
   the provider turned down the key or sign-in the bot runs on, it says so, and **Open Settings**
   beside **Continue** opens **Settings › API keys**; Continue once a key works.
 - **Signing in** is always the user's: the bot opens the page and waits.
+- **A site's mail** — a code, a link to confirm an address — a bot reads for itself once Thursday
+  has a mailbox of her own (**Settings › Phone › Email**): it gives her address where a site asks
+  for an email, for what it was asked to do, and reads the mail that site sends there
+  (`phone.md`, Bots and her mailbox).
 - **Paying** is the user's too: a bot fills a checkout in and stops at the button.
 
 ## What comes back
