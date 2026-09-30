@@ -21,14 +21,14 @@ calls and picks a subject up when the user does. Anything older is gone unless s
 memory (`memory.md`). A call she places herself opens on why she called.
 
 The first call started from the page — spoken or in writing — has the browser ask to know the
-user's location. Allowed, she knows on every call which town they are in and the weather there:
-the page asks BigDataCloud for the town's name and Open-Meteo for the weather, and only those two
-reach her. What was found is used for half an hour before it is looked up again. Once it is
-allowed, the page asks the device for its position as it opens, so a call does not wait on the
-device; the position stays in the page until a call starts. Refused, or not known within three
-seconds, the call goes on without it and nothing is sent. The browser keeps
-the answer; it is changed in the browser's site settings for this app (the icon left of the
-address). A phone chat has no browser, so she does not know it there.
+user's location. Allowed, she knows which town they are in and the weather there: the page asks
+BigDataCloud for the town's name and Open-Meteo for the weather, and only those two reach her.
+Once it is allowed, the page looks them up while it is in front — as it opens, as it comes back
+into view, and every half hour after — whether or not a call follows, so the position goes to
+those two services then. A call never waits on it: one placed before it is found, the call
+that first asked included, goes on without it, and the next has it. Refused, nothing is sent.
+The browser keeps the answer; it is changed in the browser's site settings for this app (the
+icon left of the address). A phone chat has no browser, so she does not know it there.
 
 Once a day, with the location allowed, the first spoken call placed from this browser opens
 with her turning into a globe: it spins to where they are, dives until their country fills the

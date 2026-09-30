@@ -90,7 +90,7 @@ import {
   toolLine,
 } from "./tool-line";
 import { useCallRing } from "./use-call-ring";
-import { takePositionAhead, whereNow } from "./where";
+import { keepWhere, whereNow } from "./where";
 
 /**
  * One live call, plus the thread inbox the app watches even with no call open.
@@ -150,7 +150,7 @@ export type CallEnd = "quiet" | "hungUp" | "closed" | "expired" | "dropped";
 /** The parts of a spoken call's opening, in the order they are reached. */
 const OPENING_PARTS = {
   offer: "the microphone and the offer",
-  where: "where they are",
+  globe: "the globe's map",
   answer: "the server's answer",
   line: "the line",
 } as const;
@@ -286,16 +286,10 @@ export function useThursday(
   useEffect(() => {
     if (globeDrawn) hereShown();
   }, [globeDrawn]);
-  // The device's position, asked as the page opens or comes back while the browser already
-  // lets it: waited on at the press, it held the first call's line up by as long (where.ts)
-  useEffect(() => {
-    const ask = () => {
-      if (document.visibilityState === "visible") void takePositionAhead();
-    };
-    ask();
-    document.addEventListener("visibilitychange", ask);
-    return () => document.removeEventListener("visibilitychange", ask);
-  }, []);
+  // Where they are and the weather there, looked up while the page is in front and the
+  // browser already lets it: waited on at the press, it held the call's line up by as long
+  // as the device and the two services took (where.ts)
+  useEffect(() => keepWhere(), []);
   /** The same value where callbacks can read it, and the timer that ends it. */
   const thinking = useRef<number | null>(null);
   const thinkTail = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -899,36 +893,35 @@ export function useThursday(
       armAudioUnlock(tap.current.open().context);
       const chime = new Audio(CONNECTED_SOUND);
       farewell.current ??= new Audio(HUNG_UP_SOUND);
-      // Asked now, from the press, so a first call's permission prompt comes with it and the
-      // answer is found beside the lock and the offer
-      const found = whereNow();
+      // What the page has of where they are, read and never waited on: a call placed before
+      // it is found goes without. Asked from the press, so a first call's permission prompt
+      // comes with it, and what that finds is the next call's
+      const place = whereNow();
+      const sky = place?.where.weather;
       // The globe opens the first call of the day the user places (here-day), in a tab they are
-      // looking at, unless the system asks for less motion. Its map is fetched once there is a
-      // forecast to put over it, and the globe is asked for only if the map is in by the time
-      // the place is (HERE.waitMs from the press): the opening that greets them with the
+      // looking at, unless the system asks for less motion. Its map is fetched when there is a
+      // forecast to put over it, beside the lock and the offer, and the globe is asked for only
+      // if the map is in within HERE.waitMs of the press: the opening that greets them with the
       // weather never comes without it, and a slow map never holds the call up
       const mapped =
+        sky &&
         !calledBack &&
         hereDue() &&
         document.visibilityState === "visible" &&
         !window.matchMedia("(prefers-reduced-motion: reduce)").matches
           ? Promise.race([
-              found.then((place) =>
-                place?.where.weather
-                  ? Promise.all([
-                      loadWorld(),
-                      // its code too, which the screen loads only for it
-                      import("./components/here-globe"),
-                    ]).then(
-                      () => true,
-                      (cause) => {
-                        console.warn(
-                          `No globe on this call: ${errorToString(cause)}`,
-                        );
-                        return false;
-                      },
-                    )
-                  : false,
+              Promise.all([
+                loadWorld(),
+                // its code too, which the screen loads only for it
+                import("./components/here-globe"),
+              ]).then(
+                () => true,
+                (cause) => {
+                  console.warn(
+                    `No globe on this call: ${errorToString(cause)}`,
+                  );
+                  return false;
+                },
               ),
               new Promise<false>((resolve) =>
                 setTimeout(() => resolve(false), HERE.waitMs),
@@ -1018,15 +1011,10 @@ export function useThursday(
       const live = await openLiveSession({
         initialize: async (sdp) => {
           took.at("offer");
-          const place = await found;
-          const sky = place?.where.weather;
           const showing = Boolean(
-            sky &&
-              mapped &&
-              (await mapped) &&
-              document.visibilityState === "visible",
+            mapped && (await mapped) && document.visibilityState === "visible",
           );
-          took.at("where");
+          if (mapped) took.at("globe");
           reached.server = true;
           const handshake = unwrapResult(
             await openCallAction(

@@ -2112,7 +2112,7 @@ test("where they are is written from what the page found, half of it when half w
   );
 });
 
-test("the page finds where they are from the browser's position, and goes on without it when it cannot", async (context) => {
+test("the page looks up where they are ahead of a call, and a call reads what is kept without waiting on it", async (context) => {
   const answer: {
     position: (ok: (at: unknown) => void, no: (e: unknown) => void) => void;
   } = {
@@ -2136,20 +2136,22 @@ test("the page finds where they are from the browser's position, and goes on wit
           answer.position(ok, no);
         },
       },
+      permissions: { query: async () => ({ state: "granted" }) },
     },
   });
   // No GeolocationPositionError global here, as in a browser without one: a refusal is
-  // still read, and nothing throws out of whereNow
+  // still read, and nothing throws out of the lookup
   assert.equal("GeolocationPositionError" in globalThis, false);
   const urls: URL[] = [];
-  let place = () =>
+  type Service = (signal: AbortSignal) => Response | Promise<Response>;
+  let place: Service = () =>
     Response.json({
       city: "Lisbon",
       locality: "Santa Maria Maior",
       countryName: "Portugal",
       countryCode: "PT",
     });
-  let weather = () =>
+  const forecast: Service = () =>
     Response.json({
       current: { temperature_2m: 22.4, weather_code: 3, wind_gusts_10m: 31.3 },
       daily: {
@@ -2159,18 +2161,34 @@ test("the page finds where they are from the browser's position, and goes on wit
         sunset: ["2026-09-27T19:25"],
       },
     });
-  context.mock.method(globalThis, "fetch", async (input: string) => {
-    const url = new URL(input);
-    urls.push(url);
-    return url.host === "api.bigdatacloud.net" ? place() : weather();
-  });
+  let weather = forecast;
+  context.mock.method(
+    globalThis,
+    "fetch",
+    async (input: string, init: { signal: AbortSignal }) => {
+      const url = new URL(input);
+      urls.push(url);
+      return url.host === "api.bigdatacloud.net"
+        ? place(init.signal)
+        : weather(init.signal);
+    },
+  );
   context.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  const settle = async () => {
+    for (let turn = 0; turn < 5; turn++)
+      await new Promise((done) => setImmediate(done));
+  };
   // One module throughout: on Node 22 tsx loads it as CommonJS, cached by path, so a query
   // on the import brings back the same one. What it keeps runs out on the mocked clock.
-  const { whereNow } = await import("../features/thursday/where.ts");
+  const { lookAhead, whereNow } = await import("../features/thursday/where.ts");
+
+  // Nothing kept yet: the call goes without, and the lookup its press starts is the next one's
+  assert.equal(whereNow(), null);
+  await lookAhead();
+  assert.equal(asked, 1);
   // What goes to the server is `where`; the position and the country are the page's own, for the globe
   const position = { lat: 38.7223, lon: -9.1393 };
-  assert.deepEqual(await whereNow(), {
+  assert.deepEqual(whereNow(), {
     where: {
       place: "Lisbon, Portugal",
       weather: {
@@ -2191,37 +2209,79 @@ test("the page finds where they are from the browser's position, and goes on wit
   assert.equal(urls[1]?.searchParams.get("latitude"), "38.72");
   assert.match(urls[1]?.searchParams.get("current") ?? "", /wind_gusts_10m/);
   // Found once, kept for a while: neither the device nor the services are asked again
-  await whereNow();
+  await lookAhead();
+  whereNow();
   assert.equal(asked, 1);
+  assert.equal(urls.length, 2);
+
+  // Run out: the call placed then goes without rather than wait, and the next has it
   context.mock.timers.tick(HERE.keptMs);
   weather = () => new Response("down", { status: 503 });
-  assert.deepEqual(await whereNow(), {
+  assert.equal(whereNow(), null);
+  assert.equal(asked, 2);
+  await lookAhead();
+  assert.equal(asked, 2);
+  assert.deepEqual(whereNow(), {
     where: { place: "Lisbon, Portugal", weather: null },
     position,
     country: "PT",
   });
-  assert.equal(asked, 2);
 
   // Nothing found at all is nothing, not an empty line, and is not kept
   context.mock.timers.tick(HERE.keptMs);
   place = () => new Response("down", { status: 503 });
-  assert.equal(await whereNow(), null);
+  await lookAhead();
+  assert.equal(whereNow(), null);
+  await lookAhead();
 
   // Refused: nothing, and nothing asked of the services
   const before = urls.length;
   answer.position = (_ok, no) =>
     no({ code: DENIED, message: "User denied Geolocation" });
-  assert.equal(await whereNow(), null);
+  await lookAhead();
+  assert.equal(whereNow(), null);
+  await lookAhead();
   assert.equal(urls.length, before);
 
-  // A permission prompt nobody answers holds the call no longer than HERE.waitMs
+  // A service that does not answer is given HERE.lookMs; what the other said is kept
+  answer.position = (ok) =>
+    ok({ coords: { latitude: 38.7223, longitude: -9.1393 } });
+  place = () => Response.json({ city: "Lisbon", countryName: "Portugal" });
+  weather = (signal) =>
+    new Promise((_, reject) =>
+      signal.addEventListener("abort", () => reject(new Error("aborted"))),
+    );
+  const slow = lookAhead();
+  await settle();
+  assert.equal(whereNow(), null);
+  context.mock.timers.tick(HERE.lookMs);
+  await slow;
+  assert.deepEqual(whereNow()?.where, {
+    place: "Lisbon, Portugal",
+    weather: null,
+  });
+
+  // A device that never says holds no call up, and is asked once however often they call
+  context.mock.timers.tick(HERE.keptMs);
+  weather = forecast;
   answer.position = () => {};
-  const waiting = whereNow();
-  context.mock.timers.tick(HERE.waitMs);
-  assert.equal(await waiting, null);
+  const unasked = urls.length;
+  const devices = asked;
+  assert.equal(whereNow(), null);
+  assert.equal(whereNow(), null);
+  assert.equal(asked, devices + 1);
+  assert.equal(urls.length, unasked);
+  // Left unanswered for as long as a lookup is kept, it is given up on and asked again
+  context.mock.timers.tick(HERE.keptMs);
+  answer.position = (ok) =>
+    ok({ coords: { latitude: 38.7223, longitude: -9.1393 } });
+  assert.equal(whereNow(), null);
+  assert.equal(asked, devices + 2);
+  await lookAhead();
+  assert.equal(whereNow()?.where.weather?.code, 3);
 });
 
-test("the position is taken as the page opens where the browser already lets it, so the press does not wait on the device", async (context) => {
+test("where the browser would prompt nothing is asked before a press, and the call that press starts does not wait on the answer", async (context) => {
   let asked = 0;
   let allowed = "prompt";
   const pending: { answer: ((at: unknown) => void) | null } = { answer: null };
@@ -2247,28 +2307,111 @@ test("the position is taken as the page opens where the browser already lets it,
       : new Response("down", { status: 503 }),
   );
   const settle = () => new Promise((done) => setImmediate(done));
-  const { takePositionAhead, whereNow } = await import(
-    "../features/thursday/where.ts"
-  );
+  const { lookAhead, whereNow } = await import("../features/thursday/where.ts");
 
   // Not allowed yet: nothing is asked, so no prompt comes without a press
-  await takePositionAhead();
+  await lookAhead();
   assert.equal(asked, 0);
 
+  // The press asks, so the prompt comes with it, and the call goes on without the answer
+  assert.equal(whereNow(), null);
+  assert.equal(asked, 1);
+  // Asked again while the prompt is up, it waits on that one
+  assert.equal(whereNow(), null);
   allowed = "granted";
-  const taking = takePositionAhead();
+  const looking = lookAhead();
   await settle();
   assert.equal(asked, 1);
-  // Asked again while the first is on its way, it waits on that one
-  await takePositionAhead();
-  assert.equal(asked, 1);
   pending.answer?.({ coords: { latitude: 38.7223, longitude: -9.1393 } });
-  await taking;
+  await looking;
 
-  // The press finds it: the device is not asked again, the services are
-  const found = await whereNow();
+  // Allowed: the next call finds it there
+  assert.equal(whereNow()?.where.place, "Lisbon, Portugal");
   assert.equal(asked, 1);
-  assert.equal(found?.where.place, "Lisbon, Portugal");
+});
+
+test("the page keeps where they are looked up while it is in front, and asks nothing while it is hidden", async (context) => {
+  let asked = 0;
+  const device = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+  const listeners = new Set<() => void>();
+  const page = {
+    visibilityState: "visible",
+    addEventListener: (_type: string, heard: () => void) =>
+      listeners.add(heard),
+    removeEventListener: (_type: string, heard: () => void) =>
+      listeners.delete(heard),
+  };
+  context.after(() => {
+    if (device) Object.defineProperty(globalThis, "navigator", device);
+    Reflect.deleteProperty(globalThis, "document");
+  });
+  Object.defineProperty(globalThis, "document", {
+    configurable: true,
+    value: page,
+  });
+  Object.defineProperty(globalThis, "navigator", {
+    configurable: true,
+    value: {
+      geolocation: {
+        getCurrentPosition: (ok: (at: unknown) => void) => {
+          asked += 1;
+          ok({ coords: { latitude: 38.7223, longitude: -9.1393 } });
+        },
+      },
+      permissions: { query: async () => ({ state: "granted" }) },
+    },
+  });
+  context.mock.method(globalThis, "fetch", async (input: string) =>
+    new URL(input).host === "api.bigdatacloud.net"
+      ? Response.json({ city: "Lisbon", countryName: "Portugal" })
+      : new Response("down", { status: 503 }),
+  );
+  // Past what the tests above left kept
+  context.mock.timers.enable({
+    apis: ["setTimeout", "Date"],
+    now: Date.now() + HERE.keptMs,
+  });
+  const settle = async () => {
+    for (let turn = 0; turn < 5; turn++)
+      await new Promise((done) => setImmediate(done));
+  };
+  const show = async (state: "visible" | "hidden") => {
+    page.visibilityState = state;
+    for (const heard of listeners) heard();
+    await settle();
+  };
+  const { keepWhere, whereNow } = await import("../features/thursday/where.ts");
+
+  // As the page opens, with nothing pressed
+  const stop = keepWhere();
+  await settle();
+  assert.equal(asked, 1);
+  assert.equal(whereNow()?.where.place, "Lisbon, Portugal");
+
+  // As what is kept runs out it is looked up again, so a press at any time finds it
+  context.mock.timers.tick(HERE.keptMs - 1);
+  await settle();
+  assert.equal(asked, 1);
+  context.mock.timers.tick(1);
+  await settle();
+  assert.equal(asked, 2);
+  assert.equal(whereNow()?.where.place, "Lisbon, Portugal");
+
+  // Hidden: nothing is asked, however long
+  await show("hidden");
+  context.mock.timers.tick(HERE.keptMs * 3);
+  await settle();
+  assert.equal(asked, 2);
+
+  // Back in front with what was kept run out: asked again
+  await show("visible");
+  assert.equal(asked, 3);
+
+  stop();
+  assert.equal(listeners.size, 0);
+  context.mock.timers.tick(HERE.keptMs * 2);
+  await settle();
+  assert.equal(asked, 3);
 });
 
 test("a microphone the browser did not hand over is read off the name it refused with, and nothing else is guessed at", async () => {

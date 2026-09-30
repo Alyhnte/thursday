@@ -904,13 +904,18 @@ export const HISTORY_KEEP = {
 
 /**
  * Where the user is and the weather there, read into both call prompts (features/thursday/
- * where): the browser's position, when they allowed it, named and forecast by the browser.
- * - `waitMs`  how long a call's start waits for it, the browser's permission prompt
- *   included. Longer delays the call; shorter starts more calls without it, and one that
- *   outwaits the prompt goes without while the next has it.
- * - `keptMs`  how long what was found, and the position taken as the page opens (where
- *   `takePositionAhead`), is used before it is found again. Longer asks the device and the
- *   services less often and may name a place they have left.
+ * where): the browser's position, when they allowed it, named and forecast by the browser. It
+ * is looked up while the page is in front, before any call; a call reads what is kept and
+ * never waits on it, and one placed before it is found goes without.
+ * - `lookMs`  how long the two services are given to answer a lookup. Longer leaves a page on
+ *   a slow link waiting as long before it says one did not answer; shorter gives up on a
+ *   service that would have answered, and calls go without until the next lookup.
+ * - `keptMs`  how long what was found is read before it is looked up again, which a page in
+ *   front does as it runs out (where `keepWhere`). Longer asks the device and the services
+ *   less often and may name a place they have left.
+ * - `waitMs`  how long the day's first call waits on the globe's map, which the app serves
+ *   itself, before it opens without the globe. Longer can delay that call; shorter opens
+ *   more of them without it.
  * - `holdMs`  how long the globe (features/thursday/components/here-globe), shown as the
  *   day's first call opens, stays once their country, sky and weather are all in (about 5.7 s
  *   after it starts) before she comes back. Longer leaves them up longer, and her face and the
@@ -924,8 +929,9 @@ export const HISTORY_KEEP = {
  *   neighbour across a strait; nearer leaves a town on a coast this simple out at sea.
  */
 export const HERE = {
-  waitMs: 3_000,
+  lookMs: 3_000,
   keptMs: 30 * 60_000,
+  waitMs: 3_000,
   holdMs: 2_550,
   globeFps: 24,
   windyKmh: 50,

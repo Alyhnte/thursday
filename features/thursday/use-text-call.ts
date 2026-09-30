@@ -282,9 +282,10 @@ export function useTextCall(): TextCall {
       let to = held.current;
       if (!to) {
         // the hook has already said why when this throws
-        // Asked from the send that opens the call, so a first call's permission prompt
-        // comes with it
-        const [opened, found] = await Promise.all([open(runsOn()), whereNow()]);
+        // What the page has of where they are, never waited on (where.ts). Asked from the
+        // send that opens the call, so a first call's permission prompt comes with it
+        const found = whereNow();
+        const opened = await open(runsOn());
         to = { ...opened, at: Date.now(), where: found?.where ?? null };
         held.current = to;
         stood.current = stoodBefore(inbox.current ?? []);

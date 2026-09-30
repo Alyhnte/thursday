@@ -6,6 +6,8 @@ import type { Where } from "./thursday.schema";
 // Both services are free, take no key and answer a page directly; BigDataCloud's fair use
 // asks for exactly this — calls from the browser, with the device's current position from
 // the Geolocation API — so a server anywhere, local or not, never sees the position.
+// Looked up while the page is in front, before any call (`keepWhere`): a call reads what is
+// kept and never waits on the device or the services.
 
 /**
  * What the page found: `where` goes to the server for her prompts; `position` and `country`
@@ -18,15 +20,14 @@ export type Found = {
   country: string | null;
 };
 
-/** What was found last, and when: used again for `HERE.keptMs`. */
+/** What was found last, and when: a call reads it for `HERE.keptMs`. */
 let kept: { found: Found; at: number } | null = null;
 
 /**
- * The device's position taken as the page opens, while the browser already lets it: the slow
- * part of `whereNow`, done before the press (`takePositionAhead`). It stays on this page; the
- * services hear of it only when a call starts. Used for `HERE.keptMs` from when it was asked.
+ * The lookup on its way, so a second never starts beside it. One the device has left
+ * unanswered for `HERE.keptMs` is given up on, and the next one asks again.
  */
-let ahead: { at: Promise<GeolocationCoordinates>; asked: number } | null = null;
+let looking: { done: Promise<void>; asked: number } | null = null;
 
 function position(): Promise<GeolocationCoordinates> {
   return new Promise((resolve, reject) =>
@@ -122,14 +123,19 @@ async function weatherAt(
   };
 }
 
-async function find(signal: AbortSignal): Promise<Found | null> {
-  const at = await (ahead && Date.now() - ahead.asked < HERE.keptMs
-    ? ahead.at
-    : position());
+/**
+ * The device's position, then its name and its weather. The device is waited on for as long
+ * as it takes, the browser's permission prompt included; the two services for `HERE.lookMs`.
+ */
+async function find(): Promise<Found | null> {
+  const at = await position();
+  const deadline = new AbortController();
+  const late = setTimeout(() => deadline.abort(), HERE.lookMs);
   const [place, weather] = await Promise.allSettled([
-    placeOf(at, signal),
-    weatherAt(at, signal),
+    placeOf(at, deadline.signal),
+    weatherAt(at, deadline.signal),
   ]);
+  clearTimeout(late);
   for (const [what, result] of [
     ["place", place],
     ["weather", weather],
@@ -151,46 +157,49 @@ async function find(signal: AbortSignal): Promise<Found | null> {
     : null;
 }
 
-/**
- * Where the user is and the weather there, or null: no Geolocation, refused, no position, or
- * nothing within `HERE.waitMs`. Called as a call starts, from the press that starts it, so the
- * browser's permission prompt comes with something the user did; the browser remembers the
- * answer. A refusal is theirs to make and is not logged.
- */
-export async function whereNow(): Promise<Found | null> {
-  if (kept && Date.now() - kept.at < HERE.keptMs) return kept.found;
-  if (!navigator.geolocation) return null;
-  const deadline = new AbortController();
-  const late = setTimeout(() => deadline.abort(), HERE.waitMs);
-  try {
-    const found = await Promise.race([
-      find(deadline.signal),
-      new Promise<null>((resolve) =>
-        deadline.signal.addEventListener("abort", () => resolve(null)),
-      ),
-    ]);
-    if (found) kept = { found, at: Date.now() };
-    return found;
-  } catch (cause) {
-    // 1 is PERMISSION_DENIED in the spec, read as a number: a browser without the
-    // GeolocationPositionError global would throw here and fail the call it only adds to
-    const refused = (cause as { code?: unknown } | null)?.code === 1;
-    if (!refused)
-      console.warn(`No position for the call: ${errorToString(cause)}`);
-    return null;
-  } finally {
-    clearTimeout(late);
-  }
+/** Looks it up and keeps what is found; joins the lookup already on its way. */
+function look(): Promise<void> {
+  if (looking && Date.now() - looking.asked < HERE.keptMs) return looking.done;
+  const done = find()
+    .then(
+      (found) => {
+        if (found) kept = { found, at: Date.now() };
+      },
+      (cause) => {
+        // 1 is PERMISSION_DENIED in the spec, read as a number: a browser without the
+        // GeolocationPositionError global would throw here. A refusal is theirs to make
+        // and is not logged
+        const refused = (cause as { code?: unknown } | null)?.code === 1;
+        if (!refused)
+          console.warn(`No position for the call: ${errorToString(cause)}`);
+      },
+    )
+    .then(() => {
+      if (looking?.done === done) looking = null;
+    });
+  looking = { done, asked: Date.now() };
+  return done;
 }
 
 /**
- * Asks the device for its position as the page opens, when the browser already lets this app
- * have it, so the first call's press does not wait on the device (config HERE). Never asks
- * where it would prompt: the prompt comes with a press (`whereNow`). Nothing leaves the page.
+ * Where the user is and the weather there, as the page has it as a call starts, or null: no
+ * Geolocation, refused, nothing found, or not found yet. A call never waits on it (config
+ * HERE): with nothing kept it goes without, and the lookup this starts is for the next one.
+ * Called from the press that starts a call, so the browser's permission prompt comes with
+ * something the user did; the browser remembers the answer.
  */
-export async function takePositionAhead(): Promise<void> {
+export function whereNow(): Found | null {
+  if (kept && Date.now() - kept.at < HERE.keptMs) return kept.found;
+  if (navigator.geolocation) void look();
+  return null;
+}
+
+/**
+ * Looks it up before any call, when the browser already lets this app have the position.
+ * Never asks where it would prompt: the prompt comes with a press (`whereNow`).
+ */
+export async function lookAhead(): Promise<void> {
   if (kept && Date.now() - kept.at < HERE.keptMs) return;
-  if (ahead && Date.now() - ahead.asked < HERE.keptMs) return;
   if (!navigator.geolocation || !navigator.permissions) return;
   let allowed: boolean;
   try {
@@ -201,12 +210,32 @@ export async function takePositionAhead(): Promise<void> {
     // A browser that cannot say is asked at the press, as it always was
     return;
   }
-  if (!allowed) return;
-  const taken = { at: position(), asked: Date.now() };
-  ahead = taken;
-  await taken.at.catch((cause) => {
-    // Not kept: the press asks the device itself, and says what it answers
-    if (ahead === taken) ahead = null;
-    console.warn(`No position ahead of the call: ${errorToString(cause)}`);
-  });
+  if (allowed) await look();
+}
+
+/**
+ * Keeps it looked up while the page is in front: as the page opens, as it comes back into
+ * view, and again as what is kept runs out, so a press finds it there. A hidden page asks
+ * nothing. Returns what stops it.
+ */
+export function keepWhere(): () => void {
+  let again: ReturnType<typeof setTimeout> | undefined;
+  let stopped = false;
+  const keep = async () => {
+    clearTimeout(again);
+    if (document.visibilityState !== "visible") return;
+    await lookAhead();
+    if (stopped || document.visibilityState !== "visible") return;
+    const left = kept ? kept.at + HERE.keptMs - Date.now() : 0;
+    clearTimeout(again);
+    // With nothing fresh kept — not allowed yet, or not found — it is tried after as long
+    again = setTimeout(keep, left > 0 ? left : HERE.keptMs);
+  };
+  void keep();
+  document.addEventListener("visibilitychange", keep);
+  return () => {
+    stopped = true;
+    clearTimeout(again);
+    document.removeEventListener("visibilitychange", keep);
+  };
 }
