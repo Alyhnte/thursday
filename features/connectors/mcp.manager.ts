@@ -30,8 +30,8 @@ import {
 /**
  * MCP connection manager and the one instance this app runs. A session opens
  * on first use, every tool call pushes the idle timer back, and the next call
- * after it closes reconnects with stored credentials. Callers only handle
- * `auth_required`.
+ * after it closes — idle, or because a call found the connection gone —
+ * reconnects with stored credentials. Callers only handle `auth_required`.
  */
 
 interface StoredMcpServer {
@@ -219,6 +219,9 @@ class McpManager {
     signal?: AbortSignal,
   ): Promise<CallToolResult> {
     const client = await this.ensureClient(name);
+    // Pushed back as the call starts too: one that begins near the end of the wait
+    // would otherwise have its session closed under it
+    this.touch(name);
     try {
       const result = await client.callTool({
         name: tool,
@@ -234,6 +237,11 @@ class McpManager {
         await this.closeSession(name);
         throw new McpAuthRequiredError(name);
       }
+      // Anything else that is neither the caller's own stop nor the server's answer means
+      // the connection did not carry the call — a process that exited, a session the server
+      // no longer knows. Kept, that client fails every call until the idle close.
+      if (!signal?.aborted && !isServerAnswer(error))
+        await this.closeSession(name, client);
       throw error;
     }
   }
@@ -291,8 +299,10 @@ class McpManager {
     // and a field would let one connect clear the other's url
     const authUrl: { href?: string } = {};
 
+    let opened: MCPClient | null = null;
     try {
       const client = await this.openClient(row, authUrl);
+      opened = client;
       const listed = await client.listTools();
       const tools: MCPToolInfo[] = listed.tools.map((tool) => ({
         name: tool.name,
@@ -302,6 +312,7 @@ class McpManager {
       }));
 
       this.adopt(name, client);
+      opened = null;
       await this.store.saveConnectionResult(name, {
         toolInfo: tools,
         lastError: null,
@@ -309,6 +320,9 @@ class McpManager {
       logger.info(`mcp "${name}" connected — ${tools.length} tools`);
       return { status: "connected", tools };
     } catch (error) {
+      // Connected and then could not list its tools: no session keeps this client, so
+      // nothing else would close it, and a stdio server's process would stay running
+      await opened?.close().catch(() => {});
       if (
         error instanceof UnauthorizedError ||
         (error as Error)?.cause instanceof UnauthorizedError
@@ -418,15 +432,28 @@ class McpManager {
     return timer;
   }
 
-  private async closeSession(name: string): Promise<void> {
+  /** `only` closes the session when it still holds that client: a newer one is left alone. */
+  private async closeSession(name: string, only?: MCPClient): Promise<void> {
     const session = this.sessions.get(name);
-    if (!session) return;
+    if (!session || (only && session.client !== only)) return;
     this.sessions.delete(name);
     clearTimeout(session.idleTimer);
     await session.client.close().catch(() => {
       // A dead transport is the reason we are closing
     });
   }
+}
+
+/**
+ * Whether a failed call was answered by the server: a JSON-RPC error reply, which the client
+ * throws carrying the reply's numeric `code` (@ai-sdk/mcp `onResponse`). A connection that
+ * failed carries none, or a system error's string code.
+ */
+function isServerAnswer(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    typeof (error as { code?: unknown }).code === "number"
+  );
 }
 
 /**
