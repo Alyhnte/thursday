@@ -57,6 +57,8 @@ thread; `bot.runner` launches what they queue; `bot.run` runs one turn. What is 
   for them; `presence` decides only where news of a job goes (a desktop notice, a phone).
 - An app event reaches only a tab open at that moment: news for the call or a phone that is not a
   `thread_relay` row is missed by the phone and the next call.
+- A stop that parks a thread on Continue without going through `pauseRoom` or `settleRoom` leaves
+  a routine's run waiting, and the clock then skips that routine's every later start.
 
 ## Check
 `pnpm test:bot`; a change to how the room routes, waits or resumes gets a case there. To judge
