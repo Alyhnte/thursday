@@ -1,0 +1,69 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Thursday promo</title>
+<style>
+@font-face { font-family: "Geist"; src: url("../node_modules/geist/dist/fonts/geist-sans/Geist-Variable.woff2") format("woff2"); font-weight: 100 900; }
+@font-face { font-family: "Geist Mono"; src: url("../node_modules/geist/dist/fonts/geist-mono/GeistMono-Variable.woff2") format("woff2"); font-weight: 100 900; }
+@font-face { font-family: "Pretendard"; src: url("../node_modules/pretendard/dist/web/variable/woff2/PretendardVariable.woff2") format("woff2"); font-weight: 45 920; }
+:root {
+  --ink: #0d0d0d;
+  --brand: #0169cc;
+  --muted: #767676;
+  --sans: "Geist", "Pretendard", sans-serif;
+  --mono: "Geist Mono", "Pretendard", monospace;
+}
+html, body { margin: 0; padding: 0; background: #fff; }
+#frame { position: relative; width: 1080px; height: 1920px; overflow: hidden; background: #fff; font-family: var(--sans); color: var(--ink); -webkit-font-smoothing: antialiased; }
+#gl { position: absolute; inset: 0; width: 1080px; height: 1920px; }
+.layer { position: absolute; inset: 0; pointer-events: none; }
+.word { display: inline-block; white-space: nowrap; will-change: transform, opacity, filter; }
+.dot { position: absolute; border-radius: 50%; }
+
+/* the call: two lines and her dot */
+#chat .line { position: absolute; left: 150px; width: 830px; font-size: 76px; line-height: 1.12; font-weight: 500; letter-spacing: -0.03em; text-wrap: balance; }
+#chat .line .bullet { position: absolute; left: -66px; top: 0.36em; width: 28px; height: 28px; border-radius: 50%; background: var(--ink); }
+#chat .tool { position: absolute; left: 150px; font-size: 42px; font-weight: 450; color: var(--muted); letter-spacing: -0.01em; display: flex; align-items: center; gap: 18px; }
+#chat .tool svg { width: 44px; height: 44px; }
+#chat .spin { width: 30px; height: 30px; border: 3.5px solid #cdcdcd; border-top-color: #767676; border-radius: 50%; margin-left: 6px; }
+
+/* her line over the office */
+#caption { position: absolute; left: 0; right: 0; top: 0; height: 640px; }
+#caption .wash { position: absolute; inset: 0; background: linear-gradient(to bottom, rgba(255,255,255,0.97) 0%, rgba(255,255,255,0.93) 52%, rgba(255,255,255,0) 100%); }
+#caption .line { position: absolute; left: 150px; width: 840px; top: 300px; font-size: 62px; line-height: 1.14; font-weight: 500; letter-spacing: -0.028em; text-wrap: balance; }
+#caption .bullet { position: absolute; left: -58px; top: 0.34em; width: 24px; height: 24px; border-radius: 50%; background: var(--brand); }
+
+/* a bot's name pill in the office */
+.pill { position: absolute; left: 0; top: 0; display: flex; align-items: center; gap: 18px; padding: 0 34px 0 30px; height: 88px; border-radius: 44px; background: rgba(255,255,255,0.97); border: 2.5px solid #cdcdcd; box-shadow: 0 10px 30px rgba(0,0,0,0.07); font-size: 44px; white-space: nowrap; transform-origin: 0 50%; }
+.pill b { font-weight: 650; letter-spacing: -0.02em; }
+.pill span { color: #9f9f9f; font-weight: 450; }
+.pill i { width: 18px; height: 18px; border-radius: 50%; background: var(--ink); display: block; }
+
+/* the end card */
+#card { background: #fff; }
+#card .title { position: absolute; left: 0; right: 0; top: 640px; text-align: center; font-size: 212px; font-weight: 900; letter-spacing: -0.055em; line-height: 1; }
+#card .tag { position: absolute; left: 0; right: 0; top: 928px; text-align: center; font-size: 62px; font-weight: 500; letter-spacing: -0.028em; line-height: 1.2; }
+#card .cmd { position: absolute; left: 50%; top: 1122px; transform: translateX(-50%); background: var(--ink); color: #fff; font-family: var(--mono); font-size: 46px; font-weight: 500; padding: 30px 60px; border-radius: 80px; white-space: nowrap; }
+#card .cmd em { font-style: normal; color: #8f8f8f; margin-right: 26px; }
+#flash { background: #fff; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "../node_modules/three/build/three.module.js",
+  "three/addons/": "../node_modules/three/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="frame">
+  <canvas id="gl" width="1080" height="1920"></canvas>
+  <div id="pills" class="layer"></div>
+  <div id="caption" class="layer"><div class="wash"></div><div class="line"><i class="bullet"></i><span class="text"></span></div></div>
+  <div id="chat" class="layer"></div>
+  <div id="flash" class="layer"></div>
+  <div id="card" class="layer"></div>
+</div>
+<script type="module" src="main.js"></script>
+</body>
+</html>

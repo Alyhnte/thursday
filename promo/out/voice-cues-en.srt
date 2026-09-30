@@ -1,0 +1,39 @@
+1
+00:00:00,450 --> 00:00:02,300
+Can you plan our app launch?
+
+2
+00:00:02,500 --> 00:00:04,600
+Sure — let me get the team on it.
+
+3
+00:00:06,500 --> 00:00:07,900
+Meet my team.
+
+4
+00:00:08,200 --> 00:00:09,800
+Jarvis runs the plan.
+
+5
+00:00:10,200 --> 00:00:11,800
+Analyst digs up the numbers.
+
+6
+00:00:12,200 --> 00:00:13,800
+Curator finds what matters.
+
+7
+00:00:14,200 --> 00:00:15,800
+Writer drafts every word.
+
+8
+00:00:16,200 --> 00:00:17,800
+And Designer makes it beautiful.
+
+9
+00:00:18,400 --> 00:00:21,400
+And me? I just get to talk with you.
+
+10
+00:00:22,400 --> 00:00:24,800
+Done. Your launch kit is ready.

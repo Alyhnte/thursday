@@ -1,0 +1,177 @@
+{
+  "fps": 30,
+  "duration": 30,
+  "bpm": 120,
+  "size": {
+    "w": 1080,
+    "h": 1920
+  },
+  "lines": [
+    {
+      "id": "ask",
+      "who": "user",
+      "at": 0.45,
+      "end": 2.3,
+      "en": "Can you plan our app launch?",
+      "ko": "우리 앱 런칭, 계획 좀 세워줄래?",
+      "note": "The user's line. Shown as a caption; voice it with a second voice or leave it silent."
+    },
+    {
+      "id": "sure",
+      "who": "thursday",
+      "at": 2.5,
+      "end": 4.6,
+      "en": "Sure — let me get the team on it.",
+      "ko": "좋아요. 팀한테 바로 맡길게요.",
+      "note": "Bright, easy, a smile in it."
+    },
+    {
+      "id": "meet",
+      "who": "thursday",
+      "at": 6.5,
+      "end": 7.9,
+      "en": "Meet my team.",
+      "ko": "우리 팀을 소개할게요.",
+      "note": "Proud, warm. Lands just after the drop."
+    },
+    {
+      "id": "jarvis",
+      "who": "thursday",
+      "at": 8.2,
+      "end": 9.8,
+      "en": "Jarvis runs the plan.",
+      "ko": "자비스는 계획을 짜고,",
+      "bot": "Jarvis"
+    },
+    {
+      "id": "analyst",
+      "who": "thursday",
+      "at": 10.2,
+      "end": 11.8,
+      "en": "Analyst digs up the numbers.",
+      "ko": "애널리스트는 숫자를 파고,",
+      "bot": "Analyst"
+    },
+    {
+      "id": "curator",
+      "who": "thursday",
+      "at": 12.2,
+      "end": 13.8,
+      "en": "Curator finds what matters.",
+      "ko": "큐레이터는 중요한 걸 고르고,",
+      "bot": "Curator"
+    },
+    {
+      "id": "writer",
+      "who": "thursday",
+      "at": 14.2,
+      "end": 15.8,
+      "en": "Writer drafts every word.",
+      "ko": "라이터는 글을 쓰고,",
+      "bot": "Writer"
+    },
+    {
+      "id": "designer",
+      "who": "thursday",
+      "at": 16.2,
+      "end": 17.8,
+      "en": "And Designer makes it beautiful.",
+      "ko": "디자이너는 예쁘게 다듬죠.",
+      "bot": "Designer",
+      "note": "A little delighted on 'beautiful'."
+    },
+    {
+      "id": "me",
+      "who": "thursday",
+      "at": 18.4,
+      "end": 21.4,
+      "en": "And me? I just get to talk with you.",
+      "ko": "저요? 저는 이렇게 수다만 떨면 돼요.",
+      "note": "The smile of the film: playful, then a short soft laugh at the end (about 0.5 s)."
+    },
+    {
+      "id": "done",
+      "who": "thursday",
+      "at": 22.4,
+      "end": 24.8,
+      "en": "Done. Your launch kit is ready.",
+      "ko": "다 됐어요. 런칭 키트 준비 끝!",
+      "note": "A beat after DONE hits the floor. Satisfied, a little pleased with herself."
+    }
+  ],
+  "card": {
+    "at": 25.0,
+    "title": "Thursday",
+    "en": [
+      "You talk.",
+      "A whole team does the work."
+    ],
+    "ko": [
+      "말만 하세요.",
+      "일은 팀이 합니다."
+    ],
+    "cmd": "npx thursday-agent"
+  },
+  "helpers": [
+    "Analyst",
+    "Curator",
+    "Writer",
+    "Designer",
+    "Concierge"
+  ],
+  "coord": "Jarvis",
+  "shots": [
+    {
+      "id": "chat",
+      "at": 0.0
+    },
+    {
+      "id": "drop",
+      "at": 5.0
+    },
+    {
+      "id": "jarvis",
+      "at": 8.0
+    },
+    {
+      "id": "analyst",
+      "at": 10.0
+    },
+    {
+      "id": "curator",
+      "at": 12.0
+    },
+    {
+      "id": "writer",
+      "at": 14.0
+    },
+    {
+      "id": "designer",
+      "at": 16.0
+    },
+    {
+      "id": "sheets",
+      "at": 18.0
+    },
+    {
+      "id": "board",
+      "at": 19.0
+    },
+    {
+      "id": "her",
+      "at": 19.5
+    },
+    {
+      "id": "rise",
+      "at": 21.5
+    },
+    {
+      "id": "done",
+      "at": 22.0
+    },
+    {
+      "id": "card",
+      "at": 25.0
+    }
+  ]
+}
