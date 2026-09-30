@@ -21,17 +21,18 @@ const dnsError = (name: string, code: string) =>
   Object.assign(new Error(`${code} ${name}`), { code });
 mock.module("node:dns/promises", {
   namedExports: {
-    resolveSrv: async (name: string) => {
-      const found = srv.get(name);
-      if (typeof found === "string") throw dnsError(name, found);
-      if (!found) throw dnsError(name, "ENOTFOUND");
-      return found;
-    },
-    // What email.ts looks senders up with when no resolver is given; every test gives one
+    // What email.ts and mail-servers.ts look things up with when no resolver is given them:
+    // one made for each lookup, never the process's own, which keeps the servers it began with
     Resolver: class {
       constructor() {
         resolvers++;
       }
+      resolveSrv = async (name: string) => {
+        const found = srv.get(name);
+        if (typeof found === "string") throw dnsError(name, found);
+        if (!found) throw dnsError(name, "ENOTFOUND");
+        return found;
+      };
       resolveTxt = async (name: string) => {
         throw dnsError(name, "ENOTFOUND");
       };
@@ -58,15 +59,13 @@ after(async () => {
 const { privateKey, publicKey } = generateKeyPairSync("rsa", {
   modulusLength: 2048,
 });
-const records = new Map<string, string[][] | string>([
+const key = [
   [
-    "s1._domainkey.example.org",
-    [
-      [
-        `v=DKIM1; k=rsa; p=${publicKey.export({ type: "spki", format: "der" }).toString("base64")}`,
-      ],
-    ],
+    `v=DKIM1; k=rsa; p=${publicKey.export({ type: "spki", format: "der" }).toString("base64")}`,
   ],
+];
+const records = new Map<string, string[][] | string>([
+  ["s1._domainkey.example.org", key],
   ["_dmarc.example.org", [["v=DMARC1; p=reject"]]],
 ]);
 const resolve = async (name: string, type: string) => {
@@ -244,6 +243,32 @@ test("records that do not answer hold the mail to be checked again", async () =>
     await assert.rejects(read(await mail()), CheckLater);
   } finally {
     records.set("_dmarc.example.org", [["v=DMARC1; p=reject"]]);
+  }
+});
+
+test("a signing key that does not answer holds the mail too, and held long enough is the reason it is not read", async () => {
+  // The policy answers and the key does not: DMARC then fails though nothing is wrong with
+  // the mail, and refusing it would lose a mail over one lost packet
+  records.set("s1._domainkey.example.org", "ETIMEOUT");
+  try {
+    await assert.rejects(read(await mail()), (cause: unknown) => {
+      assert.ok(cause instanceof CheckLater);
+      assert.equal(cause.message, "example.org's records did not answer");
+      return true;
+    });
+    const given = await readMail(await mail(), {
+      mailbox,
+      arrived: now,
+      resolve,
+      giveUp: true,
+    });
+    assert.equal(
+      given?.why,
+      "its sender could not be checked: example.org's records did not answer",
+    );
+    assert.match(given?.unproven ?? "", /Write it again\./);
+  } finally {
+    records.set("s1._domainkey.example.org", key);
   }
 });
 

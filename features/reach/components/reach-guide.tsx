@@ -609,6 +609,14 @@ function MailWords({
     return (
       <ShinyText text="Connecting…" className={cn(small, "align-middle")} />
     );
+  // Connected, and a mail of theirs waits on a check that will be made again: a wait, not a stop
+  if (status.holding)
+    return (
+      <ShinyText
+        text={`Listening as ${status.bot} — a mail is held: ${status.holding}`}
+        className={cn(small, "align-middle")}
+      />
+    );
   if (status.allowed)
     return (
       <span className={cn(small, "text-muted-foreground")}>

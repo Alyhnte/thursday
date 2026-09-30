@@ -1,4 +1,3 @@
-import { Resolver } from "node:dns/promises";
 import { format } from "date-fns";
 import { ImapFlow } from "imapflow";
 import { authenticate } from "mailauth";
@@ -22,6 +21,7 @@ import {
   parseServer,
   SMTP_TLS_PORT,
   serverWords,
+  systemResolver,
 } from "./mail-servers";
 
 /**
@@ -71,21 +71,28 @@ export type Resolve = (
   type: string,
 ) => Promise<string[][] | string[]>;
 
-/**
- * DNS as the system has it now. A resolver keeps the servers it was made with, and a laptop
- * changes networks under a server that stays up — a VPN on or off, another Wi-Fi — so one is
- * made for each mail checked, never kept.
- */
+/** The system's DNS for one mail's check: made for it, never kept (mail-servers systemResolver). */
 function systemDns(): Resolve {
-  const dns = new Resolver({ timeout: REACH.mailDnsMs, tries: 1 });
+  const dns = systemResolver();
   return (domain, type) =>
     type === "TXT"
       ? dns.resolveTxt(domain)
       : (dns.resolve(domain, type) as Promise<string[]>);
 }
 
-/** The sender's records could not be looked up: the mail waits and is checked again. */
+/**
+ * The sender's records did not answer: the mail waits and is checked again. Its message is
+ * what did not answer, for the screen and for a bot.
+ */
 export class CheckLater extends Error {}
+
+/** DNS errors that say "not now" rather than "no such record": worth waiting on. */
+const DNS_LATER = new Set([
+  "ETIMEOUT",
+  "ESERVFAIL",
+  "ECONNREFUSED",
+  "EAI_AGAIN",
+]);
 
 /** One message as reach takes it. */
 type Written = Extract<Incoming, { kind: "message" }>;
@@ -122,6 +129,11 @@ export async function readMail(
     now?: number;
     resolve?: Resolve;
     wanted?: Wanted;
+    /**
+     * It has waited long enough on records that do not answer: that is now why it is not
+     * read, rather than a reason to wait on (CheckLater).
+     */
+    giveUp?: boolean;
   },
 ): Promise<Mail | null> {
   const mail = await simpleParser(source, {
@@ -193,7 +205,13 @@ async function unproven(
   mail: ParsedMail,
   source: Buffer,
   address: string,
-  at: { mailbox: string; arrived: Date; now?: number; resolve?: Resolve },
+  at: {
+    mailbox: string;
+    arrived: Date;
+    now?: number;
+    resolve?: Resolve;
+    giveUp?: boolean;
+  },
 ): Promise<{ why: string; advice?: string } | undefined> {
   const mailbox = at.mailbox.toLowerCase();
   if (!addressesOf(mail.to, mail.cc).includes(mailbox))
@@ -212,20 +230,43 @@ async function unproven(
       advice: "Write it again if it still stands.",
     };
 
-  const checked = await authenticate(source, {
-    resolver: at.resolve ?? systemDns(),
-    disableArc: true,
-    disableBimi: true,
-  }).catch((cause: unknown) => {
-    throw new CheckLater(`Could not check who sent a mail: ${reasonOf(cause)}`);
-  });
-  const dmarc = checked.dmarc;
   const domain = address.slice(address.lastIndexOf("@") + 1);
+  /** Records that did not answer: waited on, until that has gone on long enough to be the reason. */
+  const notYet = (what: string) => {
+    if (!at.giveUp) throw new CheckLater(what);
+    return {
+      why: `its sender could not be checked: ${what}`,
+      advice:
+        "Write it again. If this keeps happening, the trouble is that domain's DNS records.",
+    };
+  };
+  let checked: Awaited<ReturnType<typeof authenticate>>;
+  try {
+    checked = await authenticate(source, {
+      resolver: at.resolve ?? systemDns(),
+      disableArc: true,
+      disableBimi: true,
+    });
+  } catch (cause) {
+    const code = (cause as { code?: string }).code ?? "";
+    if (DNS_LATER.has(code))
+      return notYet(`${domain}'s records did not answer (${code})`);
+    // Not a wait that ends by itself: said as the reason, rather than held for
+    return { why: `its sender could not be checked (${reasonOf(cause)})` };
+  }
+  const dmarc = checked.dmarc;
   const result = dmarc ? dmarc.status.result : "none";
-  if (result === "temperror" || result === "temperr")
-    throw new CheckLater(
-      `Could not check who sent a mail: ${domain}'s records did not answer`,
-    );
+  // A signing key that could not be fetched leaves DMARC failing though nothing is wrong
+  // with the mail: the key lookup not answering is as much "not yet" as the policy's
+  const keyUnread = (checked.dkim?.results ?? []).some(
+    (one) => one.status.result === "temperror",
+  );
+  if (
+    result === "temperror" ||
+    result === "temperr" ||
+    (result !== "pass" && keyUnread)
+  )
+    return notYet(`${domain}'s records did not answer`);
   if (!dmarc || result !== "pass")
     return {
       why: `${domain}'s mail service does not vouch that it came from ${address}, so it could be anyone's (its DMARC check said: ${result})`,
@@ -301,6 +342,12 @@ export function createEmail(
   const mailbox = address.trim().toLowerCase();
   /** The mail each conversation is in, so an answer is threaded under what was written. */
   const threads = new Map<string, Thread>();
+  /**
+   * The mail being held for a sender who cannot be checked yet: its source, so each check
+   * again costs DNS alone and not another download, and since when, so it is given up on
+   * after REACH.mailHoldMs. Kept across connections.
+   */
+  let held: { uid: number; source: Buffer; since: number } | null = null;
 
   /** A server as it was saved, or the step that holds it refused (REACH_KEYS order). */
   const server = (value: string, key: number, what: string): MailServer => {
@@ -450,7 +497,7 @@ export function createEmail(
           seen = looked.seen;
           // Their mail waits where it is, and what came after it behind it: said, and
           // checked again, on the connection that stands
-          on.trouble?.(looked.later);
+          on.holding?.(looked.later);
           const again = looked.later !== null;
           if ((again || !rung) && !signal.aborted)
             await ring(
@@ -603,21 +650,30 @@ export function createEmail(
         refs: [],
       };
     }
-    const whole = await client.fetchOne(
-      String(uid),
-      { source: true },
-      { uid: true },
-    );
-    if (!whole || !whole.source) return null;
-    // A sender who cannot be checked yet throws CheckLater: only mail from the one who may
-    // write gets this far, so it waits to be checked again rather than being passed over
-    const mail = await readMail(whole.source, {
-      mailbox,
-      arrived,
-      resolve,
-      wanted,
-    });
-    return mail?.auto ? null : mail;
+    const kept = held?.uid === uid ? held : null;
+    const source =
+      kept?.source ??
+      (await client
+        .fetchOne(String(uid), { source: true }, { uid: true })
+        .then((whole) => (whole && whole.source) || null));
+    if (!source) return null;
+    try {
+      // A sender who cannot be checked yet throws CheckLater: only mail from the one who may
+      // write gets this far, so it waits to be checked again rather than being passed over
+      const mail = await readMail(source, {
+        mailbox,
+        arrived,
+        resolve,
+        wanted,
+        giveUp: Boolean(kept && Date.now() - kept.since > REACH.mailHoldMs),
+      });
+      held = null;
+      return mail?.auto ? null : mail;
+    } catch (cause) {
+      if (cause instanceof CheckLater)
+        held = kept ?? { uid, source, since: Date.now() };
+      throw cause;
+    }
   }
 }
 
@@ -821,7 +877,10 @@ export async function checkMail(
           unchecked.delete(one.uid);
         } catch (cause) {
           if (!(cause instanceof CheckLater)) throw cause;
-          unchecked.set(one.uid, cause.message);
+          unchecked.set(
+            one.uid,
+            `a mail whose sender could not be checked yet: ${cause.message}`,
+          );
           continue;
         }
         judged.add(one.uid);

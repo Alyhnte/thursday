@@ -117,6 +117,8 @@ type Live = {
   /** Where to go to reach this bot, as the service named it (`channel.ts`). */
   link: string | null;
   problem: string | null;
+  /** Why something that arrived is held and not read yet (reach.schema `holding`). */
+  holding: string | null;
   /** The key whose token the service turned away: listening has stopped until a key changes. */
   refused: string | null;
   /** The bot's own id on the service, once it has connected: who is let in is let in to it. */
@@ -229,6 +231,7 @@ export async function readReachStatus(): Promise<ReachStatus> {
         asking: live.asking,
         refused: live.refused,
         problem: live.problem,
+        holding: live.holding,
         mailbox: live.name === "email" ? await readMailbox() : null,
       })),
     ),
@@ -288,6 +291,7 @@ export async function startReach(fresh?: ReachChannelName): Promise<void> {
       bot: null,
       link: null,
       problem: null,
+      holding: null,
       refused: null,
       id: null,
       adopt: !fresh,
@@ -335,6 +339,8 @@ async function listen(live: Live) {
             live.bot = bot;
             live.link = link;
             live.problem = null;
+            // A new connection looks again, and says so again if it still holds one
+            live.holding = null;
             live.id = id;
             live.settled = settle(live, id).catch((cause) =>
               logger.error(`reach ${live.name}: who is let in`, cause),
@@ -345,7 +351,11 @@ async function listen(live: Live) {
             void take(live, incoming).catch((cause) =>
               logger.error(`reach ${live.name}: what arrived`, cause),
             ),
-          trouble,
+          holding: (why) => {
+            if (live.holding === why) return;
+            live.holding = why;
+            changed();
+          },
           // A channel that names who may write hears no one else (take): it need not read them
           wanted: async (chat) =>
             !live.channel.named || (await readPerson(live.name))?.chat === chat,

@@ -103,6 +103,11 @@ export type ReachChannelStatus = {
    */
   problem: string | null;
   /**
+   * Why something that arrived is held and not read yet, while the service is listened to
+   * (a mail whose sender cannot be checked yet). Null when nothing is held.
+   */
+  holding: string | null;
+  /**
    * Email's mailbox as it was saved: her address and the servers it is read and sent through,
    * none of them secret. Null for a chat app.
    */

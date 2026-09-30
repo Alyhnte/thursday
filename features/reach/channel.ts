@@ -97,11 +97,11 @@ export type Channel = {
       incoming(incoming: Incoming): void;
       wanted?(chat: string): Promise<boolean>;
       /**
-       * Something keeps what arrived from being read while the connection stands (a mail
-       * whose sender cannot be checked yet): said on the screen as trouble being tried
-       * again, and taken back with null once it is read.
+       * What arrived is held, not read yet, while the connection stands (a mail whose
+       * sender cannot be checked yet): said on the screen, apart from trouble connecting,
+       * and taken back with null once it is read or refused.
        */
-      trouble?(why: string | null): void;
+      holding?(why: string | null): void;
     },
     signal: AbortSignal,
   ): Promise<void>;

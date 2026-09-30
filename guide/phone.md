@@ -9,8 +9,8 @@ back to it, and anything else goes to the one they last wrote from.
 stands: *Not set*, *1 of 2 tokens in*, *Connecting…*, *Listening as … — waiting for your first
 message*, *Listening as … . … is let in.*, *Reconnecting…*, or in red *Stopped — … turned the token
 away* or *Stopped — the saved token can't be unlocked any more*. Email's line says *Listening as … —
-name your own address*, *Listening as … . … can write.*, or in red *Stopped — the mail service
-turned her mailbox's sign-in away*.
+name your own address*, *Listening as … . … can write.*, *Listening as … — a mail is held: …*, or
+in red *Stopped — the mail service turned her mailbox's sign-in away*.
 Opening a line shows its four steps, each ticked as it is done. Tokens are pasted in the steps that
 ask for them.
 
@@ -200,9 +200,11 @@ back.
   a new app password pasted there starts it again.
 - **A mail you sent that she did not answer**: she writes back saying why (see Who is let in). No
   answer at all means it did not reach her mailbox, or it was not from the named address.
-- **Your mail's sender cannot be checked yet** (the computer's network has no DNS — just after a VPN
-  or Wi-Fi change, or offline): Email's line says *Could not check who sent a mail…*. The mail is
-  not lost: it is checked again every half minute and answered once the check goes through.
+- **Your mail's sender cannot be checked yet** (your mail service's records did not answer — the
+  computer's DNS is down, or that domain's is): Email's line says *Listening as … — a mail is held:
+  …'s records did not answer*. The mail is not lost: it is checked again every half minute and
+  answered once the check goes through. After an hour of that she writes back that its sender
+  could not be checked, and what you wrote after it is read.
 - **The GPT Subscription's limit**: with an OpenAI key set, she answers on the key, and the chat is
   told so once a conversation, with when the plan resets. With no key, the chat says the limit and
   that an OpenAI key in **Settings › API keys** would let her answer.

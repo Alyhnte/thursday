@@ -1,4 +1,5 @@
-import { resolveSrv } from "node:dns/promises";
+import { Resolver } from "node:dns/promises";
+import { REACH } from "@/config";
 import { publicError } from "@/lib/public-error";
 
 /**
@@ -8,6 +9,14 @@ import { publicError } from "@/lib/public-error";
  */
 
 export type MailServer = { host: string; port: number };
+
+/**
+ * DNS as the system has it now. A resolver keeps the servers it was made with — the process's
+ * own default one too — and a laptop changes networks under a server that stays up: a VPN on
+ * or off, another Wi-Fi. So one is made for each thing looked up, never kept.
+ */
+export const systemResolver = () =>
+  new Resolver({ timeout: REACH.mailDnsMs, tries: 1 });
 
 /** Reading mail over TLS from the start; any other port must offer STARTTLS (email.ts). */
 export const IMAP_TLS_PORT = 993;
@@ -63,7 +72,7 @@ const NOT_PUBLISHED = new Set(["ENOTFOUND", "ENODATA", "ENONAME"]);
  */
 async function srv(name: string, domain: string): Promise<MailServer | null> {
   try {
-    const [best] = (await resolveSrv(name))
+    const [best] = (await systemResolver().resolveSrv(name))
       .filter((record) => record.name && record.name !== "." && record.port)
       .sort((a, b) => a.priority - b.priority || b.weight - a.weight);
     return best

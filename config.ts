@@ -179,9 +179,12 @@ export const CALL_IDLE = {
  *   away one that was slow on its way.
  * - `mailCheckAgainMs`  how long a mail waits to be checked again when its sender's records
  *   could not be looked up (no network, a resolver down). Only mail from the one who may write
- *   is checked at all, so it is never passed over: the mailbox waits on it, the screen says
- *   why, and it is given up on only once it is too old to read (`mailFreshMs`). Shorter
- *   answers sooner once the network is back; longer asks DNS less while it is down.
+ *   is checked at all, so it is not passed over: the mailbox waits on it and the screen says
+ *   why. Shorter answers sooner once the network is back; longer asks DNS less while it is down.
+ * - `mailHoldMs`  how long such a mail is held before it is refused, with that as the reason
+ *   they are told. Everything they write waits behind it meanwhile. Longer rides out a longer
+ *   DNS outage; shorter tells them sooner that a domain whose records never answer is the
+ *   trouble, and lets their next mail through.
  * - `mailPushAfterMs`  how long the mailbox's connection is quiet before the server is asked
  *   to say when mail arrives (IMAP IDLE). A mail that arrives before then waits for it: the
  *   library's own 15 seconds made every answer to a quick reply that much later. Lower asks
@@ -190,7 +193,7 @@ export const CALL_IDLE = {
  *   drop an idle one after 30 minutes (RFC 3501 §5.4), and some drop it sooner without a word;
  *   longer risks a connection that is gone before anyone knows, shorter renews it for nothing.
  * - `mailDnsMs`  how long a sender's DNS records may take to look up before the mail is set
- *   aside to be checked again (`mailChecks`). Longer waits out a slow resolver; shorter lets
+ *   aside to be checked again (`mailCheckAgainMs`). Longer waits out a slow resolver; shorter lets
  *   one slow domain hold up the inbox for less time.
  * - `mailIdsKept`  how many Message-IDs of mail already answered are kept, so one sent to her
  *   again is not answered again. More remembers further back, in the one config row.
@@ -216,6 +219,7 @@ export const REACH = {
   lookMs: 2_000,
   mailFreshMs: 48 * 60 * 60_000,
   mailCheckAgainMs: 30_000,
+  mailHoldMs: 60 * 60_000,
   mailPushAfterMs: 1_000,
   mailIdleMs: 4 * 60_000,
   mailDnsMs: 5_000,
