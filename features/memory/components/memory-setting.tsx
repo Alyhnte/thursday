@@ -527,7 +527,7 @@ const NOTE_KINDS = [
   {
     key: "people",
     label: "Person",
-    placeholder: "jihoon",
+    placeholder: "alex",
     fact: "Moved to the platform team in March",
   },
   {
