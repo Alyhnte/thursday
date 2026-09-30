@@ -456,6 +456,54 @@ export type WorkspaceDict = {
   deleteAria: string;
 };
 
+export type SkillsDict = {
+  countLine: (on: number, off: number) => string;
+  filter: string;
+  customGroup: string;
+  customHint: string;
+  addSkill: string;
+  botOwn: (bot: string) => string;
+  botOwnHint: (bot: string) => string;
+  defaultGroup: string;
+  defaultHint: string;
+  crowded: (count: number) => string;
+  railShipped: (count: number) => string;
+  railInstalled: (count: number) => string;
+  deleteTitle: (name: string) => string;
+  deleteBody: string;
+  deleteOk: string;
+  rowSwitch: (name: string) => string;
+  rowDelete: (name: string) => string;
+  discardTitle: string;
+  discardBody: (file: string) => string;
+  discardOk: string;
+  editBtn: string;
+  cancelBtn: string;
+  saveBtn: string;
+  savedOk: string;
+  fileContents: (name: string) => string;
+  tooLong: string;
+  notText: string;
+  newTitle: string;
+  newDesc: string;
+  cancelAction: string;
+  createAction: string;
+  uploadAction: string;
+  writeTab: string;
+  uploadTab: string;
+  nameField: string;
+  descField: string;
+  descPlaceholder: string;
+  contentField: string;
+  contentPlaceholder: string;
+  overLimit: (mb: number) => string;
+  dropHint: string;
+  reqTitle: string;
+  reqMdLine: string;
+  reqZipLine: string;
+  reqMax: (mb: number) => string;
+};
+
 export type SettingsDict = {
   dialogTitle: string;
   navLabel: string;
@@ -488,6 +536,7 @@ export type SettingsDict = {
   bot: BotDict;
   files: FilesDict;
   workspace: WorkspaceDict;
+  skills: SkillsDict;
 };
 
 export const en: SettingsDict = {
@@ -986,6 +1035,58 @@ export const en: SettingsDict = {
     openNewTab: "Open in a new tab",
     revealManager: "Reveal in the file manager",
     deleteAria: "Delete",
+  },
+  skills: {
+    countLine: (on, off) => `${on} on · ${off} off`,
+    filter: "Filter skills",
+    customGroup: "Custom",
+    customHint: "yours — added here · a Default skill of the same name wins",
+    addSkill: "Add skill",
+    botOwn: (bot) => `${bot}'s own`,
+    botOwnHint: (bot) =>
+      `only ${bot} reads these · what it found or wrote can be edited or deleted`,
+    defaultGroup: "Default",
+    defaultHint: "ships with the app · switch off, can't edit or delete",
+    crowded: (count) =>
+      `${count} skills are on for every bot. Each is a line in every prompt a bot reads, and one more to look past when it picks.`,
+    railShipped: (count) => `${count} shipped`,
+    railInstalled: (count) => `${count} installed`,
+    deleteTitle: (name) => `Delete ${name}?`,
+    deleteBody: "Every file in this skill is deleted for good.",
+    deleteOk: "Delete",
+    rowSwitch: (name) => `${name} on or off`,
+    rowDelete: (name) => `Delete ${name}`,
+    discardTitle: "Discard your changes?",
+    discardBody: (file) => `What you wrote in ${file} is not saved.`,
+    discardOk: "Discard",
+    editBtn: "Edit",
+    cancelBtn: "Cancel",
+    saveBtn: "Save",
+    savedOk: "Saved",
+    fileContents: (name) => `${name} contents`,
+    tooLong: "Too long to show here — a bot still reads it from disk.",
+    notText: "Not a text file — a bot can still read it from disk.",
+    newTitle: "New skill",
+    newDesc: "Instructions a bot reads when a job calls for them.",
+    cancelAction: "Cancel",
+    createAction: "Create",
+    uploadAction: "Upload",
+    writeTab: "Write",
+    uploadTab: "Upload",
+    nameField: "Name",
+    descField: "Description",
+    descPlaceholder:
+      "What it does, then when to use it — a bot reads this to decide",
+    contentField: "Content",
+    contentPlaceholder: "Markdown. The steps, the rules, the examples.",
+    overLimit: (mb) => ` · over ${mb} MB`,
+    dropHint: "Drop a file here, or click to choose",
+    reqTitle: "File requirements",
+    reqMdLine:
+      "A .md file needs a YAML block with the skill's name and description.",
+    reqZipLine:
+      "A .zip or .skill archive needs a SKILL.md inside — the rest of its folder comes along.",
+    reqMax: (mb) => `Up to ${mb} MB.`,
   },
   bot: {
     botsMost: (count, max) => `${count} bots · ${max} is the most`,
