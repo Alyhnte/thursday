@@ -554,6 +554,260 @@ export type McpDict = {
   resultCount: (shown: number, total: number) => string;
 };
 
+export type SigninsDict = {
+  railNote: string;
+  empty: string;
+  steps: { title: string; text: string }[];
+  accountsWord: string;
+  usedWord: string;
+  keptWord: string;
+  signOutTitleOne: (site: string) => string;
+  signOutTitleAccount: (account: string, site: string) => string;
+  signOutBody: (others: number, site: string) => string;
+  signOutOk: string;
+  signOutBtn: string;
+  signOutAria: (account: string) => string;
+  revokeAria: (name: string) => string;
+  noBot: string;
+  asksSuffix: string;
+  allowBtn: string;
+  ownChromeTitle: string;
+  ownChromeDesc: string;
+  getExtension: string;
+};
+
+export type ReachSeg =
+  | string
+  | { bold: string }
+  | { link: { href: string; label: string } };
+
+export type ReachStep = {
+  body: ReachSeg[];
+  slot?:
+    | { open: string; label: string }
+    | { key: string; looks: string }
+    | { manifest: true }
+    | { mailbox: true }
+    | { person: true }
+    | { write: true }
+    | { says: string; does?: string };
+};
+
+export type ReachDict = {
+  note: string;
+  stoppedToken: string;
+  tokensIn: (have: number, total: number) => string;
+  notSet: string;
+  stoppedTurned: (label: string) => string;
+  reconnecting: (problem: string) => string;
+  connecting: (problem: string) => string;
+  listeningAs: (bot: string | null, name: string) => string;
+  connectingDots: string;
+  waitingFirst: (bot: string | null) => string;
+  mailStoppedPassword: string;
+  mailStoppedService: string;
+  mailHeld: (bot: string | null, holding: string) => string;
+  mailCanWrite: (bot: string | null, name: string) => string;
+  mailNameAddress: (bot: string | null) => string;
+  waitingFirstMsg: string;
+  cameraAria: (shown: string) => string;
+  changeToken: string;
+  tokenAria: string;
+  replaceBtn: string;
+  saveBtn: string;
+  cancelBtn: string;
+  removeBtn: string;
+  removeTokenTitle: string;
+  removeTokenBody: string;
+  removeTokenOk: string;
+  copiedBtn: string;
+  copyManifest: string;
+  letInLine: (who: string) => string;
+  canWriteLine: (who: string) => string;
+  letGoTitle: (who: string) => string;
+  letGoBody: string;
+  letGoOk: string;
+  letGoBtn: string;
+  lostTokenAgain: string;
+  mailboxAppPassword: string;
+  removeMailboxTitle: string;
+  removeMailboxBody: string;
+  removeMailboxOk: string;
+  changeBtn: string;
+  addressField: string;
+  appPasswordField: string;
+  appPasswordPlaceholder: string;
+  domainFallback: string;
+  noServersNote: (domain: string) => string;
+  readingServer: string;
+  sendingServer: string;
+  portField: string;
+  replaceAction: string;
+  saveAction: string;
+  stopMailTitle: (who: string) => string;
+  stopMailBody: string;
+  stopMailOk: string;
+  ownAddressAria: string;
+  writeTo: (address: string) => string;
+  copyHerAddress: string;
+  mailtoFallback: string;
+  steps: Record<string, ReachStep[]>;
+};
+
+export type ConfigDict = {
+  groups: Record<string, { title: string; hint: string; note?: string }>;
+  groupNoteFallback: string;
+  readyWord: string;
+  modelsFooter: string;
+  keysFooterSet: (set: number, total: number) => string;
+  keysFooterLost: (lost: number) => string;
+  keysFooterNeedCall: string;
+  keysFooterStay: string;
+  moreProviders: (count: number) => string;
+  moreWord: string;
+  searchHint: string;
+  ariaSet: string;
+  ariaSetEnv: string;
+  ariaLost: string;
+  ariaUnset: string;
+  keyRefused: string;
+  creditsLeft: (amount: string) => string;
+  signInAgain: string;
+  enterAgain: string;
+  signedOut: string;
+  notSet: string;
+  signedIn: string;
+  setWord: string;
+  setInEnv: string;
+  signinRefused: string;
+  limitReached: string;
+  usedPercent: (pct: number) => string;
+  resetsIn: (when: string) => string;
+  signedInWord: string;
+  signInWithAccount: string;
+  planUsedAria: string;
+  automaticWord: string;
+  offWord: string;
+  autoWord: string;
+  unsetPlanRuns: (label: string) => string;
+  unsetNoOffer: string;
+  effortWord: string;
+  signOutOf: (label: string) => string;
+  signedOutOf: (label: string) => string;
+  signInInstead: string;
+  closeBtn: string;
+  cancelBtn: string;
+  signOutBtn: string;
+  signOutConfirmBody: string;
+  planSpendNote: string;
+  signInWindowNote: string;
+  lostSigninAgain: string;
+  saveKeyOk: (label: string) => string;
+  removeKeyOk: (label: string) => string;
+  removeKeyTitle: (label: string) => string;
+  removeKeyBody: string;
+  closeAction: string;
+  removeAction: string;
+  cancelAction: string;
+  replaceAction: string;
+  saveAction: string;
+  newValuePlaceholder: string;
+  pasteAgainPlaceholder: string;
+  pasteKeyFallback: string;
+  getKeyAt: (host: string) => string;
+  lostKeyAgain: string;
+  envSetNote: (label: string) => string;
+  mediaLabels: Record<string, { label: string; hint: string }>;
+  mediaMissing: (kind: string) => string;
+  phoneFooter: string;
+  entryHints: Record<string, string>;
+  entryLabels: Record<string, string>;
+};
+
+export type AiDict = {
+  pickModel: string;
+  notPicked: string;
+  appDefault: string;
+  noKeyYet: (label: string) => string;
+  lostSignin: (label: string) => string;
+  lostKey: (label: string) => string;
+  signInAgain: string;
+  pasteAgain: string;
+  everyCarries: (label: string) => string;
+  catalogNoRead: string;
+  typeModelId: string;
+  modelAria: string;
+  searchModels: string;
+  searchPlaceholder: string;
+  sortAria: string;
+  sortCheap: string;
+  sortDear: string;
+  sortName: string;
+  per1M: string;
+  takeAsId: (query: string) => string;
+  noMatch: (query: string) => string;
+  clearSearch: string;
+  nothingPicked: string;
+  cancelBtn: string;
+  useModel: string;
+  freeWord: string;
+  retiringWord: string;
+  kindText: string;
+  kindTitles: Record<string, string>;
+  matchCount: (count: number, query: string) => string;
+  shelfCountKind: (count: number, label: string) => string;
+  shelfCountTools: (count: number, total: number, label: string) => string;
+  emptyShelf: string;
+  pickModelFirst: string;
+  autoWord: string;
+  modelDefaultTitle: string;
+  effortAria: string;
+  effortStep: (step: string) => string;
+  ladderUnknown: string;
+  ladderNone: string;
+  ladderSteps: (count: number) => string;
+  blockedTitle: string;
+  blockedDesc: string;
+  signinBtn: string;
+  runsOnPlan: string;
+  saveKeyBtn: string;
+  pasteKeyFallback: string;
+  voiceAria: string;
+  clickHear: string;
+  anotherVoiceId: string;
+  anotherVoiceAria: string;
+  saveAction: string;
+  closeAria: string;
+  clipUnreadable: string;
+  sampleFailTitle: string;
+  mismatchNot: (label: string) => string;
+  saveBtn: string;
+  replaceIt: string;
+  keyAria: string;
+  voiceKeyTitle: string;
+  notNow: string;
+  keyNotSaved: string;
+  lostKeyAgain: string;
+  liveShareNote: string;
+  liveSeparateNote: string;
+  callLinesEnough: string;
+  signInLost: string;
+  noCallsPlan: string;
+  runsOnPlanLine: string;
+  runsOnKeyLine: string;
+  planDefault: string;
+  signInAgainBtn: string;
+  signInBtn: string;
+  keyTitle: string;
+  keyPerMinute: string;
+  keyRunsOnPlan: string;
+  keyRunsNow: string;
+  signedInWord: string;
+  savedWord: string;
+  pasteKeyBtn: string;
+  getKeyShort: string;
+};
+
 export type SettingsDict = {
   dialogTitle: string;
   navLabel: string;
@@ -588,6 +842,10 @@ export type SettingsDict = {
   workspace: WorkspaceDict;
   skills: SkillsDict;
   mcp: McpDict;
+  signins: SigninsDict;
+  reach: ReachDict;
+  config: ConfigDict;
+  ai: AiDict;
 };
 
 export const en: SettingsDict = {
@@ -1189,6 +1447,381 @@ export const en: SettingsDict = {
     filterPresets: "Filter presets",
     resultCount: (shown, total) => `${shown} of ${total}`,
   },
+  signins: {
+    railNote:
+      "A site's session as the browser held it — never a password. Kept on this machine, outside the folder the bots work in. It is the whole session: signed in with Google, it carries the Google sign-in too.",
+    empty:
+      "Nothing is kept yet. When a bot needs you signed in somewhere, it opens a window for you to sign in — and that sign-in is kept here for its later work.",
+    steps: [
+      {
+        title: "A bot opens a window",
+        text: "When its work needs you signed in to a site, it opens that site on your screen and asks.",
+      },
+      {
+        title: "You sign in there",
+        text: "The app keeps that sign-in here — the site's session, never your password. A second account on a site is kept beside the first.",
+      },
+      {
+        title: "Only that bot uses it",
+        text: "Later work is signed in without asking. Another bot has to ask you first.",
+      },
+    ],
+    accountsWord: "accounts",
+    usedWord: "used",
+    keptWord: "kept",
+    signOutTitleOne: (site) => `Sign out of ${site}?`,
+    signOutTitleAccount: (account, site) =>
+      `Sign out of ${account} on ${site}?`,
+    signOutBody: (others, site) =>
+      `What is kept here is removed, and the bots that used it ask you to sign in again.${others ? ` Your other ${site} ${others === 1 ? "account stays" : "accounts stay"}.` : ""} The site itself may still list the session until it ends it.`,
+    signOutOk: "Sign out",
+    signOutBtn: "Sign out",
+    signOutAria: (account) => `Sign out of ${account}`,
+    revokeAria: (name) => `${name} may no longer use it`,
+    noBot: "No bot may use it. One that needs it will ask.",
+    asksSuffix: "asks",
+    allowBtn: "Allow",
+    ownChromeTitle: "Your own Chrome",
+    ownChromeDesc:
+      "For a site that will not stay signed in. A bot gets a tab of its own, signed in as you — to every site your Chrome is, not only that one.",
+    getExtension: "Get the extension",
+  },
+  ai: {
+    pickModel: "Pick a model",
+    notPicked: "Not picked",
+    appDefault: "App default",
+    noKeyYet: (label) => `${label} has no key yet.`,
+    lostSignin: (label) => `The ${label} sign-in saved before`,
+    lostKey: (label) => `The ${label} key saved before`,
+    signInAgain: "Sign in again.",
+    pasteAgain: "Paste it again.",
+    everyCarries: (label) =>
+      `Every model ${label} carries, with what each costs.`,
+    catalogNoRead: "Could not read the catalog — type an id",
+    typeModelId: "or type a model id",
+    modelAria: "Model",
+    searchModels: "Search models",
+    searchPlaceholder: "name, id or provider",
+    sortAria: "Sort",
+    sortCheap: "Cheapest first",
+    sortDear: "Dearest first",
+    sortName: "By name",
+    per1M: "per 1M in / out",
+    takeAsId: (query) => `Use “${query}” as the id`,
+    noMatch: (query) => `Nothing matches “${query}”.`,
+    clearSearch: "Clear search",
+    nothingPicked: "Nothing picked — the field keeps what it has",
+    cancelBtn: "Cancel",
+    useModel: "Use this model",
+    freeWord: "free",
+    retiringWord: "retiring",
+    kindText: "Text",
+    kindTitles: {
+      image: "Image",
+      video: "Video",
+      speech: "Speech",
+      transcription: "Transcription",
+    },
+    matchCount: (count, query) => `${count} matching “${query}”`,
+    shelfCountKind: (count, label) => `${count} on ${label}`,
+    shelfCountTools: (count, total, label) =>
+      `${count} of ${total} on ${label} can call tools`,
+    emptyShelf: "Nothing on the shelf — search for an id.",
+    pickModelFirst: "Pick a model first",
+    autoWord: "auto",
+    modelDefaultTitle: "The model's own default",
+    effortAria: "Thinking effort",
+    effortStep: (step) => `Thinking effort ${step}`,
+    ladderUnknown: "This model's steps are unknown",
+    ladderNone: "This model has no effort to set",
+    ladderSteps: (count) => `${count} steps, plus Auto`,
+    blockedTitle: "The sign-in window was blocked",
+    blockedDesc: "Allow pop-ups for this page, then try again",
+    signinBtn: "Sign in with ChatGPT",
+    runsOnPlan: "Runs on your plan once you sign in",
+    saveKeyBtn: "Save key",
+    pasteKeyFallback: "Paste the key",
+    voiceAria: "Voice",
+    clickHear: "click a name to hear it",
+    anotherVoiceId: "another voice id",
+    anotherVoiceAria: "Another voice id",
+    saveAction: "Save",
+    closeAria: "Close",
+    clipUnreadable: "The clip could not be read.",
+    sampleFailTitle: "Voice sample did not play",
+    mismatchNot: (label) => `Not ${label}?`,
+    saveBtn: "Save",
+    replaceIt: "Replace it",
+    keyAria: "OpenAI API key",
+    voiceKeyTitle: "Voice key",
+    notNow: "Not now",
+    keyNotSaved: "That key was not saved.",
+    lostKeyAgain: "Paste it again.",
+    liveShareNote: "Live voice and reasoning share this OpenAI API key.",
+    liveSeparateNote:
+      "Live uses an OpenAI API key, billed separately from ChatGPT. Stored on this machine, in this app's database.",
+    callLinesEnough: "Either one is enough.",
+    signInLost: "The sign-in saved before can't be unlocked any more.",
+    noCallsPlan: "Bots and writing run on this plan; spoken calls don't.",
+    runsOnPlanLine: "Calls and bots run on your plan.",
+    runsOnKeyLine: "Bots run on your plan; calls run on the key.",
+    planDefault: "Your ChatGPT plan. No key, no bill by the minute.",
+    signInAgainBtn: "Sign in again",
+    signInBtn: "Sign in",
+    keyTitle: "OpenAI API key",
+    keyPerMinute: "Billed by the minute of call, apart from ChatGPT.",
+    keyRunsOnPlan: "Calls run on your plan; switch in Settings › Thursday.",
+    keyRunsNow: "Calls run on it now, billed by the minute.",
+    signedInWord: "Signed in",
+    savedWord: "Saved",
+    pasteKeyBtn: "Paste a key",
+    getKeyShort: "Get a key",
+  },
+  reach: {
+    note: "Only the one person you allow can write: direct messages in a chat app, and by email only mail from the address you name. Nobody else is ever written back to. Work started here runs whether or not a tab is open, while Thursday is running on this computer.",
+    stoppedToken: "Stopped — the saved token can't be unlocked any more",
+    tokensIn: (have, total) => `${have} of ${total} tokens in`,
+    notSet: "Not set",
+    stoppedTurned: (label) => `Stopped — ${label} turned the token away`,
+    reconnecting: (problem) => `Reconnecting ${problem}`,
+    connecting: (problem) => `Connecting ${problem}`,
+    listeningAs: (bot, name) => `Listening as ${bot ?? ""}. ${name} is let in.`,
+    connectingDots: "Connecting…",
+    waitingFirst: (bot) =>
+      `Listening as ${bot ?? ""} — waiting for your first message`,
+    mailStoppedPassword:
+      "Stopped — the saved app password can't be unlocked any more",
+    mailStoppedService:
+      "Stopped — the mail service turned her mailbox's sign-in away",
+    mailHeld: (bot, holding) =>
+      `Listening as ${bot ?? ""} — a mail is held: ${holding}`,
+    mailCanWrite: (bot, name) =>
+      `Listening as ${bot ?? ""}. ${name} can write.`,
+    mailNameAddress: (bot) =>
+      `Listening as ${bot ?? ""} — name your own address`,
+    waitingFirstMsg: "Waiting for your first message…",
+    cameraAria: (shown) => `A picture of ${shown} for a phone camera`,
+    changeToken: "Change the token",
+    tokenAria: "Token",
+    replaceBtn: "Replace",
+    saveBtn: "Save",
+    cancelBtn: "Cancel",
+    removeBtn: "Remove",
+    removeTokenTitle: "Remove this token?",
+    removeTokenBody: "That service stops, and whoever is let in is let go.",
+    removeTokenOk: "Remove",
+    copiedBtn: "Copied",
+    copyManifest: "Copy the manifest",
+    letInLine: (who) => `${who} is let in.`,
+    canWriteLine: (who) => `${who} can write from a phone.`,
+    letGoTitle: (who) => `Let ${who} go?`,
+    letGoBody:
+      "Nobody can write to Thursday through this service until someone is let in again.",
+    letGoOk: "Let them go",
+    letGoBtn: "Let them go",
+    lostTokenAgain: "The token saved here",
+    mailboxAppPassword: "Her mailbox's app password",
+    removeMailboxTitle: "Remove her mailbox?",
+    removeMailboxBody:
+      "Email stops, and the address that could write is let go. The mailbox itself is not touched.",
+    removeMailboxOk: "Remove",
+    changeBtn: "Change",
+    addressField: "Address",
+    appPasswordField: "App password",
+    appPasswordPlaceholder: "paste it here",
+    domainFallback: "Its domain",
+    noServersNote: (domain) =>
+      `${domain} doesn't say where its mail servers are. Its help pages name them — one for reading mail (IMAP) and one for sending it (SMTP).`,
+    readingServer: "Reading server",
+    sendingServer: "Sending server",
+    portField: "Port",
+    replaceAction: "Replace",
+    saveAction: "Save",
+    stopMailTitle: (who) => `Stop reading mail from ${who}?`,
+    stopMailBody:
+      "Nobody can write to Thursday by email until an address is named again.",
+    stopMailOk: "Stop",
+    ownAddressAria: "Your own address",
+    writeTo: (address) => `Write to ${address}`,
+    copyHerAddress: "Copy her address",
+    mailtoFallback: "Paste it again.",
+    steps: {
+      telegram: [
+        {
+          body: [
+            "In Telegram, write to ",
+            { bold: "@BotFather" },
+            ", send ",
+            { bold: "/newbot" },
+            " and pick a name. It answers with a ",
+            { bold: "token" },
+            ".",
+          ],
+          slot: { open: "https://t.me/BotFather", label: "Open @BotFather" },
+        },
+        {
+          body: ["Paste the token here."],
+          slot: { key: "TELEGRAM_BOT_TOKEN", looks: "123456789:AAE…" },
+        },
+        {
+          body: ["From your phone, write anything to your bot."],
+          slot: { says: "Point your phone's camera at it to open the chat." },
+        },
+        {
+          body: [
+            "A question with a code appears on this computer. Press ",
+            { bold: "Allow" },
+            " if your phone shows the same code.",
+          ],
+        },
+      ],
+      discord: [
+        {
+          body: [
+            "At ",
+            { bold: "discord.com/developers" },
+            ", make a ",
+            { bold: "New Application" },
+            ". So nobody else can add it to a server, set ",
+            { bold: "Install Link" },
+            " to ",
+            { bold: "None" },
+            " on its ",
+            { bold: "Installation" },
+            " page and turn off ",
+            { bold: "Public Bot" },
+            " on its ",
+            { bold: "Bot" },
+            " page. There, press ",
+            { bold: "Reset Token" },
+            " and copy it.",
+          ],
+          slot: {
+            open: "https://discord.com/developers/applications",
+            label: "Open discord.com/developers",
+          },
+        },
+        {
+          body: ["Paste the token here."],
+          slot: { key: "DISCORD_BOT_TOKEN", looks: "MTE…" },
+        },
+        {
+          body: [
+            { bold: "Add the bot to a server of your own" },
+            " — Discord only delivers a message to a bot you share a server with. A private server made for this is fine.",
+          ],
+          slot: {
+            says: "Point your phone's camera at it, or open it here. It asks which server, and adds the bot with no permissions in it.",
+            does: "Add the bot to a server",
+          },
+        },
+        {
+          body: [
+            { bold: "Send the bot a direct message" },
+            ", not in the server: on a phone, tap the bot in the server's member list, then ",
+            { bold: "Message" },
+            ". A question with a code appears here: press ",
+            { bold: "Allow" },
+            " if your phone shows the same code.",
+          ],
+        },
+      ],
+      slack: [
+        {
+          body: [
+            "At ",
+            {
+              link: {
+                href: "https://api.slack.com/apps",
+                label: "api.slack.com/apps",
+              },
+            },
+            ", ",
+            { bold: "Create New App › From a manifest" },
+            ", and paste the manifest.",
+          ],
+          slot: { manifest: true },
+        },
+        {
+          body: [
+            { bold: "Basic Information › App-Level Tokens" },
+            ": generate one with ",
+            { bold: "connections:write" },
+            ". It starts with xapp-.",
+          ],
+          slot: { key: "SLACK_APP_TOKEN", looks: "xapp-…" },
+        },
+        {
+          body: [
+            { bold: "Install App" },
+            " to your workspace. The Bot User OAuth Token starts with xoxb-.",
+          ],
+          slot: { key: "SLACK_BOT_TOKEN", looks: "xoxb-…" },
+        },
+        {
+          body: [
+            "In Slack, open the app under ",
+            { bold: "Apps" },
+            " and write in its ",
+            { bold: "Messages" },
+            " tab. A question with a code appears here: press ",
+            { bold: "Allow" },
+            " if Slack shows the same code.",
+          ],
+        },
+      ],
+      email: [
+        {
+          body: [
+            "Make a ",
+            { bold: "mailbox of her own" },
+            " — a new account at a mail service that gives app passwords (Outlook no longer does). Turn on ",
+            { bold: "two-step sign-in" },
+            " there and create an ",
+            { bold: "app password" },
+            " for Thursday: how on ",
+            {
+              link: {
+                href: "https://support.google.com/accounts/answer/185833",
+                label: "Gmail",
+              },
+            },
+            ", ",
+            {
+              link: {
+                href: "https://support.apple.com/en-us/102654",
+                label: "iCloud",
+              },
+            },
+            ", ",
+            {
+              link: {
+                href: "https://www.fastmail.help/hc/en-us/articles/360058752854-App-passwords",
+                label: "Fastmail",
+              },
+            },
+            ". Your own inbox stays out of it.",
+          ],
+        },
+        {
+          body: ["Her address and the app password."],
+          slot: { mailbox: true },
+        },
+        {
+          body: [
+            "Your own address. Only mail from it reaches her, and only once its mail service vouches it was sent from there.",
+          ],
+          slot: { person: true },
+        },
+        {
+          body: [
+            "From your address, write anything to hers. She answers in the same thread.",
+          ],
+          slot: { write: true },
+        },
+      ],
+    },
+  },
   bot: {
     botsMost: (count, max) => `${count} bots · ${max} is the most`,
     newBot: "New bot",
@@ -1322,6 +1955,142 @@ export const en: SettingsDict = {
       Designer: "Draws the options to pick from",
       Tutor: "Explains anything, a picture at a time",
       Writer: "Drafts it in their voice, ready to send",
+    },
+  },
+  config: {
+    groups: {
+      voice: {
+        title: "voice",
+        hint: "calls run on this key, or on a paid GPT Subscription sign-in",
+        note: "calls need this or the GPT Subscription",
+      },
+      easy: {
+        title: "the easy ways",
+        hint: "one sign-in or one key opens every bot",
+      },
+      text: {
+        title: "or a provider's own key",
+        hint: "what bots think with — add any, or none",
+      },
+      search: {
+        title: "search",
+        hint: "how calls and bots look things up — one key, or their own model's",
+      },
+      phone: { title: "phone", hint: "tokens" },
+      bots: {
+        title: "Bots",
+        hint: "what a bot runs on when it has not picked its own — start small: a small model is quick and costs little",
+      },
+      studio: {
+        title: "Studio",
+        hint: "what a bot draws, films and speaks with — off until you pick one; a paid GPT Subscription draws by itself",
+      },
+    },
+    groupNoteFallback: "Required",
+    readyWord: "ready",
+    modelsFooter:
+      "Her own voice and backend models are in Thursday. A bot can pick its own on its page.",
+    keysFooterSet: (set, total) => `${set} of ${total} set`,
+    keysFooterLost: (lost) => ` · ${lost} to enter again`,
+    keysFooterNeedCall: " · a call needs the GPT Subscription or an OpenAI key",
+    keysFooterStay: " · your keys stay on this machine",
+    moreProviders: (count) => `${count} more providers`,
+    moreWord: "More",
+    searchHint:
+      "Web search, if you want it: without a key, a bot searches only when its own model can.",
+    ariaSet: "set",
+    ariaSetEnv: "set in env",
+    ariaLost: "enter it again",
+    ariaUnset: "not set",
+    keyRefused: "Key refused",
+    creditsLeft: (amount) => `${amount} left`,
+    signInAgain: "Sign in again",
+    enterAgain: "Enter again",
+    signedOut: "Signed out",
+    notSet: "Not set",
+    signedIn: "Signed in",
+    setWord: "Set",
+    setInEnv: "Set in env",
+    signinRefused: "Sign-in refused",
+    limitReached: "Limit reached",
+    usedPercent: (pct) => `${pct}% used`,
+    resetsIn: (when) => `resets in ${when}`,
+    signedInWord: "signed in",
+    signInWithAccount: "sign in with your account",
+    planUsedAria: "Plan used",
+    automaticWord: "Automatic",
+    offWord: "off",
+    autoWord: "auto",
+    unsetPlanRuns: (label) => `Automatic · ${label}`,
+    unsetNoOffer: "Not offered to bots until you pick one",
+    effortWord: "effort",
+    signOutOf: (label) => `Sign out of ${label}?`,
+    signedOutOf: (label) => `Signed out of ${label}`,
+    signInInstead: "Sign in with your ChatGPT account instead of a key",
+    closeBtn: "Close",
+    cancelBtn: "Cancel",
+    signOutBtn: "Sign out",
+    signOutConfirmBody: "Nothing runs on your plan until you sign in again.",
+    planSpendNote:
+      "Bots on this subscription spend your plan's usage, not a key. When it runs out, the job stops and says when it resets.",
+    signInWindowNote:
+      "The sign-in opens in its own window. Approve it there, and this turns to signed in by itself.",
+    lostSigninAgain: "Sign in again.",
+    saveKeyOk: (label) => `${label} key saved`,
+    removeKeyOk: (label) => `${label} key removed`,
+    removeKeyTitle: (label) => `Remove the ${label} key?`,
+    removeKeyBody:
+      "It is deleted from this computer, and nothing runs on it until a key is pasted again.",
+    closeAction: "Close",
+    removeAction: "Remove",
+    cancelAction: "Cancel",
+    replaceAction: "Replace",
+    saveAction: "Save",
+    newValuePlaceholder: "New value — replaces the current key",
+    pasteAgainPlaceholder: "Paste the key again",
+    pasteKeyFallback: "Paste the key",
+    getKeyAt: (host) => `Get a key at ${host}`,
+    lostKeyAgain: "Paste it again.",
+    envSetNote: (label) =>
+      `${label} is set in the environment the app started with — a .env or your shell — and that one is used over one saved here. Change or remove it there, then start the app again.`,
+    mediaLabels: {
+      image: { label: "Image model", hint: "What bots draw with" },
+      video: {
+        label: "Video model",
+        hint: "What bots film with — minutes a clip",
+      },
+      speech: {
+        label: "Speech model",
+        hint: "What reads text aloud into a file",
+      },
+      transcription: {
+        label: "Transcription model",
+        hint: "What turns a recording into text",
+      },
+    },
+    mediaMissing: (kind) => `a ${kind} model`,
+    phoneFooter:
+      "Nothing on this computer is opened to the internet: the app asks the chat service, or her mailbox, what was written.",
+    entryHints: {
+      DEFAULT_MODEL: "What a bot thinks with until it picks its own",
+      EXA_API_KEY: "web search in one call — dashboard.exa.ai",
+      TELEGRAM_BOT_TOKEN:
+        "a bot token from @BotFather — then write to your bot, and allow it here",
+      DISCORD_BOT_TOKEN:
+        "a bot token from discord.com/developers — add the bot to a server of yours, then write to it directly",
+      SLACK_APP_TOKEN:
+        "starts with xapp- — opens the connection. Slack takes this and the bot token",
+      SLACK_BOT_TOKEN: "starts with xoxb- — speaks as the app",
+      EMAIL_APP_PASSWORD:
+        "the app password her mailbox's service made for Thursday — saved with her address in Settings › Phone",
+      IMAGE_MODEL: "What bots draw with",
+      VIDEO_MODEL: "What bots film with — minutes a clip",
+      SPEECH_MODEL: "What reads text aloud into a file",
+      TRANSCRIPTION_MODEL: "What turns a recording into text",
+    },
+    entryLabels: {
+      DEFAULT_MODEL: "Default model",
+      DEFAULT_EFFORT: "Default effort",
     },
   },
 };
